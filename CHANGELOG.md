@@ -5,6 +5,11 @@ All notable changes to OpenVox GUI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1.5-Alpha] - 2026-02-25
+
+### Changed
+- **Add User default role**: The role selector in User Manager now defaults to **Operator** instead of Viewer when creating new users, reflecting the more common use case.
+
 ## [2.0.1.4-Alpha] - 2026-02-25
 
 ### Changed

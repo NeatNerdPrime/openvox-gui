@@ -618,7 +618,7 @@ function UserManagerTab() {
   const [error, setError] = useState<string | null>(null);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<string>('viewer');
+  const [newRole, setNewRole] = useState<string>('operator');
   const [newAuthSource, setNewAuthSource] = useState<string>('ldap');
   const [addLoading, setAddLoading] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
@@ -652,7 +652,7 @@ function UserManagerTab() {
     try {
       await users.create({ username: newUsername, password: newPassword, role: newRole, auth_source: newAuthSource });
       notifications.show({ title: 'User Created', message: `User '${newUsername}' created (${newAuthSource}, role: ${newRole})`, color: 'green' });
-      setNewUsername(''); setNewPassword(''); setNewRole('viewer'); setNewAuthSource('ldap'); loadUsers();
+      setNewUsername(''); setNewPassword(''); setNewRole('operator'); setNewAuthSource('ldap'); loadUsers();
     } catch (err: any) { notifications.show({ title: 'Error', message: err.message, color: 'red' }); }
     finally { setAddLoading(false); }
   };
