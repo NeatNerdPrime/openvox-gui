@@ -341,14 +341,14 @@ def _build_config_file_tree() -> List[Dict[str, Any]]:
 
     groups: List[Dict[str, Any]] = []
 
-    # --- Puppet Agent ---
+    # --- OpenVox Agent ---
     puppet_files = []
     for name in ["puppet.conf", "autosign.conf"]:
         p = Path(f"/etc/puppetlabs/puppet/{name}")
         puppet_files.append({"name": name, "path": str(p), "exists": _safe_exists(p)})
-    groups.append({"group": "Puppet Agent", "base": "/etc/puppetlabs/puppet", "files": puppet_files})
+    groups.append({"group": "OpenVox Agent", "base": "/etc/puppetlabs/puppet", "files": puppet_files})
 
-    # --- PuppetServer ---
+    # --- OpenVox Server ---
     ps_files = []
     conf_d = Path("/etc/puppetlabs/puppetserver/conf.d")
     if _safe_is_dir(conf_d):
@@ -360,9 +360,9 @@ def _build_config_file_tree() -> List[Dict[str, Any]]:
         for f in _safe_iterdir(services_d):
             if _safe_is_file(f):
                 ps_files.append({"name": f"services.d/{f.name}", "path": str(f), "exists": True})
-    groups.append({"group": "PuppetServer", "base": "/etc/puppetlabs/puppetserver", "files": ps_files})
+    groups.append({"group": "OpenVox Server", "base": "/etc/puppetlabs/puppetserver", "files": ps_files})
 
-    # --- PuppetDB ---
+    # --- OpenVox DB ---
     pdb_files = []
     pdb_d = Path("/etc/puppetlabs/puppetdb/conf.d")
     if _safe_is_dir(pdb_d):
@@ -375,15 +375,14 @@ def _build_config_file_tree() -> List[Dict[str, Any]]:
                       "puppetdb.ini", "read_database.ini", "repl.ini"]:
             p = Path(f"/etc/puppetlabs/puppetdb/conf.d/{name}")
             pdb_files.append({"name": name, "path": str(p), "exists": _safe_exists(p)})
-    groups.append({"group": "PuppetDB", "base": "/etc/puppetlabs/puppetdb/conf.d", "files": pdb_files})
+    groups.append({"group": "OpenVox DB", "base": "/etc/puppetlabs/puppetdb/conf.d", "files": pdb_files})
 
-    # --- Sysconfig / Default ---
+    # --- System Configuration ---
     sys_files = []
     for svc in ["puppet", "puppetserver", "puppetdb"]:
         p = Path(f"{sysconfig_dir}/{svc}")
         sys_files.append({"name": svc, "path": str(p), "exists": _safe_exists(p)})
-    label = "Sysconfig" if os_family == "redhat" else "Defaults"
-    groups.append({"group": label, "base": sysconfig_dir, "files": sys_files})
+    groups.append({"group": "System Configuration", "base": sysconfig_dir, "files": sys_files})
 
     return groups
 

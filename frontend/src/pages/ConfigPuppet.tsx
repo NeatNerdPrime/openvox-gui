@@ -627,7 +627,7 @@ export function ConfigPuppetPage() {
 
   return (
     <Stack>
-      <Title order={2}>Puppet Configuration</Title>
+      <Title order={2}>OpenVox Configuration</Title>
 
       <Alert
         variant="light"

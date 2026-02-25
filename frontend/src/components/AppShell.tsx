@@ -68,7 +68,7 @@ const infraNav = [
 ];
 
 const configNav = [
-  { label: 'Puppet Configuration', icon: IconNetwork, path: '/config/puppet' },
+  { label: 'OpenVox Configuration', icon: IconNetwork, path: '/config/puppet' },
   { label: 'Settings', icon: IconSettings, path: '/config/app' },
 ];
 
