@@ -9,10 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [2.1.2] - 2026-02-25
+
+### Changed
+- **Complete Puppet-to-OpenVox rebranding**: All user-facing prose, labels, and descriptions across the entire application and documentation now reference OpenVox product names (OpenVox Server, OpenVoxDB, OpenBolt). This includes:
+  - All 5 documentation files (README, INSTALL, UPDATE, TROUBLESHOOTING, CHANGELOG note)
+  - All 15 frontend component files (sidebar, page titles, notifications, descriptions, SVG captions, table headers, error messages, installation instructions)
+  - Backend config file group labels (OpenVox Agent, OpenVox Server, OpenVox DB, System Configuration)
+  - Literal CLI commands, filesystem paths, config values, and variable names correctly retain `puppet` where that is the actual on-disk name
+- **CONTRIBUTING.md typo fixes**: Corrected "Str" → "Star", capitalization, and spacing issues
+
 ## [2.1.1] - 2026-02-25
 
 ### Changed
-- **Documentation rebranding**: Replaced all user-facing references from Puppet product names to OpenVox equivalents — OpenVox Server, OpenVoxDB, OpenBolt. Literal CLI commands, filesystem paths, and config values retain `puppet` where that is the actual on-disk name. CHANGELOG historical entries preserved with a rebrand note.
+- **Documentation rebranding**: Initial pass replacing Puppet product names in documentation files. CHANGELOG historical entries preserved with a rebrand note.
 
 ## [2.1.0] - 2026-02-25
 
