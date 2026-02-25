@@ -363,11 +363,11 @@ export function CodeDeploymentPage() {
               )}
             </Card>
 
-            {/* Restart Puppet Services */}
+            {/* Restart OpenVox Services */}
             <Card withBorder shadow="sm" padding="md">
-              <Title order={4} mb="sm">Restart Puppet Services</Title>
+              <Title order={4} mb="sm">Restart OpenVox Services</Title>
               <Text size="sm" c="dimmed" mb="md">
-                Restart PuppetDB, PuppetServer, and Puppet agent in the correct dependency order.
+                Restart OpenVoxDB, OpenVox Server, and OpenVox agent in the correct dependency order.
               </Text>
               <Button
                 leftSection={<IconRefresh size={16} />}
