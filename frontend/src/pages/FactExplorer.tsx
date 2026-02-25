@@ -383,7 +383,7 @@ export function FactExplorerPage() {
             </Badge>
           </Group>
 
-          <ScrollArea style={{ height: '50vh', minHeight: 300, maxHeight: 600 }}>
+          <ScrollArea h="calc(100vh - 400px)" mih={300} mah={700}>
             <Table striped highlightOnHover withTableBorder withColumnBorders>
               <Table.Thead>
                 <Table.Tr>
@@ -398,9 +398,9 @@ export function FactExplorerPage() {
                       <Text fw={500} size="sm">{f.certname}</Text>
                     </Table.Td>
                     <Table.Td>
-                      <ScrollArea style={{ maxHeight: 300 }}>
+                      <ScrollArea mah={250} offsetScrollbars>
                         {isJsonLike(f.value) ? (
-                          <PrettyJson data={f.value} maxHeight={280} withBorder={false} />
+                          <PrettyJson data={f.value} maxHeight={230} withBorder={false} />
                         ) : (
                           <Text size="sm" style={{ wordBreak: 'break-word' }}>
                             {f.value === null ? 'null' : String(f.value)}
