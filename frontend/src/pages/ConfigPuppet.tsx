@@ -632,14 +632,14 @@ export function ConfigPuppetPage() {
       <Alert
         variant="light"
         color="yellow"
-        title="Puppet-Managed Configuration Warning"
+        title="OpenVox-Managed Configuration Warning"
         icon={<IconAlertTriangle size={20} />}
         radius="md"
       >
-        If you are managing <Code>puppet.conf</Code> or any other configuration files on this page with Puppet itself
+        If you are managing <Code>puppet.conf</Code> or any other configuration files on this page with OpenVox itself
         (e.g. via the <Code>puppet_conf</Code> resource type or an INI settings module), any changes you make here
-        will be <Text span fw={700}>overwritten</Text> on the next Puppet agent run. To make persistent changes,
-        update your Puppet code instead.
+        will be <Text span fw={700}>overwritten</Text> on the next OpenVox Agent run. To make persistent changes,
+        update your OpenVox code instead.
       </Alert>
 
       <Tabs defaultValue="files">
