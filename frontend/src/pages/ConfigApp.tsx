@@ -398,7 +398,6 @@ function LdapConfigPanel() {
         bind_dn: form.bind_dn || null,
         bind_password: form.bind_password || null,
         user_base_dn: form.user_base_dn || null,
-        group_base_dn: form.group_base_dn || null,
       });
       setTestResult(result);
       if (result.success) {
@@ -417,23 +416,17 @@ function LdapConfigPanel() {
       case 'openldap':
         updateField('user_search_filter', '(uid={username})');
         updateField('user_attr_username', 'uid');
-        updateField('group_search_filter', '(objectClass=groupOfNames)');
-        updateField('group_member_attr', 'member');
         updateField('use_ad_upn', false);
         break;
       case '389ds':
         updateField('user_search_filter', '(uid={username})');
         updateField('user_attr_username', 'uid');
-        updateField('group_search_filter', '(objectClass=groupOfUniqueNames)');
-        updateField('group_member_attr', 'uniqueMember');
         updateField('use_ad_upn', false);
         break;
       case 'ad':
         updateField('user_search_filter', '(sAMAccountName={username})');
         updateField('user_attr_username', 'sAMAccountName');
         updateField('user_attr_display_name', 'displayName');
-        updateField('group_search_filter', '(objectClass=group)');
-        updateField('group_member_attr', 'member');
         updateField('use_ad_upn', true);
         break;
     }
@@ -460,8 +453,8 @@ function LdapConfigPanel() {
 
       <Text size="sm" c="dimmed" mb="md">
         Configure LDAP authentication to allow users to sign in with their corporate credentials.
-        Usernames and passwords are validated against LDAP, while roles (Admin, Operator, Viewer) are managed locally.
         Local accounts (for service accounts etc.) continue to work alongside LDAP.
+        <Text span fw={500}> User roles (Admin, Operator, Viewer) are managed in the User Manager tab — not here.</Text>
       </Text>
 
       {/* Directory Type Presets */}
@@ -550,55 +543,6 @@ function LdapConfigPanel() {
         </Grid.Col>
       </Grid>
 
-      <Divider my="md" label="Group Mapping → Local Roles" labelPosition="left" />
-      <Text size="xs" c="dimmed" mb="sm">
-        Map LDAP groups to local OpenVox GUI roles. When a new user authenticates via LDAP, their initial role is determined by group membership.
-        Administrators can always override roles locally after the user is provisioned.
-      </Text>
-      <Grid>
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <TextInput label="Group Base DN" description="Where to search for groups" placeholder="ou=groups,dc=example,dc=com"
-            value={form.group_base_dn} onChange={(e) => updateField('group_base_dn', e.currentTarget.value)} />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <TextInput label="Group Search Filter" placeholder="(objectClass=groupOfNames)"
-            value={form.group_search_filter} onChange={(e) => updateField('group_search_filter', e.currentTarget.value)} />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <TextInput label="Group Member Attribute" placeholder="member" value={form.group_member_attr}
-            onChange={(e) => updateField('group_member_attr', e.currentTarget.value)} />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <TextInput label="Group Name Attribute" placeholder="cn" value={form.group_attr_name}
-            onChange={(e) => updateField('group_attr_name', e.currentTarget.value)} />
-        </Grid.Col>
-      </Grid>
-
-      <Grid mt="sm">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <TextInput label="Admin Group" description="LDAP group → Admin role" placeholder="openvox-admins"
-            value={form.admin_group} onChange={(e) => updateField('admin_group', e.currentTarget.value)}
-            leftSection={<Badge size="xs" color="red" variant="filled">A</Badge>} />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <TextInput label="Operator Group" description="LDAP group → Operator role" placeholder="openvox-operators"
-            value={form.operator_group} onChange={(e) => updateField('operator_group', e.currentTarget.value)}
-            leftSection={<Badge size="xs" color="blue" variant="filled">O</Badge>} />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <TextInput label="Viewer Group" description="LDAP group → Viewer role" placeholder="openvox-viewers"
-            value={form.viewer_group} onChange={(e) => updateField('viewer_group', e.currentTarget.value)}
-            leftSection={<Badge size="xs" color="gray" variant="filled">V</Badge>} />
-        </Grid.Col>
-      </Grid>
-
-      <Select mt="sm" label="Default Role" description="Role assigned when user doesn't match any LDAP group"
-        data={[
-          { value: 'admin', label: 'Admin' },
-          { value: 'operator', label: 'Operator' },
-          { value: 'viewer', label: 'Viewer' },
-        ]} value={form.default_role} onChange={(v) => updateField('default_role', v || 'viewer')} style={{ maxWidth: 200 }} />
-
       <Divider my="md" label="Active Directory Settings" labelPosition="left" />
       <Group gap="xl">
         <Switch label="Use AD User Principal Name (UPN) for bind" checked={form.use_ad_upn}
@@ -621,9 +565,7 @@ function LdapConfigPanel() {
             </Stack>
           )}
           {testResult.user_base_dn_valid === false && <Text size="xs" c="orange" mt="xs">⚠ {testResult.user_base_dn_warning}</Text>}
-          {testResult.group_base_dn_valid === false && <Text size="xs" c="orange" mt="xs">⚠ {testResult.group_base_dn_warning}</Text>}
           {testResult.user_base_dn_valid === true && <Text size="xs" c="green" mt="xs">✓ User Base DN is valid</Text>}
-          {testResult.group_base_dn_valid === true && <Text size="xs" c="green" mt="xs">✓ Group Base DN is valid</Text>}
         </Alert>
       )}
 
@@ -657,7 +599,7 @@ function AuthSettingsTab() {
         </Group>
         <Text size="xs" c="dimmed" mt="sm">
           Each user can authenticate via LDAP (corporate credentials) or local accounts (service accounts, break-glass).
-          The authentication source is selectable per user. Roles are always managed locally.
+          The authentication source is selectable per user. <Text span fw={500}>Roles (Admin, Operator, Viewer) are assigned and managed exclusively in the User Manager tab.</Text>
         </Text>
       </Card>
 

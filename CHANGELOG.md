@@ -5,6 +5,14 @@ All notable changes to OpenVox GUI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1.4-Alpha] - 2026-02-25
+
+### Changed
+- **Auth Settings: removed role/group mapping section**: The "Group Mapping → Local Roles" section (group base DN, group search filter, admin/operator/viewer group fields, and default role selector) has been removed from the Auth Settings tab. User roles are now managed exclusively in the **User Manager** tab, eliminating confusion about where roles are assigned. The backend group-to-role logic remains intact for API-level use but is no longer exposed in the UI.
+- **Auth Settings: clarified role management**: Added explicit text on both the Auth Settings tab and the LDAP configuration panel stating that roles are managed in the User Manager tab — not in LDAP settings.
+- **LDAP presets simplified**: Quick presets (OpenLDAP, 389 DS, Active Directory) no longer set group-related fields since the group mapping UI has been removed.
+- **Connection test**: Test payload no longer sends `group_base_dn`; test results no longer show group base DN validation.
+
 ## [2.0.1.3-Alpha] - 2026-02-25
 
 ### Added
