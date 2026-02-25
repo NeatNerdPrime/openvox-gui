@@ -271,7 +271,7 @@ export function PQLConsolePage() {
           </Group>
 
           {columns.length > 0 ? (
-            <ScrollArea style={{ maxHeight: "calc(100vh - 200px)" }}>
+            <ScrollArea h="calc(100vh - 350px)" mih={300} mah={800}>
               <Table striped highlightOnHover withTableBorder>
                 <Table.Thead>
                   <Table.Tr>
@@ -296,8 +296,8 @@ export function PQLConsolePage() {
               </Table>
             </ScrollArea>
           ) : (
-            <ScrollArea style={{ maxHeight: "calc(100vh - 200px)" }}>
-              <PrettyJson data={results.results} maxHeight="calc(100vh - 200px)" />
+            <ScrollArea h="calc(100vh - 350px)" mih={300} mah={800}>
+              <PrettyJson data={results.results} maxHeight="calc(100vh - 350px)" />
             </ScrollArea>
           )}
         </Card>
