@@ -5,6 +5,11 @@ All notable changes to OpenVox GUI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1.7-Beta] - 2026-02-25
+
+### Changed
+- **CONTRIBUTORS.md**: Added Martin Alfke for usability and design suggestions, interface review, and project feedback.
+
 ## [2.0.1.6-Beta] - 2026-02-25
 
 ### Added

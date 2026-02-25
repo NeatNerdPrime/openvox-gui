@@ -11,6 +11,7 @@ Thank you to everyone who has helped make OpenVox GUI better! Whether through te
 - **Massimiliano Adamo** — Functionality testing and interface recommendations
 - **Alessandro Franceschi** — Bug reports, suggestions, and feature requests
 - **Ben Ford** ([@binford2k](https://github.com/binford2k)) — Interface review
+- **Martin Alfke** — Usability and design suggestions, interface review, and project feedback
 - **Tim Meusel** ([@bastelfreak](https://github.com/bastelfreak)) — Project review and feedback
 
 ## How to Contribute
