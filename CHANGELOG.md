@@ -5,6 +5,19 @@ All notable changes to OpenVox GUI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1.1-Alpha] - 2026-02-25
+
+### Fixed
+- **Installer: `requirements.txt` not found**: `cp -a backend/ dest/backend/` created a nested `dest/backend/backend/` directory when the destination already existed (pre-created by `mkdir -p`). Changed Step 3 to remove stale copies and use `cp -a backend dest/` (no trailing slash) so files land at the correct paths. The same nesting bug affected the frontend copy.
+- **Installer: Frontend build fails regardless of user choice**: When answering "yes" to "Build frontend from source?", `npm install` and `npm run build` had stderr redirected to `/dev/null`, hiding all error messages. If the build failed, the script either exited silently or falsely reported success. Removed stderr suppression and added explicit error handling with actionable messages.
+- **Installer: Frontend build fails even with correct Node.js**: `vite.config.ts` reads `../VERSION` at build time, but the installer never copied the `VERSION` file to `INSTALL_DIR`. The Vite build would crash with `ENOENT: no such file or directory`. Added VERSION file copy in Step 3.
+- **Installer: Backend fails to start after install**: `backend/app/__init__.py` reads `../../VERSION` at import time. Without the VERSION file at `INSTALL_DIR/VERSION`, the service would crash on startup with `FileNotFoundError`. Fixed by the same VERSION copy above.
+
+### Changed
+- **Installer Step 2**: Removed `backend` and `frontend` from the initial `mkdir -p` to avoid creating empty directories that trigger the `cp -a` nesting behavior
+- **Installer Step 3**: Added clean `rm -rf` before copying backend and frontend to ensure idempotent re-installs
+- **deploy.sh**: Removed `--silent` flag from `npm install` so errors are visible during re-deploys
+
 ## [2.0.0-3 Alpha] - 2026-02-20
 
 ### Added

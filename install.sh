@@ -327,19 +327,29 @@ fi
 
 log_step 2 "Directory Structure"
 
-mkdir -p "${INSTALL_DIR}"/{backend,frontend,config,data,logs,scripts}
-log_ok "Created ${INSTALL_DIR}/{backend,frontend,config,data,logs,scripts}"
+mkdir -p "${INSTALL_DIR}"/{config,data,logs,scripts}
+log_ok "Created ${INSTALL_DIR}/{config,data,logs,scripts}"
 
 # ─── Step 3: Copy Application Files ─────────────────────────
 
 log_step 3 "Copy Application Files"
 
-# Copy backend
+# Copy backend — remove any previous copy to avoid cp nesting issues,
+# then copy the directory as a whole into INSTALL_DIR.
 if [ -d "${SCRIPT_DIR}/backend" ]; then
-    cp -a "${SCRIPT_DIR}/backend/" "${INSTALL_DIR}/backend/"
+    rm -rf "${INSTALL_DIR}/backend"
+    cp -a "${SCRIPT_DIR}/backend" "${INSTALL_DIR}/"
     log_ok "Copied backend application"
 else
     log_warn "No backend/ directory found in source — skipping"
+fi
+
+# Copy VERSION file (required by backend __init__.py and frontend vite build)
+if [ -f "${SCRIPT_DIR}/VERSION" ]; then
+    cp "${SCRIPT_DIR}/VERSION" "${INSTALL_DIR}/VERSION"
+    log_ok "Copied VERSION file"
+else
+    log_warn "No VERSION file found — backend may fail to start"
 fi
 
 # Copy scripts
@@ -351,9 +361,11 @@ for script in enc.py manage_users.py deploy.sh; do
 done
 log_ok "Copied scripts"
 
-# Copy frontend source (for building) or pre-built dist
+# Copy frontend source (for building) or pre-built dist — same rm-then-copy
+# pattern to avoid nested directory issues with cp -a.
 if [ -d "${SCRIPT_DIR}/frontend" ]; then
-    cp -a "${SCRIPT_DIR}/frontend/" "${INSTALL_DIR}/frontend/"
+    rm -rf "${INSTALL_DIR}/frontend"
+    cp -a "${SCRIPT_DIR}/frontend" "${INSTALL_DIR}/"
     log_ok "Copied frontend source"
 fi
 
@@ -382,6 +394,7 @@ log_ok "Installed Python dependencies"
 log_step 5 "Frontend"
 
 if [ "$BUILD_FRONTEND" = "true" ]; then
+    FRONTEND_BUILT="false"
     if ! command -v node &>/dev/null; then
         log_warn "Node.js not found — checking for pre-built frontend"
     else
@@ -391,10 +404,26 @@ if [ "$BUILD_FRONTEND" = "true" ]; then
         else
             log_info "Building frontend with Node.js $(node -v)..."
             cd "${INSTALL_DIR}/frontend"
-            npm install --silent 2>/dev/null
-            npm run build 2>/dev/null
-            log_ok "Frontend built successfully"
+            if npm install; then
+                log_ok "npm install completed"
+            else
+                log_err "npm install failed — check Node.js version and network connectivity"
+                log_info "You can skip the frontend build and provide a pre-built dist/ directory instead"
+                exit 1
+            fi
+            if npm run build; then
+                log_ok "Frontend built successfully"
+                FRONTEND_BUILT="true"
+            else
+                log_err "npm run build failed — check the error output above"
+                exit 1
+            fi
         fi
+    fi
+
+    if [ "$FRONTEND_BUILT" = "false" ] && [ ! -d "${INSTALL_DIR}/frontend/dist" ]; then
+        log_err "Frontend build was requested but failed, and no pre-built dist/ exists"
+        exit 1
     fi
 fi
 

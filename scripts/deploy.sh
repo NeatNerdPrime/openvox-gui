@@ -43,12 +43,14 @@ echo "[2/5] Updating Python dependencies..."
 echo "[3/5] Building frontend..."
 if command -v node &>/dev/null; then
     cd "${APP_DIR}/frontend"
-    npm install --silent
+    npm install
     npm run build
-    # Ensure logo is in dist
-    if [ -f "${APP_DIR}/frontend/public/openvox-logo.svg" ]; then
-        cp "${APP_DIR}/frontend/public/openvox-logo.svg" "${APP_DIR}/frontend/dist/" 2>/dev/null || true
-    fi
+    # Ensure logos are in dist
+    for logo in openvox-logo.svg openvox-logo-orange.svg; do
+        if [ -f "${APP_DIR}/frontend/public/${logo}" ]; then
+            cp "${APP_DIR}/frontend/public/${logo}" "${APP_DIR}/frontend/dist/" 2>/dev/null || true
+        fi
+    done
 else
     echo "  Node.js not found — skipping frontend build"
 fi
