@@ -5,68 +5,30 @@ All notable changes to OpenVox GUI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.1.7-Beta] - 2026-02-25
+## [2.1.0] - 2026-02-25
 
-### Changed
-- **CONTRIBUTORS.md**: Added Martin Alfke for usability and design suggestions, interface review, and project feedback.
-
-## [2.0.1.6-Beta] - 2026-02-25
+This is the first stable release of the 2.x series, consolidating all Alpha/Beta fixes and improvements since 2.0.0.
 
 ### Added
-- **CONTRIBUTORS.md**: New contributors file acknowledging Massimiliano Adamo (functionality testing, interface recommendations), Alessandro Franceschi (bug reports, suggestions, feature requests), Ben Ford (interface review), and Tim Meusel (project review and feedback).
-
-## [2.0.1.6-Alpha] - 2026-02-25
-
-### Changed
-- **LDAP login no longer touches user roles**: The `ldap_login` function previously called `resolve_role_from_groups()` to derive a role from LDAP group membership when auto-provisioning new users. This has been removed — LDAP now handles **authentication only**. Auto-provisioned LDAP users receive a default role of Operator, which can be changed by an admin in the User Manager tab. Existing users' roles are never modified by LDAP login. The `groups` field has been removed from the LDAP login response.
-
-## [2.0.1.5-Alpha] - 2026-02-25
-
-### Changed
-- **Add User default role**: The role selector in User Manager now defaults to **Operator** instead of Viewer when creating new users, reflecting the more common use case.
-
-## [2.0.1.4-Alpha] - 2026-02-25
-
-### Changed
-- **Auth Settings: removed role/group mapping section**: The "Group Mapping → Local Roles" section (group base DN, group search filter, admin/operator/viewer group fields, and default role selector) has been removed from the Auth Settings tab. User roles are now managed exclusively in the **User Manager** tab, eliminating confusion about where roles are assigned. The backend group-to-role logic remains intact for API-level use but is no longer exposed in the UI.
-- **Auth Settings: clarified role management**: Added explicit text on both the Auth Settings tab and the LDAP configuration panel stating that roles are managed in the User Manager tab — not in LDAP settings.
-- **LDAP presets simplified**: Quick presets (OpenLDAP, 389 DS, Active Directory) no longer set group-related fields since the group mapping UI has been removed.
-- **Connection test**: Test payload no longer sends `group_base_dn`; test results no longer show group base DN validation.
-
-## [2.0.1.3-Alpha] - 2026-02-25
-
-### Added
-- **`scripts/update_local.sh`**: New local update script referenced in UPDATE.md but previously missing from the repo. Supports `--skip-backup`, `--force`, `--auto` (for cron), and `--security` flags. Automatically backs up data/config, pulls latest code, updates Python deps, rebuilds frontend, fixes permissions, restarts service, and verifies health.
-
-### Changed
-- **`scripts/update_remote.sh`**: Removed hardcoded server address. Now accepts `--host`, `--user`, and `--name` flags (or `OPENVOX_DEPLOY_HOST`/`OPENVOX_DEPLOY_USER` env vars). Prompts interactively if no host is given. Backward-compatible with positional hostname argument.
-- **`backend/app/config.py`**: Changed default `puppet_server_host` and `puppetdb_host` from `openvox.questy.org` to `localhost` — these are fallback defaults that get overridden by the `.env` file at install time via `hostname -f`.
-- **`nginx.conf`**: Replaced hardcoded hostname with `YOUR_HOSTNAME` placeholder.
-- **`scripts/bump-version.sh`**: Fixed overly greedy regex that replaced ALL bold version strings in docs — now only updates the first 5 lines (the doc header), preventing version history from being mangled on every bump.
-- **`UPDATE.md`**: Rewrote Version History section with proper version ranges instead of repeated current version. Updated remote update script documentation with new flag syntax.
-
-## [2.0.1.2-Alpha] - 2026-02-25
+- **CONTRIBUTING.md**: Contribution guidelines for the project (issues, pull requests, community)
+- **CONTRIBUTORS.md**: Acknowledgments for Massimiliano Adamo, Alessandro Franceschi, Ben Ford, Martin Alfke, and Tim Meusel
+- **`scripts/update_local.sh`**: Local update script with automatic backup, version checking, `--skip-backup`, `--force`, `--auto`, and `--security` flags
 
 ### Fixed
-- **LDAPS port 636 connection failure**: `_build_ldap_connection` only created a TLS configuration object when the `use_ssl` checkbox was toggled. If the user entered an `ldaps://` URL without checking the box, ldap3 would attempt SSL using Python's default context which validates certificates — failing on self-signed or internally-signed Windows AD certs even with "Verify SSL Certificate" unchecked. The backend now auto-detects SSL from the `ldaps://` URL scheme and creates the proper `CERT_NONE` TLS config regardless of the checkbox state.
-- **LDAP connection test error diagnostics**: SSL failures previously returned a raw Python exception with no guidance. The test endpoint now returns actionable hints for common errors (certificate verify failed, wrong SSL version, connection refused, timeouts).
+- **Installer: directory nesting bug**: `cp -a backend/ dest/backend/` created nested `dest/backend/backend/` directories, putting `requirements.txt` and `package.json` at wrong paths. Fixed with clean copy pattern.
+- **Installer: missing VERSION file**: Backend and frontend both require the `VERSION` file at the project root. The installer now copies it during Step 3.
+- **Installer: silent npm failures**: `npm install` and `npm run build` had stderr suppressed. Errors are now visible with actionable messages.
+- **LDAPS port 636 with self-signed certs**: Backend now auto-detects SSL from `ldaps://` URL scheme so the TLS configuration (including `CERT_NONE` for unverified certs) is always created. Frontend auto-toggles the SSL switch when typing `ldaps://`.
+- **LDAP connection test diagnostics**: SSL failures now return actionable troubleshooting hints (certificate verify, wrong version, connection refused, timeouts).
 
 ### Changed
-- **Frontend LDAP URL auto-detect**: Typing `ldaps://` in the Server URL field now automatically toggles the "Use SSL (LDAPS)" switch on, preventing the mismatch that caused the bug.
-- **Frontend test result hints**: Connection test failures now display contextual troubleshooting tips (💡) below the error message.
-
-## [2.0.1.1-Alpha] - 2026-02-25
-
-### Fixed
-- **Installer: `requirements.txt` not found**: `cp -a backend/ dest/backend/` created a nested `dest/backend/backend/` directory when the destination already existed (pre-created by `mkdir -p`). Changed Step 3 to remove stale copies and use `cp -a backend dest/` (no trailing slash) so files land at the correct paths. The same nesting bug affected the frontend copy.
-- **Installer: Frontend build fails regardless of user choice**: When answering "yes" to "Build frontend from source?", `npm install` and `npm run build` had stderr redirected to `/dev/null`, hiding all error messages. If the build failed, the script either exited silently or falsely reported success. Removed stderr suppression and added explicit error handling with actionable messages.
-- **Installer: Frontend build fails even with correct Node.js**: `vite.config.ts` reads `../VERSION` at build time, but the installer never copied the `VERSION` file to `INSTALL_DIR`. The Vite build would crash with `ENOENT: no such file or directory`. Added VERSION file copy in Step 3.
-- **Installer: Backend fails to start after install**: `backend/app/__init__.py` reads `../../VERSION` at import time. Without the VERSION file at `INSTALL_DIR/VERSION`, the service would crash on startup with `FileNotFoundError`. Fixed by the same VERSION copy above.
-
-### Changed
-- **Installer Step 2**: Removed `backend` and `frontend` from the initial `mkdir -p` to avoid creating empty directories that trigger the `cp -a` nesting behavior
-- **Installer Step 3**: Added clean `rm -rf` before copying backend and frontend to ensure idempotent re-installs
-- **deploy.sh**: Removed `--silent` flag from `npm install` so errors are visible during re-deploys
+- **LDAP is authentication only**: `ldap_login()` no longer calls `resolve_role_from_groups()`. LDAP has zero knowledge of user roles. Auto-provisioned LDAP users get a default role of Operator, changeable in User Manager.
+- **Roles managed in one place**: Removed the "Group Mapping → Local Roles" section from Auth Settings. User roles are managed exclusively in the User Manager tab.
+- **Default role is Operator**: Both the Add User form and LDAP auto-provisioning default to Operator instead of Viewer.
+- **`scripts/update_remote.sh`**: Genericized — accepts `--host`, `--user`, `--name` flags or `OPENVOX_DEPLOY_HOST`/`OPENVOX_DEPLOY_USER` env vars instead of hardcoded server address.
+- **`backend/app/config.py`**: Default hostnames changed from site-specific to `localhost` (overridden by `.env` at install time).
+- **`scripts/bump-version.sh`**: Fixed overly greedy regex that mangled version history in docs on every bump.
+- **README.md**: Updated "What's New" section to reflect 2.1.0 features. Added links to CONTRIBUTING.md and CONTRIBUTORS.md.
 
 ## [2.0.0-3 Alpha] - 2026-02-20
 

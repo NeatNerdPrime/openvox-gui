@@ -1,6 +1,6 @@
 # OpenVox GUI
 
-**Version 2.0.1.7-Beta** | [Installation Guide](INSTALL.md) | [Update Guide](UPDATE.md) | [Troubleshooting](TROUBLESHOOTING.md)
+**Version 2.1.0** | [Installation Guide](INSTALL.md) | [Update Guide](UPDATE.md) | [Troubleshooting](TROUBLESHOOTING.md)
 
 A user-friendly web interface for managing your Puppet infrastructure. Think of it as a control center for all your servers - you can see what's happening, fix problems, and make changes from one place.
 
@@ -44,10 +44,12 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 
 ## 📚 Documentation
 
-- **[Installation Guide](INSTALL.md)** - Step-by-step guide for new installations
-- **[Update Guide](UPDATE.md)** - How to update to newer versions
-- **[LDAP / Active Directory Guide](docs/LDAP.md)** - Configure enterprise authentication
-- **[Troubleshooting](TROUBLESHOOTING.md)** - Solutions to common problems
+- **[Installation Guide](INSTALL.md)** — Step-by-step guide for new installations
+- **[Update Guide](UPDATE.md)** — How to update to newer versions
+- **[LDAP / Active Directory Guide](docs/LDAP.md)** — Configure enterprise authentication
+- **[Troubleshooting](TROUBLESHOOTING.md)** — Solutions to common problems
+- **[Contributing](CONTRIBUTING.md)** — How to contribute to the project
+- **[Contributors](CONTRIBUTORS.md)** — People who helped build this project
 
 ## ✨ Main Features
 
@@ -185,39 +187,27 @@ sudo ./scripts/manage_user.py delete username
 sudo ./scripts/manage_user.py list
 ```
 
-## 🌟 What's New in Version 2.0.0
+## 🌟 What's New in Version 2.1.0
 
 ### 🔐 LDAP / Active Directory Authentication
-This is a **major release** introducing enterprise authentication:
-
-- **Split authentication**: Authenticate users against LDAP (OpenLDAP, 389 DS, Red Hat Directory Server, or Active Directory) while managing roles locally
+- **Split authentication**: Authenticate users against LDAP (OpenLDAP, 389 DS, Red Hat Directory Server, or Active Directory) while managing roles locally in the User Manager
 - **Per-user auth source**: Each user can be individually set to authenticate via LDAP or local password — configurable when creating users and changeable at any time
-- **Auto-provisioning**: New LDAP users are created automatically on first login with roles derived from LDAP group membership
-- **Group-to-role mapping**: Map LDAP groups to Admin, Operator, and Viewer roles
+- **Auto-provisioning**: New LDAP users are created automatically on first login with a default Operator role
+- **LDAPS support**: Auto-detects SSL from `ldaps://` URLs with self-signed certificate support
 - **Quick presets**: One-click configuration templates for OpenLDAP, 389 DS / Red Hat DS, and Active Directory
-- **Connection testing**: Test LDAP connectivity with diagnostic feedback before saving
+- **Connection testing**: Test LDAP connectivity with diagnostic feedback and troubleshooting hints
 - **Backward compatible**: Local accounts continue to work for service accounts and break-glass access
 
-### 🎛️ New Auth Settings Tab
-- LDAP/AD configuration has been extracted to its own dedicated **Auth Settings** tab in the Settings page
-- Settings tabs are now: Application Settings → Services → User Manager → Auth Settings
+### 👥 Simplified Role Management
+- User roles (Admin, Operator, Viewer) are managed **exclusively** in the User Manager tab — one place, no confusion
+- LDAP handles authentication only; it has no knowledge of roles
+- New users default to Operator role
 
-### 👥 Enhanced User Management
-- **Add User form** now includes an Authentication Source selector (LDAP / Local) — defaults to LDAP
-- Password field only shown when creating local users
-- New **"Change auth source"** action button per user in the user table
-- Source column shows colored badges indicating local vs LDAP authentication
-
-### 🔢 Centralized Version Management
-The application version is defined in a single file (`VERSION`) at the repository root. All backend, frontend, installer, and documentation references read from this file automatically — there is no version string to maintain anywhere else.
-
-### Previous Releases (1.4.x)
-- **1.4.8**: Fixed Run Puppet button (uses `bolt command run` instead of missing task)
-- **1.4.7**: Resolved all Dependabot security alerts; upgraded Python 3.9 → 3.11
-- **1.4.6**: Vite security update (4.x → 5.4.21)
-- **1.4.5**: Ghost user prevention (username whitespace stripping)
-- **1.4.4**: Initial centralized version management
-- **1.4.3**: User deletion bug fix; comprehensive security headers
+### 🛠️ Installer Improvements
+- Fixed directory nesting bugs that prevented fresh installations
+- Added missing `VERSION` file copy (required by both backend and frontend)
+- Visible error messages for npm build failures (no more silent errors)
+- New `scripts/update_local.sh` for easy on-server updates with automatic backup
 
 For a complete list of changes, see the [Changelog](CHANGELOG.md).
 
