@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [Unreleased]
+
+### Fixed
+- **manage_users.py docs**: Replaced `source venv/bin/activate` + `sudo ./scripts/manage_users.py` pattern with fully-qualified `sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py` across TROUBLESHOOTING.md, README.md, and INSTALL.md — the previous approach was broken because `sudo` does not inherit the user's venv environment (credit: @albatrossflavour, PR #8)
+- **TROUBLESHOOTING.md markdown linting**: Added blank lines between labels/headings and code blocks, removed trailing whitespace, added trailing newline at EOF (credit: @albatrossflavour, PR #8)
+
 ## [2.2.0-Release] - 2026-02-25
 
 **Production release** — complete OpenVox rebranding with scrollability and UI polish.

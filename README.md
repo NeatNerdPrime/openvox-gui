@@ -175,22 +175,17 @@ sudo journalctl -u openvox-gui -f
 ### Managing Users
 
 ```bash
-cd /opt/openvox-gui
-source venv/bin/activate
-
 # Add a new user
-sudo ./scripts/manage_users.py add newuser --role operator
+sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py add newuser --role operator
 
 # Change a password
-sudo ./scripts/manage_users.py passwd username
+sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py passwd username
 
 # Delete a user
-sudo ./scripts/manage_users.py remove username
+sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py remove username
 
 # List all users
-sudo ./scripts/manage_users.py list
-
-deactivate
+sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py list
 ```
 
 ## 🌟 What's New in Version 2.1.0

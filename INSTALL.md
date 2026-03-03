@@ -249,10 +249,7 @@ You should see `{"status":"ok","version":"2.2.0-Release"}` if everything is work
    - Choose **LDAP** or **Local** as the authentication source for each user
    - Or use the CLI:
      ```bash
-     cd /opt/openvox-gui
-     source venv/bin/activate
-     sudo ./scripts/manage_users.py add john --role operator
-     deactivate
+     sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py add john --role operator
      ```
 
 3. **Set up LDAP authentication** (optional):
