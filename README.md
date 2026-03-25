@@ -72,14 +72,32 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 - **[Contributing](CONTRIBUTING.md)** — How to contribute to the project
 - **[Contributors](CONTRIBUTORS.md)** — People who helped build this project
 
+## 🧭 Navigation
+
+OpenVox GUI features a collapsible sidebar with grouped navigation:
+
+| Section | Pages |
+|---------|-------|
+| **Monitoring** | Dashboard, Nodes, Reports, Infrastructure → Certificate Authority |
+| **Orchestration** | Bolt Integration (run commands, tasks, plans) |
+| **Code** | Classification (ENC), Deployment (r10k) |
+| **Data** | Hiera Data Files, Hiera Lookup |
+| **Information** | PQL Console, Fact Explorer, Resource Explorer, Package Inventory |
+| **Settings** | OpenVox Configuration, Application Configuration |
+
+All nav groups are collapsed by default. Click to expand. Parent items toggle expand/collapse without navigating.
+
+---
+
 ## ✨ Main Features
 
 ### 📊 Dashboard
 See everything at a glance:
 - How many servers are running fine vs having problems
-- Recent activity and changes
+- Recent activity and changes (including noop runs)
 - System health indicators
 - Who's currently using the system
+- Report trends graph shows unchanged, changed, failed, and noop runs
 
 ### 📋 Detailed Reports
 Click on any server to see:
@@ -87,6 +105,7 @@ Click on any server to see:
 - Any errors or warnings
 - Performance metrics (how long things took)
 - Complete logs of what happened
+- **Reports grouped by ENC node groups** with status badges (Unchanged/Changed/Failed)
 
 ### 🚀 Code Deployment
 Deploy new configurations to your servers:
@@ -102,13 +121,14 @@ Run commands on multiple servers at once:
 - **Target ENC groups directly** — select "📁 webservers" instead of individual nodes
 - See the output from each server with ANSI color support
 
-### 🏷️ Node Classifier
+### 🏷️ Classification (ENC)
 Control what software and settings each server gets:
 - Set defaults for all servers
 - Create groups of servers with similar needs
 - Override settings for individual servers
 - Preview changes before applying them
 - **Groups auto-populate Bolt inventory** — no manual inventory.yaml editing
+- Nodes and Reports pages group by ENC node groups
 
 ### 🔌 Dynamic Bolt Inventory *(3.x)*
 Eliminate manual Bolt inventory maintenance:
@@ -119,8 +139,9 @@ Eliminate manual Bolt inventory maintenance:
 - One-click inventory sync to `/etc/puppetlabs/bolt/inventory.yaml`
 
 ### 📁 Data Management
-Edit your configuration files directly:
-- Browse and edit Hiera data files (server settings)
+Edit your configuration files directly (Data menu):
+- **Hiera Data Files**: Browse and edit Hiera data files (server settings)
+- **Hiera Lookup**: Query Hiera values for any node
 - Edit configuration files with syntax checking
 - Automatic backups before changes
 - Create and delete files as needed
@@ -132,11 +153,12 @@ Manage server certificates (like ID cards for servers):
 - Revoke certificates for decommissioned servers
 - See certificate details and expiration dates
 
-### 🔍 Explorers
-Search and explore your infrastructure:
+### 🔍 Information
+Search and explore your infrastructure (Information menu):
+- **PQL Console**: Run advanced queries (for power users)
 - **Fact Explorer**: Find servers by their properties (OS, memory, etc.)
 - **Resource Explorer**: Search for installed software, services, files
-- **PQL Console**: Run advanced queries (for power users)
+- **Package Inventory**: View all packages installed on managed nodes
 
 ### 🎨 Themes
 Choose how the interface looks:

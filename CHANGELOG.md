@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [Unreleased]
+
+### Changed
+- **Orchestration is top-level**: Orchestration moved from under Infrastructure to its own top-level nav section for quick access to Bolt commands, tasks, and plans.
+
+### Fixed
+- **Noop runs in dashboard graph**: Report Trends graph now shows noop runs (blue area). Detection handles both `noop: true` and `status: "noop"` from PuppetDB.
+
+### Documentation
+- **Screenshots gallery**: Added SCREENSHOTS.md with all 9 screenshots (Dashboard, Node Details, Orchestration, Node Reports, Classifier, Certificates, Deployment, Hiera, Data Tools). README.md updated with 3 teaser images + link.
+
+---
+
 ## [3.2.0] - 2026-03-24
 
 ### Added
