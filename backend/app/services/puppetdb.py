@@ -221,10 +221,7 @@ class PuppetDBService:
         return counts
 
     async def get_report_trends(self, hours: int = 24) -> List[Dict]:
-        """Get report status trends over time."""
-        import json
-        query = f'[">" , "receive_time", "{{0}} hours ago"]'.format(hours)
-        # Use the actual PQL for time-based queries
+        """Get report status trends over time (includes noop runs)."""
         reports = await self._query(
             "reports",
             params={
@@ -234,16 +231,20 @@ class PuppetDBService:
         )
         # Bucket by hour
         from collections import defaultdict
-        buckets = defaultdict(lambda: {"changed": 0, "unchanged": 0, "failed": 0})
+        buckets = defaultdict(lambda: {"changed": 0, "unchanged": 0, "failed": 0, "noop": 0})
         for report in reports:
             ts = report.get("receive_time", "")[:13]  # YYYY-MM-DDTHH
             status = report.get("status", "unchanged")
-            if status in buckets[ts]:
+            is_noop = report.get("noop", False)
+            if is_noop:
+                buckets[ts]["noop"] += 1
+            elif status in buckets[ts]:
                 buckets[ts][status] += 1
 
         return [
             {"timestamp": k, "changed": v["changed"],
-             "unchanged": v["unchanged"], "failed": v["failed"]}
+             "unchanged": v["unchanged"], "failed": v["failed"],
+             "noop": v["noop"]}
             for k, v in sorted(buckets.items())
         ][-48:]  # Last 48 data points
 

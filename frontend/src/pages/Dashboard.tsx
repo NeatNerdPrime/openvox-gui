@@ -253,6 +253,7 @@ export function DashboardPage() {
                 <Area type="monotone" dataKey="unchanged" stroke="#40c057" fill="#40c057" fillOpacity={0.25} strokeWidth={2} />
                 <Area type="monotone" dataKey="changed" stroke="#fab005" fill="#fab005" fillOpacity={0.25} strokeWidth={2} />
                 <Area type="monotone" dataKey="failed" stroke="#fa5252" fill="#fa5252" fillOpacity={0.3} strokeWidth={2} />
+                <Area type="monotone" dataKey="noop" stroke="#228be6" fill="#228be6" fillOpacity={0.2} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </Card>

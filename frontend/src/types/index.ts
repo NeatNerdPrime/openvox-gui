@@ -19,6 +19,7 @@ export interface ReportTrend {
   changed: number;
   unchanged: number;
   failed: number;
+  noop: number;
 }
 
 export interface DashboardStats {
