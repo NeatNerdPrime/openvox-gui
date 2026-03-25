@@ -235,7 +235,7 @@ class PuppetDBService:
         for report in reports:
             ts = report.get("receive_time", "")[:13]  # YYYY-MM-DDTHH
             status = report.get("status", "unchanged")
-            is_noop = report.get("noop", False)
+            is_noop = report.get("noop", False) or status == "noop"
             if is_noop:
                 buckets[ts]["noop"] += 1
             elif status in buckets[ts]:
