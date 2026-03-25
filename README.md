@@ -39,6 +39,8 @@ OpenVox GUI is like a dashboard for your car, but for your servers. If you use O
 |-----------|--------------|---------------|
 | ![Dashboard](docs/images/dashboard.png) | ![Node Details](docs/images/node-details.png) | ![Orchestration](docs/images/orchestration.png) |
 
+📷 [View all screenshots](SCREENSHOTS.md) (9 total)
+
 ## 🚀 Quick Start
 
 > **Note:** OpenVox GUI must be installed directly on your OpenVox Server. It requires local access to configuration files, SSL certificates, and services on the server to function.
