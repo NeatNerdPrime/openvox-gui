@@ -62,9 +62,12 @@ const monitoringNav: NavItem[] = [
     path: '/certificates',
     children: [
       { label: 'Certificate Authority', icon: IconCertificate, path: '/certificates' },
-      { label: 'Orchestration', icon: IconBolt, path: '/orchestration' },
     ],
   },
+];
+
+const orchestrationNav: NavItem[] = [
+  { label: 'Orchestration', icon: IconBolt, path: '/orchestration' },
 ];
 
 const codeNav: NavItem[] = [
@@ -276,6 +279,7 @@ export function AppShellLayout() {
       <MantineAppShell.Navbar p="xs" style={{ backgroundColor: navBg, borderRight: navBorder }}>
         <MantineAppShell.Section grow component={ScrollArea}>
           {renderNavGroup('Monitoring', IconDashboard, monitoringNav)}
+          {renderNavGroup('Orchestration', IconBolt, orchestrationNav)}
           {renderNavGroup('Code', IconRocket, codeNav)}
           {renderNavGroup('Data', IconPackage, dataNav)}
           {renderNavGroup('Information', IconSearch, explorerNav)}
