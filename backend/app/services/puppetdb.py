@@ -159,6 +159,13 @@ class PuppetDBService:
             from .certificates_service import list_certificates as list_ca_certificates
 
             cert_data = await list_ca_certificates()
+            if cert_data.get("error"):
+                logger.warning(
+                    "get_live_nodes: CA list unavailable, using active PuppetDB only: %s",
+                    cert_data.get("error"),
+                )
+                return active
+
             signed = {
                 str(c.get("name", "")).strip().lower()
                 for c in (cert_data.get("signed") or [])
