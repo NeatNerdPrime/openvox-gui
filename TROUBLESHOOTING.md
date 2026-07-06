@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.10.7-dev.1**
+**OpenVox GUI Version 3.10.7-dev.2**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.10.7-dev.1"}
+   # Should return: {"status":"ok","version":"3.10.7-dev.2"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -987,6 +987,29 @@ These commands run privileged operations (reading configs, restarting services).
 - **3.10.4** defines the live fleet as **active PuppetDB ∩ signed CA** (`get_live_nodes`). CA-cleaned hosts must not appear on Nodes, Inventory, ENC Unclassified, Dashboard, or Node Health. Open **Classification (ENC)** once after upgrade so SQLite reconciliation prunes stale ENC rows.
 - If a host is still **active in PuppetDB** (never deactivated) **and** still has a **signed cert**, it will correctly remain on the live fleet — finish cleanup with deactivate/expire/`puppet node clean` as needed, not only `ca clean`.
 - Certificates page is CA-authoritative and may still list pending/revoked state independently of the live fleet lists.
+
+### Problem: `ovox db-reseed` says "API endpoint not found" (404) or the subcommand is missing
+- The most common cause: you did `git push` (or pulled the commit), but have **not run the deploy** yet on the server.
+  The API route (`POST /api/enc/reseed`) and the updated `ovox` CLI live in `/opt/openvox-gui` after deploy. The running service and the `ovox` in `$PATH` are still the old copy.
+- Fix (run on the server in your git checkout):
+
+  ```bash
+  cd ~/openvox-gui
+  git pull origin main
+  ovox maintenance enable --message "Deploying db-reseed" --eta "5 minutes" --yes
+  sudo ./scripts/update_local.sh
+  ovox maintenance disable
+  ```
+
+- After deploy, confirm:
+
+  ```bash
+  ovox --version   # should show 3.10.7-dev.x or newer
+  ovox db-reseed
+  ```
+
+- `db-reseed` requires admin or operator role. Run `ovox login` (or supply `--token` / `OPENVOX_TOKEN`) with a privileged account first.
+- The command is safe and additive only (it never deletes existing classifications).
 
 ### Problem: Inventory node count differs from Overview | Nodes
 - Fixed in **3.10.4** (3.10.3b11–b14): both use the same live-fleet membership. Older builds counted all PuppetDB inventory factsets (including deactivated/expired) vs CA-signed-only Nodes.

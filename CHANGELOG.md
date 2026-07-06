@@ -11,8 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.2] - 2026-07-06 (dev — db-reseed docs and deployment troubleshooting)
+
+### Added
+- Expanded documentation and troubleshooting for the new `ovox db-*` commands (especially `db-reseed`).
+- Clear guidance for the common "API endpoint not found: /api/enc/reseed" (or missing subcommand) case: changes were pushed but `update_local.sh` / deploy has not been run on the server yet. Added steps in TROUBLESHOOTING.md and usage examples in ovox/README.md.
+
+## [3.10.7-dev.1] - 2026-07-06 (dev — ovox db-reseed + /api/enc/reseed)
+
 ### Added
 - `ovox db-reseed` — new recovery command (and `POST /api/enc/reseed`). Safely re-populates ENC nodes from the current live fleet (additive only). Complements `db-backup` / `db-restore`. Backend service method + API now wired and exposed via the CLI.
+- Startup log now suggests `ovox db-reseed` when ENC is empty but live fleet exists.
 
 ## [3.10.6] - 2026-07-02 (stable — GUI performance: serving, caches, Dashboard & graph SWR)
 

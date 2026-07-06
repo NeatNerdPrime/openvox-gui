@@ -122,6 +122,18 @@ Environment variables (override config):
 
 See `ovox <group> --help` for subcommand details.
 
+### DB recovery commands (db-backup / db-restore / db-reseed)
+
+These operate on the server (they touch `/opt/openvox-gui/data` or call the live-fleet reseed API).
+
+```bash
+ovox db-backup --out /backup
+ovox db-restore /backup/openvox-gui-data-20260706-.../data
+ovox db-reseed   # after login or with --token; requires admin/operator
+```
+
+`db-reseed` is the safe additive recovery path when classifications were lost but the fleet is still healthy.
+
 ### Infrastructure Tuning (`infra`)
 
 ```bash
