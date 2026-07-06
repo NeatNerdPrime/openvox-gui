@@ -761,6 +761,7 @@ function NodesTab() {
   const [classified, setClassified] = useState<any[]>([]);
   const [envs, setEnvs] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
+  const [commonData, setCommonData] = useState<any>(null);
   const [puppetNodes, setPuppetNodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -776,8 +777,13 @@ function NodesTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [n, e, g] = await Promise.all([enc.listNodes(), enc.listEnvironments(), enc.listGroups()]);
-      setClassified(n); setEnvs(e); setGroups(g);
+      const [n, e, g, c] = await Promise.all([
+        enc.listNodes(),
+        enc.listEnvironments(),
+        enc.listGroups(),
+        enc.getCommon().catch(() => null)
+      ]);
+      setClassified(n); setEnvs(e); setGroups(g); setCommonData(c);
       try { const pn = await nodesApi.list(); setPuppetNodes(pn.map((x: any) => x.certname).sort()); } catch { setPuppetNodes([]); }
     } catch {}
     setLoading(false);
@@ -825,6 +831,55 @@ function NodesTab() {
       notifications.show({ title: 'Error', message: e.message, color: 'red' });
     }
     setDeleteLoading(false);
+  };
+
+  // Compute the full set of classes that will apply to this node
+  // (Common + Environment + Groups + Node overrides). Used to show
+  // what is already being applied from other layers.
+  const getEffectiveClasses = (n: any): string[] => {
+    const eff = new Set<string>();
+    // Common
+    if (commonData?.classes) {
+      Object.keys(commonData.classes).forEach((k: string) => eff.add(k));
+    }
+    // Environment
+    const env = envs.find((ee: any) => ee.name === n.environment);
+    if (env?.classes) {
+      Object.keys(env.classes).forEach((k: string) => eff.add(k));
+    }
+    // Groups the node is in
+    (n.groups || []).forEach((gname: string) => {
+      const grp = groups.find((gg: any) => gg.name === gname);
+      if (grp?.classes) {
+        Object.keys(grp.classes).forEach((k: string) => eff.add(k));
+      }
+    });
+    // Direct node overrides
+    if (n.classes) {
+      Object.keys(n.classes).forEach((k: string) => eff.add(k));
+    }
+    return Array.from(eff).sort();
+  };
+
+  // For the edit/create modal: classes coming from the *current form selections*
+  // (environment + chosen groups + common), excluding the "Node-specific" ones
+  // the user is about to add. Lets you see conflicts before saving.
+  const getInheritedClassesFromForm = (): string[] => {
+    const eff = new Set<string>();
+    if (commonData?.classes) {
+      Object.keys(commonData.classes).forEach((k: string) => eff.add(k));
+    }
+    const env = envs.find((ee: any) => ee.name === formEnv);
+    if (env?.classes) {
+      Object.keys(env.classes).forEach((k: string) => eff.add(k));
+    }
+    formGroupIds.forEach((gid: string) => {
+      const g = groups.find((gg: any) => String(gg.id) === gid);
+      if (g?.classes) {
+        Object.keys(g.classes).forEach((k: string) => eff.add(k));
+      }
+    });
+    return Array.from(eff).sort();
   };
 
   // Live fleet from /api/nodes (active PuppetDB ∩ signed CA). Filter ENC
@@ -884,7 +939,7 @@ function NodesTab() {
           <Table striped highlightOnHover withTableBorder>
             <Table.Thead><Table.Tr>
               <Table.Th>Certname</Table.Th><Table.Th>Environment</Table.Th><Table.Th>Groups</Table.Th>
-              <Table.Th>Node Classes</Table.Th><Table.Th>Node Params</Table.Th>
+              <Table.Th>Effective Classes (all layers)</Table.Th><Table.Th>Node Overrides (params)</Table.Th>
               <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
             </Table.Tr></Table.Thead>
             <Table.Tbody>
@@ -896,7 +951,15 @@ function NodesTab() {
                     <Group gap={4}>{(n.groups || []).map((g: string) => <Badge key={g} variant="light" color="orange" size="sm">{g}</Badge>)}
                     {(!n.groups || n.groups.length === 0) && <Text size="sm" c="dimmed">—</Text>}</Group>
                   </Table.Td>
-                  <Table.Td><ClassBadges classes={n.classes} color="red" /></Table.Td>
+                  <Table.Td>
+                    <ClassBadges classes={Object.fromEntries(getEffectiveClasses(n).map((c: string) => [c, {}]))} color="grape" />
+                    <Text size="xs" c="dimmed" mt={2}>effective (all layers)</Text>
+                    {n.classes && Object.keys(n.classes).length > 0 && (
+                      <Text size="xs" mt={1}>
+                        direct on node: <ClassBadges classes={n.classes} color="red" />
+                      </Text>
+                    )}
+                  </Table.Td>
                   <Table.Td><ParamBadges params={n.parameters} color="pink" /></Table.Td>
                   <Table.Td>
                     <Group gap="xs" justify="flex-end">
@@ -941,6 +1004,25 @@ function NodesTab() {
             label="Node-specific Classes" description="Override or add classes (highest priority)" />
           <ParamEditor value={formParams} onChange={setFormParams}
             label="Node-specific Parameters" description="Override or add parameters (highest priority)" />
+
+          {/* Live preview of inherited classes while choosing groups/environment.
+              Helps detect if profiles::base (or any class) is already coming from
+              a higher layer before you save. */}
+          {(formGroupIds.length > 0 || formEnv) && (
+            <Alert color="blue" variant="light" p="xs">
+              <Text size="xs" fw={500} mb={2}>Inherited from Environment + selected Group(s) + Common:</Text>
+              <Group gap={4} wrap="wrap">
+                {getInheritedClassesFromForm().map((c: string) => (
+                  <Badge key={c} size="xs" variant="light" color="blue">{c}</Badge>
+                ))}
+                {getInheritedClassesFromForm().length === 0 && <Text size="xs" c="dimmed">none</Text>}
+              </Group>
+              <Text size="xs" c="dimmed" mt={4}>
+                Any node-specific classes you add above will take highest priority and can override.
+              </Text>
+            </Alert>
+          )}
+
           <Button onClick={handleSave}>{editing ? 'Update' : 'Classify'}</Button>
         </Stack>
       </Modal>

@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Edits to environment/grouping in the ENC page now carry over consistently to the Overview | Nodes list and grouping on next load (same backend enrichment).
 - Both pages now use the reconciled live fleet + attached ENC classification.
 
+### Added
+- In Classification (ENC) → Nodes tab: "Effective Classes (all layers)" column now shows the merged classes a node receives from Common + Environment + Groups + Node overrides.
+- In the node edit/classify modal: live preview of "Classes inherited from Environment + selected Group(s) + Common" so you can see conflicts (e.g. profiles::base) before saving.
+
 ## [3.10.7-dev.4] - 2026-07-06 (dev — fix backend startup crash)
 
 ### Fixed
