@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/enc", tags=["enc"])
 # commonly assign nodes to groups / promote nodes to environments;
 # admins do everything operators do plus group/environment lifecycle.
 _ENC_WRITE = require_role("admin", "operator")
+_ENC_READ = require_role("admin", "operator", "viewer")
 
 # Bolt inventory: UI operators + scoped service tokens (bolt / bolt-inventory-readonly).
 _BOLT_INVENTORY = require_role(
@@ -422,42 +423,6 @@ async def list_stale_enc(db: AsyncSession = Depends(get_db)):
     """
     stale = await enc_service.get_stale_nodes(db)
     return {"stale_certnames": stale, "count": len(stale)}
-
-
-@router.post("/purge-stale", dependencies=[Depends(_ENC_WRITE)])
-async def purge_stale_enc(
-    force: bool = False,
-    db: AsyncSession = Depends(get_db),
-):
-    """Explicit purge of the stale/purge queue.
-
-    Guard rail: force=true required if >5 nodes to purge at once.
-    Always creates a pre-purge DB snapshot for failback.
-    """
-    result = await enc_service.purge_stale_nodes(db, force=force)
-    if result.get("requires_force"):
-        return JSONResponse(status_code=400, content=result)
-    return {"status": "ok", "purge": result}
-
-
-@router.post("/purge-stale", dependencies=[Depends(_ENC_WRITE)])
-async def purge_stale_enc(
-    force: bool = False,
-    db: AsyncSession = Depends(get_db),
-):
-    """Explicitly purge nodes from the stale/purge queue.
-
-    Guard rail: force=true is required if more than 5 nodes would be purged
-    in one operation. Always creates a pre-purge snapshot for failback.
-    Review with /reconcile or /stale first.
-    """
-    result = await enc_service.purge_stale_nodes(db, force=force)
-    if result.get("requires_force"):
-        return JSONResponse(
-            status_code=400,
-            content=result,
-        )
-    return {"status": "ok", "purge": result}
 
 
 @router.post("/purge-stale", dependencies=[Depends(_ENC_WRITE)])

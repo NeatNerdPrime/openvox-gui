@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.3] - 2026-07-06 (dev — fix ENC router for db-reseed)
+
+### Fixed
+- Added missing `_ENC_READ` role definition (was referenced for `/stale` but undefined, would cause NameError on import of the ENC router).
+- Removed duplicate `/purge-stale` route definitions in enc.py (three copies were present from prior edits).
+
 ## [3.10.7-dev.2] - 2026-07-06 (dev — db-reseed docs and deployment troubleshooting)
 
 ### Added
