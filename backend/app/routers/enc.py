@@ -5,7 +5,7 @@ Hierarchy: Common → Environment → Group → Node
 """
 import logging
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 import yaml
@@ -478,6 +478,18 @@ async def purge_stale_enc(
             content=result,
         )
     return {"status": "ok", "purge": result}
+
+
+@router.post("/reseed", dependencies=[Depends(_ENC_WRITE)])
+async def reseed_enc(db: AsyncSession = Depends(get_db)):
+    """Re-seed ENC nodes from the live fleet (safe, additive only).
+
+    Adds missing live-fleet members (active PuppetDB ∩ signed CA) to the
+    local ENC classification store. Existing rows are left untouched.
+    Useful after classification loss (bad prune, wiped data dir, etc.).
+    """
+    stats = await enc_service.reseed_from_live_fleet(db)
+    return {"status": "ok", "reseed": stats}
 
 
 # ─── Bolt Inventory Generation (3.x feature) ─────────────

@@ -116,6 +116,7 @@ Environment variables (override config):
 | metrics   | compliance, performance, health               | Planned     |
 | infra     | health, settings show/set, recommend, tune    | Core        |
 | token     | generate (long-lived service tokens for Bolt/automation) | Core |
+| db-*      | db-backup, db-restore, db-reseed (ENC recovery)       | Core |
 | users     | list, create, role                            | Planned     |
 | tui       | Interactive full-screen modes                 | Future      |
 

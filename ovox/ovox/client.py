@@ -347,6 +347,13 @@ class OvoxClient:
             payload["timeout"] = timeout
         return self.post("/api/pql", json=payload)
 
+    def db_reseed(self) -> Dict[str, Any]:
+        """Trigger safe re-seed of ENC nodes from the current live fleet.
+
+        Calls POST /api/enc/reseed. This is additive only (no deletes).
+        """
+        return self.post("/api/enc/reseed")
+
     # Add more thin wrappers here as we implement command groups:
     #   get_reports, get_facts, deploy_trigger, bolt_task, etc.
 

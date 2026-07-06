@@ -1,6 +1,6 @@
 # Update Guide
 
-**OpenVox GUI Version 3.10.6**
+**OpenVox GUI Version 3.10.7-dev.1**
 
 This guide explains how to update your existing OpenVox GUI installation to the latest version. Updates bring new features, bug fixes, and security improvements.
 
@@ -191,7 +191,7 @@ The script automatically:
 curl -k https://localhost:4567/health
 
 # Should show something like:
-# {"status":"ok","version":"3.10.6"}
+# {"status":"ok","version":"3.10.7-dev.1"}
 ```
 
 Open your browser and refresh the page. You might need to clear your browser cache:
@@ -222,6 +222,8 @@ BACKUP_DIR="/backup/openvox-gui-$(date +%Y%m%d-%H%M%S)"
 # The deploy and update scripts now *automatically* do this for the data/ directory
 # (ENC classifications, local users, history, etc.) before touching code or restarting.
 # You can also run `ovox db-backup` manually at any time.
+# If classifications were lost but the live fleet is intact, use `ovox db-reseed`
+# to safely re-populate ENC nodes (additive; does not overwrite existing data).
 sudo mkdir -p $BACKUP_DIR
 
 # Backup everything important

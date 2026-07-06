@@ -114,7 +114,7 @@ async def lifespan(app: FastAPI):
                     "CRITICAL: enc_nodes=0 but live fleet has %d nodes. "
                     "Classification data appears lost (likely aggressive prune during a bad live-fleet snapshot). "
                     "Check /backup/openvox-gui-data-* for automatic failbacks. "
-                    "Re-classify from the UI or restore a backup.",
+                    "Run `ovox db-reseed` (or restore a backup) to recover ENC nodes from the live fleet.",
                     live_count,
                 )
 

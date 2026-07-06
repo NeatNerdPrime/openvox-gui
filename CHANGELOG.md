@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+- `ovox db-reseed` — new recovery command (and `POST /api/enc/reseed`). Safely re-populates ENC nodes from the current live fleet (additive only). Complements `db-backup` / `db-restore`. Backend service method + API now wired and exposed via the CLI.
+
 ## [3.10.6] - 2026-07-02 (stable — GUI performance: serving, caches, Dashboard & graph SWR)
 
 Stable promotion of the **3.10.5-dev.1–dev.5** performance train on `main`. Full per-commit detail remains in the pre-release entries below; this section is the operator-facing summary for GitHub Release **v3.10.6**.

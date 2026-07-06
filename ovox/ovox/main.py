@@ -270,6 +270,40 @@ def db_restore(
         raise typer.Exit(1)
 
 
+@cli.command("db-reseed")
+def db_reseed(ctx: typer.Context):
+    """Re-seed ENC nodes from the current live fleet (safe, additive only).
+
+    Adds any members of the live fleet (active PuppetDB record + signed CA cert)
+    that are missing from the GUI's local classification store. Does **not**
+    delete or overwrite existing ENC data.
+
+    This is the recovery command after aggressive prunes, lost SQLite data,
+    or other classification wipeouts where the fleet itself is still healthy.
+
+    Equivalent backend operation: POST /api/enc/reseed
+    """
+    client = _get_client(ctx)
+    try:
+        result = client.db_reseed()
+        reseed = result.get("reseed", {}) if isinstance(result, dict) else {}
+        added = reseed.get("added", []) or []
+        total = reseed.get("total_live", 0) or 0
+        console.print(
+            f"[green]✓[/green] Re-seed complete. Added {len(added)} node(s) "
+            f"from live fleet ({total} total)."
+        )
+        if added:
+            console.print("Added certnames:")
+            for cn in added[:30]:
+                console.print(f"  • {cn}")
+            if len(added) > 30:
+                console.print(f"  ... and {len(added) - 30} more")
+    except OvoxAPIError as exc:
+        console.print(f"[red]Re-seed failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # PQL command (first-class query support from the terminal)
 # ──────────────────────────────────────────────────────────────────────────────
