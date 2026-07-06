@@ -38,6 +38,7 @@ def validate_pql_value(value: str, field_name: str) -> str:
 async def list_nodes(
     environment: Optional[str] = Query(None, description="Filter by environment"),
     status: Optional[str] = Query(None, description="Filter by status"),
+    db: AsyncSession = Depends(get_db),
 ):
     """List all nodes with optional environment and status filters.
 
@@ -90,6 +91,25 @@ async def list_nodes(
                 unique.append(node)
 
         unique.sort(key=lambda n: (n.get("certname") or "").lower())
+
+        # Enrich every node with its ENC classification (environment, groups, etc.)
+        # so that Overview | Nodes and Classification (ENC) consult the *exact same*
+        # source of truth for the current set of nodes and their classification.
+        # No duplicate references to ENC data in the frontend for the node list.
+        try:
+            classified = await enc_service.get_reconciled_classified_nodes(db)
+            enc_map: dict = {n.certname.lower(): n for n in classified}
+            for node in unique:
+                key = (node.get("certname") or "").lower()
+                enc_n = enc_map.get(key)
+                if enc_n:
+                    node["enc_environment"] = enc_n.environment
+                    node["enc_groups"] = [g.name for g in getattr(enc_n, "groups", [])]
+                    node["enc_classes"] = getattr(enc_n, "classes", {}) or {}
+                    node["enc_parameters"] = getattr(enc_n, "parameters", {}) or {}
+        except Exception as e:
+            logger.warning(f"Failed to enrich node list with ENC classification: {e}")
+
         return [NodeSummary(**node) for node in unique]
     except HTTPException:
         raise

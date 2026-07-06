@@ -79,6 +79,11 @@ export interface NodeSummary {
   latest_report_corrective_change: boolean | null;
   deactivated: string | null;
   expired: string | null;
+  // Populated from ENC (the single source of truth for classification)
+  enc_environment?: string | null;
+  enc_groups?: string[];
+  enc_classes?: Record<string, any>;
+  enc_parameters?: Record<string, any>;
 }
 
 export interface NodeDetail {

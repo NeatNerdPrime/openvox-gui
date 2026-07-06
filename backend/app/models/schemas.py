@@ -45,6 +45,11 @@ class NodeSummary(BaseModel):
     latest_report_corrective_change: Optional[bool] = None
     deactivated: Optional[str] = None
     expired: Optional[str] = None
+    # Attached from ENC (single source for classification info)
+    enc_environment: Optional[str] = None
+    enc_groups: List[str] = Field(default_factory=list)
+    enc_classes: Dict[str, Any] = Field(default_factory=dict)
+    enc_parameters: Dict[str, Any] = Field(default_factory=dict)
 
 
 class NodeFact(BaseModel):

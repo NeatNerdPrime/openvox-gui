@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+- Overview | Nodes and Classification (ENC) now consult the **exact same source of truth** for the current live fleet node list and classification data.
+  - `/api/nodes` now enriches each NodeSummary with `enc_environment`, `enc_groups`, `enc_classes`, `enc_parameters` from the ENC service at request time.
+  - Overview | Nodes page no longer makes a separate direct call to `/enc/hierarchy` for node list/grouping (removed the duplicate ENC reference in the app for fleet data).
+  - Edits to environment/grouping in the ENC page now carry over consistently to the Overview | Nodes list and grouping on next load (same backend enrichment).
+- Both pages now use the reconciled live fleet + attached ENC classification.
+
 ## [3.10.7-dev.4] - 2026-07-06 (dev — fix backend startup crash)
 
 ### Fixed

@@ -12,7 +12,7 @@ import {
 import { IconSearch, IconEye, IconChevronDown, IconChevronRight, IconPlayerPlay, IconLink } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useApi } from '../hooks/useApi';
-import { nodes, enc, bolt } from '../services/api';
+import { nodes, bolt } from '../services/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingState, ErrorState } from '../components/StateComponents';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -195,7 +195,8 @@ export function NodesPage() {
    */
   const matchesNodeFilters = (n: NodeSummary) => {
     const cert = (n.certname || '').toLowerCase();
-    const env = (n.report_environment || '').toLowerCase();
+    // Prefer ENC environment (classification source of truth) over reported one
+    const env = ((n as any).enc_environment || n.report_environment || '').toLowerCase();
     const fields = [cert, env].filter(Boolean);
 
     if (statusFilter) {
@@ -242,13 +243,12 @@ export function NodesPage() {
   const [runTarget, setRunTarget] = useState<string | null>(null);
   const [runningCert, setRunningCert] = useState<string | null>(null);
   const { data: nodeList, loading: nodesLoading, error: nodesError } = useApi<NodeSummary[]>(nodes.list);
-  const { data: hierarchy, loading: hierarchyLoading, error: hierarchyError } = useApi<any>(() => enc.getHierarchy());
   const navigate = useNavigate();
   const { begin, end } = useActivity();
   const skipConfirm = useSkipAdhocConfirm();
 
-  const loading = nodesLoading || hierarchyLoading;
-  const error = nodesError || hierarchyError;
+  const loading = nodesLoading;
+  const error = nodesError;
 
   const runOpenVox = async (certname: string) => {
     setRunTarget(null);
@@ -277,96 +277,55 @@ export function NodesPage() {
   };
 
   // Build grouped nodes by node groups
-  // Use hierarchy.nodes (has groups) merged with nodeList (has full details)
+  // Classification data (enc_groups, enc_environment) is attached server-side
+  // from the single ENC source of truth. Overview | Nodes no longer has a
+  // separate direct reference to /enc/hierarchy for the node list.
   const groupedNodes: GroupedNodes = useMemo(() => {
     if (!nodeList) return {};
 
     const groups: GroupedNodes = {};
 
-    // Build certname → node lookup from nodeList for full details
-    const nodeByCertname: Record<string, NodeSummary> = {};
-    nodeList.forEach((node: NodeSummary) => {
-      nodeByCertname[node.certname] = node;
-    });
-
-    // Build group → nodes map from hierarchy
+    // Build group → nodes map from the enc_groups attached to nodes
     const groupNodes: Record<string, NodeSummary[]> = {};
-    hierarchy?.groups?.forEach((group: any) => {
-      groupNodes[group.name] = [];
+
+    nodeList.forEach((node: NodeSummary) => {
+      const nodeGroups: string[] = (node as any).enc_groups || [];
+      if (nodeGroups.length > 0) {
+        nodeGroups.forEach((g: string) => {
+          if (!groupNodes[g]) groupNodes[g] = [];
+          // Avoid duplicates
+          if (!groupNodes[g].some((n) => n.certname === node.certname)) {
+            groupNodes[g].push(node);
+          }
+        });
+      } else {
+        // Node without explicit group
+        if (!groupNodes["Ungrouped"]) groupNodes["Ungrouped"] = [];
+        if (!groupNodes["Ungrouped"].some((n) => n.certname === node.certname)) {
+          groupNodes["Ungrouped"].push(node);
+        }
+      }
     });
 
-    // Assign nodes to groups using hierarchy.nodes, but ONLY if
-    // the node actually exists in PuppetDB. ENC entries for nodes
-    // that have been removed from puppetserver are skipped.
-    const hierarchyNodes = hierarchy?.nodes || [];
-    if (hierarchyNodes.length > 0) {
-      hierarchyNodes.forEach((hNode: any) => {
-        const nodeGroups = hNode.groups || [];
-        const fullNode: NodeSummary | undefined = nodeByCertname[hNode.certname];
-        if (!fullNode) return; // Not in PuppetDB — skip ghost
-        
-        if (nodeGroups.length > 0) {
-          nodeGroups.forEach((g: string) => {
-            if (!groupNodes[g]) groupNodes[g] = [];
-            // Avoid duplicates
-            if (!groupNodes[g].find((n: NodeSummary) => n.certname === fullNode.certname)) {
-              groupNodes[g].push(fullNode);
-            }
-          });
-        } else {
-          // Node without explicit group - put in "Ungrouped"
-          if (!groupNodes['Ungrouped']) groupNodes['Ungrouped'] = [];
-          if (!groupNodes['Ungrouped'].find((n: NodeSummary) => n.certname === fullNode.certname)) {
-            groupNodes['Ungrouped'].push(fullNode);
-          }
-        }
-      });
-    } else {
-      // Fallback: all nodes ungrouped
-      nodeList.forEach((node: NodeSummary) => {
-        if (!groupNodes['Ungrouped']) groupNodes['Ungrouped'] = [];
-        if (!groupNodes['Ungrouped'].find((n: NodeSummary) => n.certname === node.certname)) {
-          groupNodes['Ungrouped'].push(node);
-        }
-      });
+    // If no groups at all, "All Nodes"
+    if (Object.keys(groupNodes).length === 0 && nodeList.length > 0) {
+      groupNodes["All Nodes"] = [...nodeList];
     }
 
-    // If no groups exist, create "All Nodes" group (dedup defensively)
-    if (Object.keys(groupNodes).length === 0) {
-      const seen = new Set<string>();
-      groupNodes['All Nodes'] = nodeList.filter((n: NodeSummary) => {
-        const k = n.certname.toLowerCase();
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
-    }
-
-    // Build grouped nodes
     Object.entries(groupNodes).forEach(([groupName, nodeArr]) => {
       groups[groupName] = { nodes: nodeArr };
     });
 
     return groups;
-  }, [nodeList, hierarchy]);
+  }, [nodeList]);
 
-  // Build unclassified nodes list: nodes in the full fleet (CA signed certs, now the
-  // source of truth) that are not present in the ENC hierarchy.
-  // The fleet = all signed certs (92) unioned with their PDB status where available.
-  // Nodes that only exist as signed certs (never reported) appear here until classified
-  // (note: classification currently requires a PDB entry).
+  // Unclassified = nodes in the live fleet that have no ENC classification attached
   const unclassifiedNodes = useMemo(() => {
     if (!nodeList) return [];
-
-    const classifiedCertnames = new Set<string>();
-    (hierarchy?.nodes || []).forEach((hNode: any) => {
-      classifiedCertnames.add(hNode.certname.toLowerCase());
-    });
-
     return nodeList
-      .filter((node) => !classifiedCertnames.has(node.certname.toLowerCase()))
+      .filter((node) => !(node as any).enc_environment)
       .sort((a, b) => a.certname.localeCompare(b.certname));
-  }, [nodeList, hierarchy]);
+  }, [nodeList]);
 
   // Filter groups and nodes by search + status chips (sruiux2 P1-1 FilterBar)
   const filteredGroups = useMemo(() => {
@@ -538,7 +497,7 @@ export function NodesPage() {
                                 >
                                   <Table.Td><Text fw={500}>{node.certname}</Text></Table.Td>
                                   <Table.Td><StatusBadge status={node.latest_report_status} /></Table.Td>
-                                  <Table.Td>{node.report_environment || '\u2014'}</Table.Td>
+                                  <Table.Td>{(node as any).enc_environment || node.report_environment || '\u2014'}</Table.Td>
                                   <Table.Td>{timeAgo(node.report_timestamp)}</Table.Td>
                                   <Table.Td>{actionCell(node)}</Table.Td>
                                 </Table.Tr>
@@ -598,8 +557,8 @@ export function NodesPage() {
             {
               key: 'report_environment',
               header: 'Environment',
-              sortValue: (n) => n.report_environment || '',
-              render: (n) => n.report_environment || '\u2014',
+              sortValue: (n) => (n as any).enc_environment || n.report_environment || '',
+              render: (n) => (n as any).enc_environment || n.report_environment || '\u2014',
             },
             {
               key: 'report_timestamp',
@@ -648,8 +607,8 @@ export function NodesPage() {
             {
               key: 'report_environment',
               header: 'Environment',
-              sortValue: (n) => n.report_environment || '',
-              render: (n) => n.report_environment || '\u2014',
+              sortValue: (n) => (n as any).enc_environment || n.report_environment || '',
+              render: (n) => (n as any).enc_environment || n.report_environment || '\u2014',
             },
             {
               key: 'report_timestamp',
