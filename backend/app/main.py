@@ -92,6 +92,43 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
+    # Fail-safe / failback check for the classification store.
+    # If enc_nodes is zero while we can see a healthy live fleet from PDB,
+    # something bad happened (aggressive prune, lost DB, etc.).
+    # We log loudly and could auto-restore last backup in the future.
+    try:
+        from .services.enc import HierarchicalENCService
+        from .services.puppetdb import puppetdb_service
+        from pathlib import Path
+        import sqlite3
+        from datetime import datetime
+
+        db_path = Path(settings.database_url.replace("sqlite+aiosqlite:///", ""))
+        if db_path.exists():
+            with sqlite3.connect(str(db_path)) as conn:
+                enc_count = conn.execute("SELECT count(*) FROM enc_nodes").fetchone()[0]
+            live_count = len(await puppetdb_service.get_live_nodes())
+
+            if enc_count == 0 and live_count > 0:
+                logger.error(
+                    "CRITICAL: enc_nodes=0 but live fleet has %d nodes. "
+                    "Classification data appears lost (likely aggressive prune during a bad live-fleet snapshot). "
+                    "Check /backup/openvox-gui-data-* for automatic failbacks. "
+                    "Re-classify from the UI or restore a backup.",
+                    live_count,
+                )
+
+            # Proactive failback: if the DB looks suspiciously empty for classification
+            # but we have a recent backup, note it prominently.
+            backup_dir = Path(settings.data_dir) / "backups"
+            if backup_dir.exists():
+                recent_backups = sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True)[:3]
+                if recent_backups:
+                    logger.info("Recent DB backups available: %s", [str(b.name) for b in recent_backups])
+
+    except Exception as he:
+        logger.warning("Startup ENC health check failed (non-fatal): %s", he)
+
     # Strong runtime guard for the dangerous "none" auth backend (GitHub #25)
     # This backend makes every request appear as an unauthenticated "admin" user.
     # It must never be active on anything resembling a production or network-exposed instance.

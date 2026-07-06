@@ -47,8 +47,8 @@ async def list_nodes(
     """
     try:
         # Live fleet = active PuppetDB ∩ signed CA (get_live_nodes). Hides
-        # deactivated/expired PDB ghosts and hosts after `ca clean` even if
-        # PuppetDB has not expired them yet. Aligns Nodes, Inventory, ENC.
+        # deactivated/expired PDB ghosts and hosts after `ca clean`.
+        # (Stale ENC nodes no longer auto-purged; use purge queue + explicit purge.)
         fleet = await puppetdb_service.get_live_nodes()
 
         # Apply environment / status filters after fetch (Python), so we never

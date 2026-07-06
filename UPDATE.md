@@ -219,6 +219,9 @@ sudo systemctl status openvox-gui
 ```bash
 # Create backup directory with timestamp
 BACKUP_DIR="/backup/openvox-gui-$(date +%Y%m%d-%H%M%S)"
+# The deploy and update scripts now *automatically* do this for the data/ directory
+# (ENC classifications, local users, history, etc.) before touching code or restarting.
+# You can also run `ovox db-backup` manually at any time.
 sudo mkdir -p $BACKUP_DIR
 
 # Backup everything important

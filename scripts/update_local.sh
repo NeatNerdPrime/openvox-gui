@@ -367,6 +367,18 @@ trap 'disable_maintenance_page' EXIT ERR INT TERM
 # Raise maintenance page as early as possible (before we touch the running service or files)
 enable_maintenance_page "Running update_local.sh for ${REPO_BRANCH}" "25 minutes"
 
+# Always backup the data directory (local ENC, users, history, reports, etc.)
+# before code changes. This is our automatic failback if the GUI DB goes empty.
+BACKUP_TS=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="/backup/openvox-gui-data-${BACKUP_TS}"
+mkdir -p "$BACKUP_DIR"
+if [ -d "${INSTALL_DIR}/data" ]; then
+    cp -a "${INSTALL_DIR}/data" "$BACKUP_DIR/" 2>/dev/null || true
+    log_ok "Backed up data dir to $BACKUP_DIR (failback for lost classification/users/etc.)"
+    # Rotate — keep last 14
+    ls -1dt /backup/openvox-gui-data-* 2>/dev/null | tail -n +15 | xargs rm -rf -- 2>/dev/null || true
+fi
+
 # Update systemd service file (substitute INSTALL_DIR, preserve existing user/port)
 SERVICE_USER="puppet"
 SERVICE_GROUP="puppet"

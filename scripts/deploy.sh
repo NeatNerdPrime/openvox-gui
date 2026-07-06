@@ -131,8 +131,21 @@ echo "  Source: ${REPO_DIR}"
 echo "  Target: ${INSTALL_DIR}"
 
 # Raise the maintenance page immediately so web users see the branded static page
-# (via Apache) instead of errors while we replace files and restart the service.
+# (via Apache) instead of errors while we replace files and service restart.
 enable_maintenance_page "Running deploy.sh from ${REPO_DIR}" "20 minutes"
+
+# Always take a timestamped backup of the data directory (ENC, users, history, etc.)
+# before any code change or restart. This gives us an automatic failback if the
+# local DB gets cleared (aggressive ENC prune, bad migration, disk glitch, etc.).
+BACKUP_TS=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="/backup/openvox-gui-data-${BACKUP_TS}"
+mkdir -p "$BACKUP_DIR"
+if [ -d "${INSTALL_DIR}/data" ]; then
+    cp -a "${INSTALL_DIR}/data" "$BACKUP_DIR/" 2>/dev/null || true
+    echo "  + Backed up data dir to $BACKUP_DIR (failback for lost classification/users/etc.)"
+    # Keep only the last 14 daily backups to avoid filling the disk
+    ls -1dt /backup/openvox-gui-data-* 2>/dev/null | tail -n +15 | xargs rm -rf -- 2>/dev/null || true
+fi
 
 # 1. Deploy files from repo to install dir
 echo "[1/6] Deploying files..."

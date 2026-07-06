@@ -114,9 +114,7 @@ async def get_hierarchy(db: AsyncSession = Depends(get_db)):
     groups = await enc_service.list_groups(db)
 
     # Use the centralized reconciled view. This applies CA signed + PDB active
-    # filtering and performs auto-pruning of ghosts. All hierarchy consumers
-    # (Reports groups, Nodes classified sections, etc.) now see a consistent,
-    # normalized view of the fleet.
+    # filtering. (Auto-pruning removed; stale nodes form purge queue.)
     nodes = await enc_service.get_reconciled_classified_nodes(db)
 
     # Defensive dedup + sort (the service already does a lot of this, but
@@ -317,7 +315,7 @@ async def list_nodes(db: AsyncSession = Depends(get_db)):
     """List classified nodes, reconciled against the live fleet.
 
     Uses the authoritative CA signed cert list + PDB active status.
-    Stale ghosts are pruned as a side effect (see service for details).
+    (Stale nodes no longer auto-pruned; see /stale for purge queue.)
     """
     nodes = await enc_service.get_reconciled_classified_nodes(db)
 
@@ -404,16 +402,82 @@ async def delete_node(certname: str, db: AsyncSession = Depends(get_db), _user: 
 
 @router.post("/reconcile", dependencies=[Depends(_ENC_WRITE)])
 async def reconcile_enc(db: AsyncSession = Depends(get_db)):
-    """Force a normalization pass between the ENC classification store and the live fleet.
+    """Compute reconciliation between ENC and live fleet (no auto-purge).
 
-    Removes classification rows for certnames that no longer have signed certificates
-    (and were previously known to PDB). Returns before/after counts.
-
-    This is the explicit "regular normalization check" for secondary pages that
-    rely on the utilitarian SQLite ENC data.
+    Reports stale nodes (purge queue) for review.
+    Use POST /purge-stale (force=true if >5) for explicit purge.
+    This replaces the previous automatic deletion behavior.
     """
     stats = await enc_service.reconcile(db)
     return {"status": "ok", "reconciliation": stats}
+
+
+@router.get("/stale", dependencies=[Depends(_ENC_READ)])
+async def list_stale_enc(db: AsyncSession = Depends(get_db)):
+    """List stale ENC nodes (the purge queue) for human review.
+
+    These are nodes still classified locally but no longer on the live fleet
+    (active PDB + signed CA). Review here, then use POST /purge-stale
+    (force=true required if >5 nodes).
+    """
+    stale = await enc_service.get_stale_nodes(db)
+    return {"stale_certnames": stale, "count": len(stale)}
+
+
+@router.post("/purge-stale", dependencies=[Depends(_ENC_WRITE)])
+async def purge_stale_enc(
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Explicit purge of the stale/purge queue.
+
+    Guard rail: force=true required if >5 nodes to purge at once.
+    Always creates a pre-purge DB snapshot for failback.
+    """
+    result = await enc_service.purge_stale_nodes(db, force=force)
+    if result.get("requires_force"):
+        return JSONResponse(status_code=400, content=result)
+    return {"status": "ok", "purge": result}
+
+
+@router.post("/purge-stale", dependencies=[Depends(_ENC_WRITE)])
+async def purge_stale_enc(
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Explicitly purge nodes from the stale/purge queue.
+
+    Guard rail: force=true is required if more than 5 nodes would be purged
+    in one operation. Always creates a pre-purge snapshot for failback.
+    Review with /reconcile or /stale first.
+    """
+    result = await enc_service.purge_stale_nodes(db, force=force)
+    if result.get("requires_force"):
+        return JSONResponse(
+            status_code=400,
+            content=result,
+        )
+    return {"status": "ok", "purge": result}
+
+
+@router.post("/purge-stale", dependencies=[Depends(_ENC_WRITE)])
+async def purge_stale_enc(
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Explicitly purge nodes from the stale/purge queue.
+
+    Guard rail: force=true is required if more than 5 nodes would be purged
+    in one operation. Always creates a pre-purge snapshot for failback.
+    Use /reconcile or /stale first to review the queue.
+    """
+    result = await enc_service.purge_stale_nodes(db, force=force)
+    if result.get("requires_force"):
+        return JSONResponse(
+            status_code=400,
+            content=result,
+        )
+    return {"status": "ok", "purge": result}
 
 
 # ─── Bolt Inventory Generation (3.x feature) ─────────────

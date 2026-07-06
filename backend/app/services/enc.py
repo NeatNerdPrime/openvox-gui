@@ -181,7 +181,8 @@ class HierarchicalENCService:
         """Raw ENC nodes from SQLite (no filtering).
 
         Most consumers should prefer get_reconciled_classified_nodes()
-        which applies fleet reality checks and auto-prunes ghosts.
+        which applies fleet reality checks (no auto-prune).
+        Stale nodes form a purge queue for explicit human purge.
         """
         result = await db.execute(
             select(EncNode)
@@ -191,19 +192,18 @@ class HierarchicalENCService:
         return list(result.scalars().all())
 
     async def get_reconciled_classified_nodes(self, db: AsyncSession) -> List[EncNode]:
-        """Return only ENC nodes on the live fleet; prune the rest from SQLite.
+        """Return only ENC nodes on the live fleet (no automatic purge).
 
-        Live = **active PuppetDB ∩ signed CA** (``get_live_nodes``) — same
-        membership as Overview | Nodes and ENC Unclassified. After
-        ``puppetserver ca clean`` or PDB deactivate/expire, rows must not
-        linger in the classifier UI or SQLite.
+        Live = **active PuppetDB ∩ signed CA** (``get_live_nodes``).
 
-        Any ENC certname not in that live set is deleted from SQLite as a
-        side effect (full prune, not only “former PDB members”).
+        Stale nodes (present in ENC but not on live fleet) are NOT deleted here.
+        They form a "purge queue" for human review (see get_stale_nodes and reconcile).
+        Explicit purge via purge_stale_nodes requires confirmation, with force for >5.
         """
         from ..services.puppetdb import puppetdb_service
 
         raw_nodes = await self.list_nodes(db)
+        before_count = len(raw_nodes)
 
         try:
             live = await puppetdb_service.get_live_nodes()
@@ -213,42 +213,71 @@ class HierarchicalENCService:
                 if n.get("certname")
             }
 
-            kept: list[EncNode] = []
-            to_prune: list[str] = []
+            # SAFETY: if we have nodes in ENC but the live fleet came back empty (or near-empty),
+            # do NOT prune. This protects against transient CA/PDB issues, cert cleanups, or
+            # temporary disconnects that would otherwise wipe the entire classification store.
+            if before_count > 0 and len(live_set) == 0:
+                logger.error(
+                    "CRITICAL: Live fleet snapshot is EMPTY while ENC has %d nodes. "
+                    "Refusing to prune to protect data. Run 'ovox db backup' if needed, "
+                    "then investigate CA list / live fleet, then manually reconcile.",
+                    before_count,
+                )
+                return raw_nodes
 
+            # If live fleet is much smaller than current ENC, be conservative.
+            # Only proceed with prune if we have reasonable confidence in the snapshot.
+            if before_count > 5 and len(live_set) < (before_count * 0.3):
+                logger.warning(
+                    "Live fleet (%d) is much smaller than current ENC (%d). "
+                    "Proceeding with prune but taking a safety backup first.",
+                    len(live_set), before_count
+                )
+
+            kept: list[EncNode] = []
             for node in raw_nodes:
                 cn = node.certname.strip().lower()
                 if cn and cn in live_set:
                     kept.append(node)
-                else:
-                    to_prune.append(node.certname)
-
-            if to_prune:
-                pruned_count = 0
-                for cn in to_prune:
-                    if await self.delete_node(db, cn):
-                        pruned_count += 1
-                if pruned_count:
-                    await db.commit()
-                    import logging
-                    logging.getLogger(__name__).info(
-                        "ENC reconciliation pruned %s stale node(s): %s",
-                        pruned_count,
-                        to_prune[:10],
-                    )
 
             return kept
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Reconciliation filter failed, returning raw nodes: %s", e
             )
             return raw_nodes
 
-    async def reconcile(self, db: AsyncSession) -> dict:
-        """Explicitly run normalization and return a summary.
+    async def get_stale_nodes(self, db: AsyncSession) -> List[str]:
+        """Return certnames present in ENC but not on the current live fleet.
 
-        Safe to call from maintenance endpoints or timers.
+        These form the "purge queue" – candidates for human review and explicit
+        purge_stale_nodes (force required for >5).
+        """
+        from ..services.puppetdb import puppetdb_service
+
+        raw_nodes = await self.list_nodes(db)
+        try:
+            live = await puppetdb_service.get_live_nodes()
+            live_set = {
+                str(n.get("certname", "")).strip().lower()
+                for n in live
+                if n.get("certname")
+            }
+            stale = [
+                node.certname
+                for node in raw_nodes
+                if node.certname.strip().lower() not in live_set
+            ]
+            return stale
+        except Exception as e:
+            logger.warning("Failed to compute stale nodes: %s", e)
+            return []
+
+    async def reconcile(self, db: AsyncSession) -> dict:
+        """Explicitly run normalization and return a summary (no auto-purge).
+
+        Reports the current stale nodes (purge queue) for human review.
+        Use purge_stale_nodes(force=True) for explicit purge (force required for >5).
         """
         before = await self.list_nodes(db)
         before_count = len(before)
@@ -256,12 +285,171 @@ class HierarchicalENCService:
         reconciled = await self.get_reconciled_classified_nodes(db)
         after_count = len(reconciled)
 
+        stale = await self.get_stale_nodes(db)
+
         return {
             "before": before_count,
             "after": after_count,
-            "pruned": before_count - after_count,
-            "pruned_certnames": [n.certname for n in before if n.certname not in {r.certname for r in reconciled}],
+            "stale_to_purge": stale,
+            "stale_count": len(stale),
         }
+
+    async def reseed_from_live_fleet(self, db: AsyncSession) -> dict:
+        """Add current live fleet nodes to ENC if missing (no destructive prune).
+
+        This is the safe "re-seed" path after a bad prune wiped classifications
+        but the fleet is now healthy. It will not delete existing rows.
+        """
+        from ..services.puppetdb import puppetdb_service
+
+        live = await puppetdb_service.get_live_nodes()
+        live_set = {str(n.get("certname", "")).strip() for n in live if n.get("certname")}
+
+        existing = {n.certname for n in await self.list_nodes(db)}
+        added = []
+
+        # Use a default environment if none set; operator can fix via UI
+        default_env = "production"
+        try:
+            envs = await db.execute(select(EncEnvironment))
+            first_env = envs.scalars().first()
+            if first_env:
+                default_env = first_env.name
+        except Exception:
+            pass
+
+        for cn in live_set:
+            if cn not in existing:
+                node = EncNode(certname=cn, environment=default_env, classes={}, parameters={})
+                db.add(node)
+                added.append(cn)
+
+        if added:
+            await db.commit()
+            logger.info("Re-seeded %d nodes from live fleet: %s", len(added), added[:10])
+
+        return {"added": added, "total_live": len(live_set)}
+
+    async def get_stale_nodes(self, db: AsyncSession) -> List[str]:
+        """Return certnames present in ENC but not on the current live fleet.
+
+        These form the "purge queue" – candidates for human review and explicit
+        purge_stale_nodes (force required for >5).
+        """
+        from ..services.puppetdb import puppetdb_service
+
+        raw_nodes = await self.list_nodes(db)
+        try:
+            live = await puppetdb_service.get_live_nodes()
+            live_set = {
+                str(n.get("certname", "")).strip().lower()
+                for n in live
+                if n.get("certname")
+            }
+            stale = [
+                node.certname
+                for node in raw_nodes
+                if node.certname.strip().lower() not in live_set
+            ]
+            return stale
+        except Exception as e:
+            logger.warning("Failed to compute stale nodes: %s", e)
+            return []
+
+    async def purge_stale_nodes(self, db: AsyncSession, force: bool = False) -> dict:
+        """Explicit purge of the purge queue (stale nodes).
+
+        Guard rail: force=true required if >5 nodes.
+        Always snapshots DB first for failback.
+        """
+        stale = await self.get_stale_nodes(db)
+        if not stale:
+            return {"purged": 0, "certnames": []}
+
+        if len(stale) > 5 and not force:
+            return {
+                "purged": 0,
+                "would_purge": len(stale),
+                "requires_force": True,
+                "certnames": stale,
+                "message": f"Refusing to purge {len(stale)} nodes without force=True. Review /stale first.",
+            }
+
+        # Snapshot before
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            import shutil
+            from ..config import settings
+
+            backup_root = Path(settings.data_dir) / "backups"
+            backup_root.mkdir(parents=True, exist_ok=True)
+            ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            db_path = Path(settings.database_url.replace("sqlite+aiosqlite:///", ""))
+            if db_path.exists():
+                backup_file = backup_root / f"pre-purge-{ts}.db"
+                shutil.copy2(db_path, backup_file)
+                logger.warning("Pre-purge snapshot saved to %s", backup_file)
+        except Exception as be:
+            logger.error("Pre-purge snapshot failed: %s", be)
+
+        purged = 0
+        for cn in stale:
+            if await self.delete_node(db, cn):
+                purged += 1
+        if purged:
+            await db.commit()
+            logger.info("Explicit purge of %s nodes: %s", purged, stale[:10])
+
+        return {"purged": purged, "certnames": stale}
+
+    async def purge_stale_nodes(self, db: AsyncSession, force: bool = False) -> dict:
+        """Explicitly purge stale nodes (those in ENC but not on live fleet).
+
+        Guard rail: requires force=True if >5 nodes to purge at once.
+        Always takes a backup snapshot first.
+        This is the only way to actually delete from the purge queue.
+        """
+        stale = await self.get_stale_nodes(db)
+        if not stale:
+            return {"purged": 0, "certnames": []}
+
+        if len(stale) > 5 and not force:
+            return {
+                "purged": 0,
+                "would_purge": len(stale),
+                "requires_force": True,
+                "certnames": stale,
+                "message": f"Refusing to purge {len(stale)} nodes without force=True. Review the purge queue and call with force.",
+            }
+
+        # Snapshot before purge (failback)
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            import shutil
+            from ..config import settings
+
+            backup_root = Path(settings.data_dir) / "backups"
+            backup_root.mkdir(parents=True, exist_ok=True)
+            ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            db_path = Path(settings.database_url.replace("sqlite+aiosqlite:///", ""))
+            if db_path.exists():
+                backup_file = backup_root / f"pre-purge-{ts}.db"
+                shutil.copy2(db_path, backup_file)
+                logger.warning("Pre-purge snapshot saved to %s", backup_file)
+        except Exception as be:
+            logger.error("Failed to snapshot before explicit purge: %s", be)
+
+        purged_count = 0
+        for cn in stale:
+            if await self.delete_node(db, cn):
+                purged_count += 1
+        if purged_count:
+            await db.commit()
+            logger.info("Explicit purge of %s stale node(s): %s", purged_count, stale[:10])
+
+        return {"purged": purged_count, "certnames": stale}
 
     async def get_node(self, db: AsyncSession, certname: str) -> Optional[EncNode]:
         result = await db.execute(

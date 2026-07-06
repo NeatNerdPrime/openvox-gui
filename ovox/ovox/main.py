@@ -8,6 +8,7 @@ Run `ovox --help` after `pip install -e ovox` (from the ovox/ directory).
 """
 
 import sys
+import glob
 from typing import Optional
 
 import typer
@@ -195,6 +196,78 @@ try:
 except Exception:
     pass  # If the infra app doesn't support late addition in this build, the top-level command is still available.
 cli.add_typer(token.app, name="token", help="Manage long-lived service API tokens (for Bolt, etc.)")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DB backup / failback commands (for when the local SQLite gets cleared)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@cli.command("db-backup")
+def db_backup(
+    ctx: typer.Context,
+    out_dir: str = typer.Option("/backup", "--out", "-o", help="Base directory for backups"),
+):
+    """Create a timestamped backup of /opt/openvox-gui/data (ENC, users, history, etc.).
+
+    Run this on the GUI host. Gives you an automatic failback if the local DB
+    ever goes empty again (aggressive prune, bad deploy, disk problem, etc.).
+    """
+    import subprocess
+    from datetime import datetime
+    import os
+
+    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    backup_dir = os.path.join(out_dir, f"openvox-gui-data-{ts}")
+    try:
+        subprocess.check_call(["mkdir", "-p", backup_dir])
+        if os.path.isdir("/opt/openvox-gui/data"):
+            subprocess.check_call(["cp", "-a", "/opt/openvox-gui/data", backup_dir])
+            console.print(f"[green]Backup created:[/green] {backup_dir}")
+            # Rotate old ones (keep last 14)
+            try:
+                old = sorted(glob.glob(os.path.join(out_dir, "openvox-gui-data-*")), reverse=True)[14:]
+                for d in old:
+                    subprocess.check_call(["rm", "-rf", d])
+            except Exception:
+                pass
+        else:
+            console.print("[yellow]No /opt/openvox-gui/data directory found.[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Backup failed:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@cli.command("db-restore")
+def db_restore(
+    ctx: typer.Context,
+    backup_dir: str = typer.Argument(..., help="Path to a previous backup (e.g. /backup/openvox-gui-data-20260706-.../data)"),
+):
+    """Restore the GUI data directory from a previous backup.
+
+    Stops the service, replaces /opt/openvox-gui/data, restarts.
+    Use with care — this will overwrite current local state (classifications, etc.).
+    """
+    import subprocess
+    import os
+
+    if not os.path.isdir(backup_dir):
+        console.print(f"[red]Backup directory not found:[/red] {backup_dir}")
+        raise typer.Exit(1)
+
+    console.print(f"[yellow]This will STOP the GUI, replace /opt/openvox-gui/data with {backup_dir}, then restart.[/yellow]")
+    if not typer.confirm("Proceed?"):
+        raise typer.Exit(0)
+
+    try:
+        subprocess.check_call(["systemctl", "stop", "openvox-gui"])
+        subprocess.check_call(["rm", "-rf", "/opt/openvox-gui/data"])
+        subprocess.check_call(["cp", "-a", backup_dir, "/opt/openvox-gui/data"])
+        subprocess.check_call(["chown", "-R", "puppet:puppet", "/opt/openvox-gui/data"])
+        subprocess.check_call(["systemctl", "start", "openvox-gui"])
+        console.print("[green]Restore complete. Service restarted.[/green]")
+    except Exception as e:
+        console.print(f"[red]Restore failed:[/red] {e}")
+        raise typer.Exit(1)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

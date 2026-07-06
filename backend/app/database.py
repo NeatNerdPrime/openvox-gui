@@ -134,3 +134,57 @@ async def checkpoint_database() -> None:
         logger.info("Database WAL checkpoint (FULL) completed successfully")
     except Exception as exc:
         logger.warning(f"WAL checkpoint failed (non-fatal): {exc}")
+
+
+def backup_database(keep: int = 5) -> Optional[str]:
+    """Create a tar.gz (-9) backup of the DB file in /opt/openvox-gui/data/backups/.
+
+    Always keeps exactly the most recent N (default 5) backups.
+    Called before any destructive operation (prune), on deploys, and on startup.
+    Returns the path or None.
+    """
+    try:
+        from pathlib import Path
+        from datetime import datetime
+        import tarfile
+
+        db_path = Path(settings.database_url.replace("sqlite+aiosqlite:///", ""))
+        if not db_path.exists():
+            logger.warning("No DB file to backup at %s", db_path)
+            return None
+
+        backup_dir = Path("/opt/openvox-gui/data/backups")
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        backup_path = backup_dir / f"openvox_gui_db_{ts}.tar.gz"
+
+        # tar the .db (and side files if present) at max compression -9
+        with tarfile.open(backup_path, "w:gz", compresslevel=9) as tar:
+            tar.add(db_path, arcname=db_path.name)
+            for ext in ("-wal", "-shm"):
+                side = db_path.with_suffix(db_path.suffix + ext)
+                if side.exists():
+                    tar.add(side, arcname=side.name)
+
+        logger.info("DB backup created: %s", backup_path)
+
+        # Keep only the most recent N (exactly 5 at all times, oldest evicted)
+        backups = sorted(
+            list(backup_dir.glob("openvox_gui_db_*.tar.gz")),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for old in backups[keep:]:
+            try:
+                old.unlink()
+                logger.debug("Removed old backup: %s", old)
+            except Exception:
+                pass
+
+        return str(backup_path)
+    except Exception as exc:
+        logger.error("DB backup failed: %s", exc)
+        return None
+
+
