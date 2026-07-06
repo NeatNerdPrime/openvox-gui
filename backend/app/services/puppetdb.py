@@ -151,8 +151,10 @@ class PuppetDBService:
           cert; those hosts must disappear everywhere even if PuppetDB has
           not yet expired the node record.
 
-        If the CA list cannot be loaded, falls back to active PuppetDB only
-        (still excludes deactivated/expired).
+        If the CA list cannot be loaded, falls back to active PuppetDB only.
+        If PuppetDB returns no active nodes but CA has signed certs, falls
+        back to the signed CA list (useful on setups where PDB node listing
+        is empty or not populated).
         """
         active = await self.get_nodes(include_inactive=False)
         try:
@@ -179,12 +181,19 @@ class PuppetDBService:
             )
             return active
 
-        live = [
-            n
-            for n in active
-            if str(n.get("certname", "")).strip().lower() in signed
-        ]
-        live.sort(key=lambda n: str(n.get("certname", "")).lower())
+        if len(active) == 0 and len(signed) > 0:
+            logger.info(
+                "get_live_nodes: PuppetDB returned no active nodes; falling back to signed CA certs (%d) for live fleet.",
+                len(signed),
+            )
+            live = [{"certname": cn} for cn in sorted(signed)]
+        else:
+            live = [
+                n
+                for n in active
+                if str(n.get("certname", "")).strip().lower() in signed
+            ]
+            live.sort(key=lambda n: str(n.get("certname", "")).lower())
         return live
 
     async def get_fleet_nodes(self) -> List[Dict]:
