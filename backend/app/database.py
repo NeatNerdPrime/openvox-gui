@@ -26,6 +26,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
 from pathlib import Path
 import logging
+from typing import Optional
 
 from .config import settings
 

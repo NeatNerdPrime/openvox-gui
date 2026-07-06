@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.4] - 2026-07-06 (dev — fix backend startup crash)
+
+### Fixed
+- Missing `from typing import Optional` in `backend/app/database.py`. This caused `NameError: name 'Optional' is not defined` at import time in `backup_database()`, preventing uvicorn from starting (exit code 1, auto-restart loop).
+
 ## [3.10.7-dev.3] - 2026-07-06 (dev — fix ENC router for db-reseed)
 
 ### Fixed
