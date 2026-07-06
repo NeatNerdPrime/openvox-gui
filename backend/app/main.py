@@ -99,7 +99,6 @@ async def lifespan(app: FastAPI):
     try:
         from .services.enc import HierarchicalENCService
         from .services.puppetdb import puppetdb_service
-        from pathlib import Path
         import sqlite3
         from datetime import datetime
 
