@@ -181,6 +181,7 @@ class HierarchicalENCService:
         """Raw ENC nodes from SQLite (no filtering).
 
         Most consumers should prefer get_reconciled_classified_nodes()
+        (now returns the full persistent set of classified nodes)
         which applies fleet reality checks (no auto-prune).
         Stale nodes form a purge queue for explicit human purge.
         """
@@ -192,66 +193,24 @@ class HierarchicalENCService:
         return list(result.scalars().all())
 
     async def get_reconciled_classified_nodes(self, db: AsyncSession) -> List[EncNode]:
-        """Return only ENC nodes on the live fleet (no automatic purge).
+        """Return all nodes known to the ENC (the persistent classification store).
 
-        Live = **active PuppetDB ∩ signed CA** (``get_live_nodes``).
+        Nodes remain classified until explicitly deleted or purged via the
+        /purge-stale workflow. A normal `puppet agent -t` run on the OpenVox
+        server (or any transient change in the live fleet snapshot) will not
+        cause them to be hidden from the ENC views or automatically removed.
 
-        Stale nodes (present in ENC but not on live fleet) are NOT deleted here.
-        They form a "purge queue" for human review (see get_stale_nodes and reconcile).
-        Explicit purge via purge_stale_nodes requires confirmation, with force for >5.
+        Use get_stale_nodes() + explicit purge for nodes that have left the
+        live fleet.
         """
-        from ..services.puppetdb import puppetdb_service
-
-        raw_nodes = await self.list_nodes(db)
-        before_count = len(raw_nodes)
-
-        try:
-            live = await puppetdb_service.get_live_nodes()
-            live_set = {
-                str(n.get("certname", "")).strip().lower()
-                for n in live
-                if n.get("certname")
-            }
-
-            # SAFETY: if we have nodes in ENC but the live fleet came back empty (or near-empty),
-            # do NOT prune. This protects against transient CA/PDB issues, cert cleanups, or
-            # temporary disconnects that would otherwise wipe the entire classification store.
-            if before_count > 0 and len(live_set) == 0:
-                logger.error(
-                    "CRITICAL: Live fleet snapshot is EMPTY while ENC has %d nodes. "
-                    "Refusing to prune to protect data. Run 'ovox db backup' if needed, "
-                    "then investigate CA list / live fleet, then manually reconcile.",
-                    before_count,
-                )
-                return raw_nodes
-
-            # If live fleet is much smaller than current ENC, be conservative.
-            # Only proceed with prune if we have reasonable confidence in the snapshot.
-            if before_count > 5 and len(live_set) < (before_count * 0.3):
-                logger.warning(
-                    "Live fleet (%d) is much smaller than current ENC (%d). "
-                    "Proceeding with prune but taking a safety backup first.",
-                    len(live_set), before_count
-                )
-
-            kept: list[EncNode] = []
-            for node in raw_nodes:
-                cn = node.certname.strip().lower()
-                if cn and cn in live_set:
-                    kept.append(node)
-
-            return kept
-        except Exception as e:
-            logger.warning(
-                "Reconciliation filter failed, returning raw nodes: %s", e
-            )
-            return raw_nodes
+        return await self.list_nodes(db)
 
     async def get_stale_nodes(self, db: AsyncSession) -> List[str]:
         """Return certnames present in ENC but not on the current live fleet.
 
-        These form the "purge queue" – candidates for human review and explicit
-        purge_stale_nodes (force required for >5).
+        These are candidates for the purge queue. Review and explicitly purge
+        (force required for >5). A normal puppet run should not move nodes here
+        in a way that auto-hides them from the ENC list.
         """
         from ..services.puppetdb import puppetdb_service
 
@@ -274,10 +233,11 @@ class HierarchicalENCService:
             return []
 
     async def reconcile(self, db: AsyncSession) -> dict:
-        """Explicitly run normalization and return a summary (no auto-purge).
+        """Return a summary of current ENC state vs live fleet (no auto-purge).
 
-        Reports the current stale nodes (purge queue) for human review.
-        Use purge_stale_nodes(force=True) for explicit purge (force required for >5).
+        Reports stale nodes for human review. Purging is always explicit.
+        A simple puppet run on the server must not trigger automatic removal
+        of classifications.
         """
         before = await self.list_nodes(db)
         before_count = len(before)
@@ -333,8 +293,9 @@ class HierarchicalENCService:
     async def get_stale_nodes(self, db: AsyncSession) -> List[str]:
         """Return certnames present in ENC but not on the current live fleet.
 
-        These form the "purge queue" – candidates for human review and explicit
-        purge_stale_nodes (force required for >5).
+        These are candidates for the purge queue. Review and explicitly purge
+        (force required for >5). A normal puppet run should not move nodes here
+        in a way that auto-hides them from the ENC list.
         """
         from ..services.puppetdb import puppetdb_service
 

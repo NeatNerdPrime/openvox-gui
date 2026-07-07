@@ -95,7 +95,8 @@ async def lifespan(app: FastAPI):
     # Fail-safe / failback check for the classification store.
     # If enc_nodes is zero while we can see a healthy live fleet from PDB,
     # something bad happened (aggressive prune, lost DB, etc.).
-    # We log loudly and could auto-restore last backup in the future.
+    # Classifications are now persistent; nodes are not auto-removed from
+    # the ENC by a normal puppet run on the server. Use explicit purge only.
     try:
         from .services.enc import HierarchicalENCService
         from .services.puppetdb import puppetdb_service
@@ -111,9 +112,9 @@ async def lifespan(app: FastAPI):
             if enc_count == 0 and live_count > 0:
                 logger.error(
                     "CRITICAL: enc_nodes=0 but live fleet has %d nodes. "
-                    "Classification data appears lost (likely aggressive prune during a bad live-fleet snapshot). "
-                    "Check /backup/openvox-gui-data-* for automatic failbacks. "
-                    "Run `ovox db-reseed` (or restore a backup) to recover ENC nodes from the live fleet.",
+                    "Classification data appears lost. "
+                    "Classified nodes are now kept persistently in the ENC until explicitly purged. "
+                    "Run `ovox db-reseed` or review the Classification page. Check backups if needed.",
                     live_count,
                 )
 

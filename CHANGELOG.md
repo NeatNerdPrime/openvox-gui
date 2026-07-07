@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Fixed
+- Agent Install page now correctly displays Pending Certificate Requests.
+  The `puppetserver ca list --all` (used to fetch requested CSRs) was failing with "must have a tty to run sudo" even when `Defaults:puppet !requiretty` was present.
+  `run_sudo` now prefers `/usr/bin/script -q -c "..." /dev/null` (when available) to guarantee a controlling terminal for sudo commands. Falls back to improved PTY + TIOCSCTTY if `script` is absent.
+  This makes the CSR list (and other CA operations) reliable on systems where requiretty is still enforced globally or the previous PTY setup was insufficient in the systemd context.
+
+### Fixed
 - Overview | Nodes and Classification (ENC) now consult the **exact same source of truth** for the current live fleet node list and classification data.
   - `/api/nodes` now enriches each NodeSummary with `enc_environment`, `enc_groups`, `enc_classes`, `enc_parameters` from the ENC service at request time.
   - Overview | Nodes page no longer makes a separate direct call to `/enc/hierarchy` for node list/grouping (removed the duplicate ENC reference in the app for fleet data).

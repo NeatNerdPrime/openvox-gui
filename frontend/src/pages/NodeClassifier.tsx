@@ -882,26 +882,32 @@ function NodesTab() {
     return Array.from(eff).sort();
   };
 
-  // Live fleet from /api/nodes (active PuppetDB ∩ signed CA). Filter ENC
-  // rows and Unclassified to that set only — CA-cleaned / PDB-gone hosts
-  // must not appear. Compare certnames case-insensitively.
+  // We now keep *all* nodes that have ever been classified in the ENC.
+  // They are only removed by explicit delete or purge-stale (human action).
+  // A normal puppet run on the OpenVox server should not cause them to
+  // disappear or be auto-purged.
+  //
+  // We still compute "unclassified" from the *current* live fleet
+  // (puppetNodes) minus those in ENC.
+  //
+  // Nodes in ENC that are no longer in the live fleet are "stale" but
+  // remain visible so the operator can review/purge deliberately.
   const puppetSet = new Set(puppetNodes.map((cn) => cn.toLowerCase()));
-  const activeClassified = (() => {
-    const seen = new Set<string>();
-    return classified.filter((n) => {
-      const key = (n.certname || '').toLowerCase();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return puppetSet.has(key);
-    });
-  })();
+
+  const activeClassified = classified;  // all classified are shown
 
   const classifiedNames = new Set(
-    activeClassified.map((n) => (n.certname || '').toLowerCase())
+    classified.map((n) => (n.certname || '').toLowerCase())
   );
   const unclassified = puppetNodes.filter(
     (cn) => cn && !classifiedNames.has(cn.toLowerCase())
   );
+
+  // Stale = in ENC but not in current live fleet (for awareness, not auto-hide)
+  const staleClassified = classified.filter((n) => {
+    const key = (n.certname || '').toLowerCase();
+    return key && !puppetSet.has(key);
+  });
 
   if (loading) return <Center h={300}><Loader size="xl" /></Center>;
 

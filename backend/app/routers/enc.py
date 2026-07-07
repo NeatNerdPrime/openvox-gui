@@ -114,8 +114,10 @@ async def get_hierarchy(db: AsyncSession = Depends(get_db)):
     envs = await enc_service.list_environments(db)
     groups = await enc_service.list_groups(db)
 
-    # Use the centralized reconciled view. This applies CA signed + PDB active
-    # filtering. (Auto-pruning removed; stale nodes form purge queue.)
+    # Return the full set of nodes known to the ENC.
+    # We keep classified nodes visible even if they temporarily fall out of
+    # the live fleet (e.g. after a routine puppet run on the server).
+    # Only explicit purge removes them. Stale ones can be reviewed via /stale.
     nodes = await enc_service.get_reconciled_classified_nodes(db)
 
     # Defensive dedup + sort (the service already does a lot of this, but
@@ -313,10 +315,11 @@ async def delete_group(group_id: int, db: AsyncSession = Depends(get_db), _user:
 
 @router.get("/nodes")
 async def list_nodes(db: AsyncSession = Depends(get_db)):
-    """List classified nodes, reconciled against the live fleet.
+    """List all nodes known to the ENC.
 
-    Uses the authoritative CA signed cert list + PDB active status.
-    (Stale nodes no longer auto-pruned; see /stale for purge queue.)
+    Nodes remain in the ENC until explicitly removed or purged via the
+    purge-stale workflow. A normal Puppet run (even on the OpenVox server)
+    will not cause them to disappear.
     """
     nodes = await enc_service.get_reconciled_classified_nodes(db)
 
