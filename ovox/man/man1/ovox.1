@@ -112,6 +112,20 @@ Revoke a signed certificate.
 Revoke the certificate and also remove all associated key material
 (equivalent to \fBpuppetserver ca clean\fR).
 
+.TP
+.B ovox certs trusted\-facts
+List Puppet trusted facts (certificate extension requests such as
+\fIpp_role\fR, \fIpp_environment\fR, \fIpp_datacenter\fR) extracted from
+signed CA PEMs. These are the values catalog compilation exposes as
+\fB$trusted['extensions']\fR. Options:
+\fB\-\-certname\fR / \fB\-c\fR (exact certname),
+\fB\-\-key\fR / \fB\-k\fR (extension shortname),
+\fB\-\-value\fR / \fB\-v\fR (value filter),
+\fB\-\-all\fR (include certs with no extensions),
+\fB\-\-summary\fR (fleet value counts only),
+\fB\-\-json\fR / \fB\-j\fR.
+Alias: \fBovox certs trusted\fR.
+
 .SS Query
 .TP
 .B ovox pql 'PQL QUERY'
@@ -125,6 +139,8 @@ ovox login
 ovox status
 ovox nodes list --status failed
 ovox certs list --all
+ovox certs trusted-facts
+ovox certs trusted-facts --key pp_role --value webserver
 .EE
 
 .SS Scripting

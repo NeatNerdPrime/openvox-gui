@@ -11,11 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.9] - 2026-07-09 (dev — Trusted Facts pane + ovox certs trusted-facts)
+
+### Added
+- **Trusted Facts on Certificate Authority page** — new pane between CA Information and Signed Certificates lists Puppet trusted facts extracted from signed CA PEMs (certificate extension requests such as `pp_role`, `pp_environment`, `pp_datacenter`). Includes fleet value summary, filter by key/value/certname, and toggle to show certs without extensions. Source of truth is the signed certificate (same data catalog compilation exposes as `$trusted['extensions']`), not free-form Facter facts.
+- **API**: `GET /api/certificates/trusted-facts` with optional `certname`, `key`, `value`, and `only_with_extensions` query parameters. Maps built-in Puppet OIDs under `1.3.6.1.4.1.34380.*` and overlays `custom_trusted_oid_mapping.yaml` when present.
+- **ovox CLI**: `ovox certs trusted-facts` (alias `ovox certs trusted`) with `--certname`, `--key`, `--value`, `--all`, `--summary`, and `--json` for scripting.
+
+## [3.10.7-dev.8] - 2026-07-07 (dev — requiretty / CSR list reliability)
+
 ### Fixed
 - Agent Install page now correctly displays Pending Certificate Requests.
   The `puppetserver ca list --all` (used to fetch requested CSRs) was failing with "must have a tty to run sudo" even when `Defaults:puppet !requiretty` was present.
   `run_sudo` now prefers `/usr/bin/script -q -c "..." /dev/null` (when available) to guarantee a controlling terminal for sudo commands. Falls back to improved PTY + TIOCSCTTY if `script` is absent.
   This makes the CSR list (and other CA operations) reliable on systems where requiretty is still enforced globally or the previous PTY setup was insufficient in the systemd context.
+
+## [3.10.7-dev.7] - 2026-07-06 (dev — ENC effective classes + shared node list)
 
 ### Fixed
 - Overview | Nodes and Classification (ENC) now consult the **exact same source of truth** for the current live fleet node list and classification data.

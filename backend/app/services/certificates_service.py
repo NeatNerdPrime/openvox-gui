@@ -3,29 +3,84 @@ Certificates domain service (srdevarch1 HP3).
 
 Owns CA list parsing and caching so PuppetDB fleet construction does not
 import FastAPI routers (breaks the router↔service cycle).
+
+Also extracts Puppet *trusted facts* (certificate extension requests) from
+signed PEMs under the CA signed directory — the same data catalog
+compilation exposes as ``$trusted['extensions']``.
 """
 from __future__ import annotations
 
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..utils.sudo import run_sudo
 
 logger = logging.getLogger(__name__)
 
 PUPPETSERVER_CA = "/opt/puppetlabs/bin/puppetserver"
+CA_SIGNED_DIR = Path("/etc/puppetlabs/puppet/ssl/ca/signed")
+CUSTOM_OID_MAPPING_PATHS = (
+    Path("/etc/puppetlabs/puppet/custom_trusted_oid_mapping.yaml"),
+    Path("/etc/puppetlabs/puppet/ssl/ca/custom_trusted_oid_mapping.yaml"),
+)
+
 _CACHE_TTL_CERTS = 30
+_CACHE_TTL_TRUSTED = 45
 _cache_cert_list: Optional[Dict[str, Any]] = None
 _cache_cert_list_time = 0.0
+_cache_trusted_facts: Optional[Dict[str, Any]] = None
+_cache_trusted_facts_time = 0.0
 _ansi_re = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+# Puppet registered extension-request OIDs under 1.3.6.1.4.1.34380.1.1.*
+# Source: Puppet / OpenVox trusted facts / certificate extension docs.
+# These become $trusted['extensions']['pp_*'] after successful SSL auth.
+BUILTIN_PUPPET_OID_MAP: Dict[str, str] = {
+    "1.3.6.1.4.1.34380.1.1.1": "pp_uuid",
+    "1.3.6.1.4.1.34380.1.1.2": "pp_instance_id",
+    "1.3.6.1.4.1.34380.1.1.3": "pp_image_name",
+    "1.3.6.1.4.1.34380.1.1.4": "pp_preshared_key",
+    "1.3.6.1.4.1.34380.1.1.5": "pp_cost_center",
+    "1.3.6.1.4.1.34380.1.1.6": "pp_product",
+    "1.3.6.1.4.1.34380.1.1.7": "pp_project",
+    "1.3.6.1.4.1.34380.1.1.8": "pp_application",
+    "1.3.6.1.4.1.34380.1.1.9": "pp_service",
+    "1.3.6.1.4.1.34380.1.1.10": "pp_employee",
+    "1.3.6.1.4.1.34380.1.1.11": "pp_created_by",
+    "1.3.6.1.4.1.34380.1.1.12": "pp_environment",
+    "1.3.6.1.4.1.34380.1.1.13": "pp_role",
+    "1.3.6.1.4.1.34380.1.1.14": "pp_software_version",
+    "1.3.6.1.4.1.34380.1.1.15": "pp_department",
+    "1.3.6.1.4.1.34380.1.1.16": "pp_cluster",
+    "1.3.6.1.4.1.34380.1.1.17": "pp_provisioner",
+    "1.3.6.1.4.1.34380.1.1.18": "pp_region",
+    "1.3.6.1.4.1.34380.1.1.19": "pp_datacenter",
+    "1.3.6.1.4.1.34380.1.1.20": "pp_zone",
+    "1.3.6.1.4.1.34380.1.1.21": "pp_network",
+    "1.3.6.1.4.1.34380.1.1.22": "pp_securitypolicy",
+    "1.3.6.1.4.1.34380.1.1.23": "pp_cloudplatform",
+    "1.3.6.1.4.1.34380.1.1.24": "pp_apptier",
+    "1.3.6.1.4.1.34380.1.1.25": "pp_hostname",
+    # Authorization / autosign-related trusted OIDs
+    "1.3.6.1.4.1.34380.1.3.1": "pp_authorization",
+    "1.3.6.1.4.1.34380.1.3.13": "pp_auth_role",
+}
+
+# Puppet private enterprise OID arc — only extensions under this arc are
+# treated as trusted-fact candidates (not standard X.509 SAN/KU/etc.).
+_PUPPET_OID_PREFIX = "1.3.6.1.4.1.34380."
 
 
 def invalidate_cert_list_cache() -> None:
     global _cache_cert_list, _cache_cert_list_time
+    global _cache_trusted_facts, _cache_trusted_facts_time
     _cache_cert_list = None
     _cache_cert_list_time = 0.0
+    _cache_trusted_facts = None
+    _cache_trusted_facts_time = 0.0
 
 
 async def run_ca_command(args: List[str], timeout: int = 30) -> dict:
@@ -94,3 +149,364 @@ async def list_certificates(use_cache: bool = True) -> Dict[str, Any]:
     _cache_cert_list = parsed
     _cache_cert_list_time = time.time()
     return parsed
+
+
+# ─── Trusted facts (certificate extensions) ──────────────────────────────────
+
+
+def decode_extension_value(raw: bytes) -> str:
+    """Decode a Puppet certificate-extension value from DER / raw bytes.
+
+    Puppet stores extension-request values as ASN.1 string types (UTF8String,
+    PrintableString, IA5String, etc.). Cryptography surfaces unknown OIDs as
+    ``UnrecognizedExtension`` whose ``.value`` is the raw DER encoding of the
+    extension value (not the full Extension SEQUENCE).
+    """
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+    if not isinstance(raw, (bytes, bytearray)):
+        return str(raw)
+    data = bytes(raw)
+    if not data:
+        return ""
+
+    # ASN.1 universal string tags we expect from Puppet extension requests
+    # 0x0c UTF8String, 0x13 PrintableString, 0x16 IA5String,
+    # 0x19 GraphicString, 0x1a VisibleString, 0x1e BMPString,
+    # 0x04 OCTET STRING (sometimes wraps the real string)
+    tag = data[0]
+    if tag in (0x0C, 0x13, 0x16, 0x19, 0x1A, 0x04) and len(data) >= 2:
+        length_byte = data[1]
+        if length_byte < 0x80:
+            content = data[2 : 2 + length_byte]
+            if tag == 0x04 and content and content[0] in (0x0C, 0x13, 0x16):
+                # Nested string inside OCTET STRING — decode inner
+                return decode_extension_value(content)
+            try:
+                return content.decode("utf-8", errors="replace")
+            except Exception:
+                return content.hex()
+        # Long-form length (rare for short trusted-fact values)
+        nlen = length_byte & 0x7F
+        if nlen and 2 + nlen < len(data):
+            length = int.from_bytes(data[2 : 2 + nlen], "big")
+            content = data[2 + nlen : 2 + nlen + length]
+            try:
+                return content.decode("utf-8", errors="replace")
+            except Exception:
+                return content.hex()
+
+    # BMPString (UTF-16-BE)
+    if tag == 0x1E and len(data) >= 2 and data[1] < 0x80:
+        content = data[2 : 2 + data[1]]
+        try:
+            return content.decode("utf-16-be", errors="replace")
+        except Exception:
+            pass
+
+    # Fallback: strip NULs / non-printables and treat as UTF-8
+    try:
+        text = data.decode("utf-8", errors="replace").strip("\x00")
+        # Drop leading control bytes sometimes left by partial DER
+        return "".join(ch for ch in text if ch.isprintable() or ch in "\t\n ")
+    except Exception:
+        return data.hex()
+
+
+def load_oid_mapping(extra_paths: Optional[List[Path]] = None) -> Tuple[Dict[str, str], List[str]]:
+    """Return (oid → shortname map, list of mapping sources used).
+
+    Starts with the built-in Puppet OID table, then overlays any
+    ``custom_trusted_oid_mapping.yaml`` files found on disk.
+    """
+    mapping = dict(BUILTIN_PUPPET_OID_MAP)
+    sources: List[str] = ["builtin"]
+
+    paths = list(CUSTOM_OID_MAPPING_PATHS)
+    if extra_paths:
+        paths.extend(extra_paths)
+
+    for path in paths:
+        try:
+            if not path.is_file():
+                continue
+            import yaml  # pyyaml is a hard backend dependency
+
+            data = yaml.safe_load(path.read_text(encoding="utf-8", errors="replace")) or {}
+            oid_block = data.get("oid_mapping") or data.get("oid_mappings") or {}
+            if not isinstance(oid_block, dict):
+                continue
+            count = 0
+            for oid, meta in oid_block.items():
+                oid_s = str(oid).strip()
+                if isinstance(meta, dict):
+                    short = meta.get("shortname") or meta.get("short_name") or meta.get("name")
+                elif isinstance(meta, str):
+                    short = meta
+                else:
+                    short = None
+                if oid_s and short:
+                    mapping[oid_s] = str(short).strip()
+                    count += 1
+            if count:
+                sources.append(str(path))
+                logger.debug("Loaded %d custom trusted OID mapping(s) from %s", count, path)
+        except Exception as exc:
+            logger.warning("Could not load custom OID mapping from %s: %s", path, exc)
+
+    return mapping, sources
+
+
+def extract_trusted_extensions_from_pem(
+    pem_bytes: bytes,
+    oid_map: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    """Parse a PEM certificate and return shortname → value trusted extensions.
+
+    Only Puppet private-arc OIDs (``1.3.6.1.4.1.34380.*``) are included.
+    Unknown OIDs keep their dotted form as the key.
+    """
+    from cryptography import x509
+
+    if oid_map is None:
+        oid_map, _ = load_oid_mapping()
+
+    cert = x509.load_pem_x509_certificate(pem_bytes)
+    extensions: Dict[str, str] = {}
+
+    for ext in cert.extensions:
+        oid = ext.oid.dotted_string
+        if not oid.startswith(_PUPPET_OID_PREFIX):
+            continue
+        raw = getattr(ext.value, "value", None)
+        if raw is None:
+            # Some extension types expose different attributes; stringify as last resort
+            try:
+                raw = bytes(ext.value)  # type: ignore[arg-type]
+            except Exception:
+                raw = str(ext.value).encode("utf-8", errors="replace")
+        value = decode_extension_value(raw if isinstance(raw, (bytes, bytearray)) else str(raw).encode())
+        key = oid_map.get(oid, oid)
+        extensions[key] = value
+
+    return extensions
+
+
+def _certname_from_pem_path(path: Path) -> str:
+    # Signed PEMs are named <certname>.pem (certname may contain dots).
+    name = path.name
+    if name.endswith(".pem"):
+        return name[:-4]
+    return name
+
+
+def _read_pem_bytes(path: Path) -> Optional[bytes]:
+    """Read a PEM file, falling back to sudo cat on permission errors."""
+    try:
+        return path.read_bytes()
+    except PermissionError:
+        pass
+    except OSError as exc:
+        logger.debug("Cannot read %s: %s", path, exc)
+        return None
+    return None
+
+
+async def _read_pem_bytes_async(path: Path) -> Optional[bytes]:
+    data = _read_pem_bytes(path)
+    if data is not None:
+        return data
+    # Permission denied or unreadable as the service user — try sudo cat
+    try:
+        result = await run_sudo(["sudo", "cat", str(path)], timeout=10)
+        if result.get("returncode") == 0 and result.get("stdout") is not None:
+            # run_sudo returns str stdout; re-encode for PEM loader
+            out = result["stdout"]
+            if isinstance(out, bytes):
+                return out
+            return out.encode("utf-8", errors="surrogateescape")
+    except Exception as exc:
+        logger.debug("sudo cat failed for %s: %s", path, exc)
+    return None
+
+
+async def _list_signed_pem_paths(signed_dir: Path = CA_SIGNED_DIR) -> List[Path]:
+    """List ``*.pem`` files in the CA signed directory."""
+    try:
+        if signed_dir.is_dir():
+            return sorted(p for p in signed_dir.iterdir() if p.suffix == ".pem" and p.is_file())
+    except PermissionError:
+        pass
+    except OSError as exc:
+        logger.warning("Cannot list signed cert dir %s: %s", signed_dir, exc)
+
+    # Fallback: sudo find
+    try:
+        result = await run_sudo(
+            ["sudo", "find", str(signed_dir), "-maxdepth", "1", "-type", "f", "-name", "*.pem"],
+            timeout=30,
+        )
+        if result.get("returncode") == 0:
+            paths = []
+            for line in (result.get("stdout") or "").splitlines():
+                line = line.strip()
+                if line:
+                    paths.append(Path(line))
+            return sorted(paths)
+    except Exception as exc:
+        logger.warning("sudo find of signed certs failed: %s", exc)
+    return []
+
+
+def _build_summary(nodes: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+    """Count unique values per extension key across nodes that have extensions."""
+    summary: Dict[str, Dict[str, int]] = {}
+    for node in nodes:
+        exts = node.get("extensions") or {}
+        if not isinstance(exts, dict):
+            continue
+        for key, val in exts.items():
+            bucket = summary.setdefault(key, {})
+            sval = str(val) if val is not None else ""
+            bucket[sval] = bucket.get(sval, 0) + 1
+    # Sort value counts descending for stable, useful UI
+    ordered: Dict[str, Dict[str, int]] = {}
+    for key in sorted(summary.keys()):
+        counts = summary[key]
+        ordered[key] = dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+    return ordered
+
+
+async def get_trusted_facts(
+    *,
+    use_cache: bool = True,
+    certname: Optional[str] = None,
+    key: Optional[str] = None,
+    value: Optional[str] = None,
+    only_with_extensions: bool = True,
+    signed_dir: Optional[Path] = None,
+    oid_mapping_paths: Optional[List[Path]] = None,
+) -> Dict[str, Any]:
+    """Scan signed CA certificates and extract Puppet trusted-fact extensions.
+
+    Parameters
+    ----------
+    certname:
+        Optional exact certname filter (case-insensitive).
+    key:
+        Optional extension shortname filter (e.g. ``pp_role``). Only nodes
+        that have this key are returned when set.
+    value:
+        Optional value filter (case-insensitive exact match). Requires ``key``
+        for meaningful filtering; if only ``value`` is set, any extension with
+        that value matches.
+    only_with_extensions:
+        When True (default), omit nodes whose certs have no Puppet extensions.
+    """
+    global _cache_trusted_facts, _cache_trusted_facts_time
+
+    # Cache only the unfiltered full scan; filters applied after.
+    base: Optional[Dict[str, Any]] = None
+    if (
+        use_cache
+        and _cache_trusted_facts is not None
+        and (time.time() - _cache_trusted_facts_time) < _CACHE_TTL_TRUSTED
+        and signed_dir is None
+        and oid_mapping_paths is None
+    ):
+        base = _cache_trusted_facts
+    else:
+        oid_map, sources = load_oid_mapping(extra_paths=oid_mapping_paths)
+        dir_path = signed_dir or CA_SIGNED_DIR
+        pem_paths = await _list_signed_pem_paths(dir_path)
+
+        nodes: List[Dict[str, Any]] = []
+        errors: List[Dict[str, str]] = []
+        for pem_path in pem_paths:
+            cn = _certname_from_pem_path(pem_path)
+            pem = await _read_pem_bytes_async(pem_path)
+            if pem is None:
+                errors.append({"certname": cn, "error": "unreadable"})
+                continue
+            try:
+                exts = extract_trusted_extensions_from_pem(pem, oid_map=oid_map)
+            except Exception as exc:
+                logger.debug("Failed to parse trusted extensions for %s: %s", cn, exc)
+                errors.append({"certname": cn, "error": str(exc)})
+                continue
+            nodes.append({
+                "certname": cn,
+                "extensions": exts,
+            })
+
+        nodes.sort(key=lambda n: (n.get("certname") or "").lower())
+        with_ext = [n for n in nodes if n.get("extensions")]
+        base = {
+            "nodes": nodes,
+            "summary": _build_summary(nodes),
+            "extension_keys": sorted({
+                k for n in nodes for k in (n.get("extensions") or {}).keys()
+            }),
+            "total_signed": len(nodes),
+            "with_extensions": len(with_ext),
+            "without_extensions": len(nodes) - len(with_ext),
+            "oid_mapping_sources": sources,
+            "errors": errors,
+        }
+        if signed_dir is None and oid_mapping_paths is None:
+            _cache_trusted_facts = base
+            _cache_trusted_facts_time = time.time()
+
+    # Apply filters on a shallow copy so the cache stays pristine
+    nodes_out = list(base.get("nodes") or [])
+
+    if certname:
+        cn_l = certname.strip().lower()
+        nodes_out = [n for n in nodes_out if (n.get("certname") or "").lower() == cn_l]
+
+    if key:
+        key_s = key.strip()
+        nodes_out = [
+            n for n in nodes_out
+            if key_s in (n.get("extensions") or {})
+        ]
+
+    if value is not None and value != "":
+        val_l = str(value).strip().lower()
+        filtered = []
+        for n in nodes_out:
+            exts = n.get("extensions") or {}
+            if key:
+                if str(exts.get(key.strip(), "")).lower() == val_l:
+                    filtered.append(n)
+            else:
+                if any(str(v).lower() == val_l for v in exts.values()):
+                    filtered.append(n)
+        nodes_out = filtered
+
+    if only_with_extensions:
+        nodes_out = [n for n in nodes_out if n.get("extensions")]
+
+    # Recompute summary for the filtered set (more useful for UI filters)
+    summary = _build_summary(nodes_out)
+    extension_keys = sorted({k for n in nodes_out for k in (n.get("extensions") or {}).keys()})
+
+    return {
+        "nodes": nodes_out,
+        "summary": summary,
+        "extension_keys": extension_keys,
+        "total_signed": base.get("total_signed", 0),
+        "with_extensions": base.get("with_extensions", 0),
+        "without_extensions": base.get("without_extensions", 0),
+        "filtered_count": len(nodes_out),
+        "oid_mapping_sources": base.get("oid_mapping_sources", ["builtin"]),
+        "errors": base.get("errors", []),
+        "filters": {
+            "certname": certname,
+            "key": key,
+            "value": value,
+            "only_with_extensions": only_with_extensions,
+        },
+    }

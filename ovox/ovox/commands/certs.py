@@ -144,3 +144,179 @@ def pending(ctx: typer.Context, json_output: bool = typer.Option(False, "--json"
     The command is kept for muscle memory and scripting convenience.
     """
     list_certs(ctx, all=False, json_output=json_output)
+
+
+@app.command("trusted-facts")
+def trusted_facts(
+    ctx: typer.Context,
+    certname: Optional[str] = typer.Option(
+        None,
+        "--certname",
+        "-c",
+        help="Filter to a single certname (exact match)",
+    ),
+    key: Optional[str] = typer.Option(
+        None,
+        "--key",
+        "-k",
+        help="Filter to nodes that have this extension (e.g. pp_role)",
+    ),
+    value: Optional[str] = typer.Option(
+        None,
+        "--value",
+        "-v",
+        help="Filter by extension value (case-insensitive exact match; "
+             "pairs best with --key)",
+    ),
+    all_certs: bool = typer.Option(
+        False,
+        "--all",
+        help="Include signed certificates that have no Puppet extensions",
+    ),
+    summary_only: bool = typer.Option(
+        False,
+        "--summary",
+        help="Show only the fleet value summary (counts per extension key)",
+    ),
+    json_output: bool = typer.Option(False, "--json", "-j"),
+):
+    """
+    List Puppet trusted facts from signed CA certificates.
+
+    Trusted facts are certificate extension requests (pp_role, pp_environment,
+    pp_datacenter, …) baked into agent PEMs at sign time. Catalog compilation
+    exposes them as ``$trusted['extensions']``. Agents cannot forge or change
+    them after the cert is signed.
+
+    Examples:
+
+      ovox certs trusted-facts
+
+      ovox certs trusted-facts --key pp_role
+
+      ovox certs trusted-facts -k pp_role -v webserver
+
+      ovox certs trusted-facts --certname web01.example.com
+
+      ovox certs trusted-facts --summary
+
+      ovox certs trusted-facts --json
+    """
+    client = get_client(
+        base_url=ctx.obj.get("url") if ctx.obj else None,
+        token=ctx.obj.get("token") if ctx.obj else None,
+        verify_ssl=ctx.obj.get("verify_ssl", True) if ctx.obj else True,
+    )
+    try:
+        data = client.get_trusted_facts(
+            certname=certname,
+            key=key,
+            value=value,
+            only_with_extensions=not all_certs,
+        )
+    except OvoxAPIError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1)
+
+    if json_output or (ctx.obj and ctx.obj.get("output") == "json"):
+        import json
+        console.print(JSON(json.dumps(data, indent=2)))
+        return
+
+    nodes = data.get("nodes") or []
+    summary = data.get("summary") or {}
+    ext_keys = data.get("extension_keys") or []
+
+    console.print(
+        f"[bold]Trusted Facts[/bold]  "
+        f"signed={data.get('total_signed', 0)}  "
+        f"with_extensions={data.get('with_extensions', 0)}  "
+        f"without={data.get('without_extensions', 0)}  "
+        f"shown={data.get('filtered_count', len(nodes))}"
+    )
+    sources = data.get("oid_mapping_sources") or []
+    if sources:
+        console.print(f"[dim]OID mapping: {', '.join(str(s) for s in sources)}[/dim]")
+
+    if summary:
+        console.print()
+        sum_table = Table(title="Fleet summary", show_lines=False)
+        sum_table.add_column("Key", style="cyan")
+        sum_table.add_column("Value", style="green")
+        sum_table.add_column("Count", justify="right")
+        for k in sorted(summary.keys()):
+            counts = summary[k] or {}
+            for val, n in counts.items():
+                sum_table.add_row(k, str(val) if val != "" else "(empty)", str(n))
+        console.print(sum_table)
+
+    if summary_only:
+        if not summary:
+            console.print("[yellow]No trusted-fact extensions found on signed certificates.[/yellow]")
+        return
+
+    console.print()
+    if not nodes:
+        console.print(
+            "[yellow]No matching nodes.[/yellow] "
+            "Agents only receive trusted facts when CSR extension_requests "
+            "(e.g. pp_role) are set before the certificate is signed."
+        )
+        return
+
+    # Dynamic columns: preferred order first, then remaining keys
+    preferred = [
+        "pp_role", "pp_environment", "pp_datacenter", "pp_zone",
+        "pp_region", "pp_application", "pp_apptier", "pp_cluster",
+        "pp_provisioner",
+    ]
+    cols = [c for c in preferred if c in ext_keys]
+    cols += sorted(c for c in ext_keys if c not in preferred)
+    # Cap columns for terminal readability
+    cols = cols[:10]
+
+    table = Table(title="Nodes with trusted facts", show_lines=False)
+    table.add_column("Certname", style="cyan", no_wrap=True)
+    for c in cols:
+        table.add_column(c, style="green", overflow="fold")
+    if not cols:
+        table.add_column("Extensions", style="dim")
+
+    for n in nodes:
+        cn = n.get("certname") or "?"
+        exts = n.get("extensions") or {}
+        if cols:
+            row = [str(cn)] + [str(exts.get(c, "—") or "—") for c in cols]
+        else:
+            row = [str(cn), str(exts) if exts else "—"]
+        table.add_row(*row)
+
+    console.print(table)
+    if len(ext_keys) > len(cols):
+        console.print(
+            f"[dim]… {len(ext_keys) - len(cols)} more extension key(s) omitted "
+            f"(use --json for full data)[/dim]"
+        )
+
+
+# Alias for shorter muscle memory
+@app.command("trusted")
+def trusted_alias(
+    ctx: typer.Context,
+    certname: Optional[str] = typer.Option(None, "--certname", "-c"),
+    key: Optional[str] = typer.Option(None, "--key", "-k"),
+    value: Optional[str] = typer.Option(None, "--value", "-v"),
+    all_certs: bool = typer.Option(False, "--all"),
+    summary_only: bool = typer.Option(False, "--summary"),
+    json_output: bool = typer.Option(False, "--json", "-j"),
+):
+    """Alias for ``ovox certs trusted-facts``."""
+    trusted_facts(
+        ctx,
+        certname=certname,
+        key=key,
+        value=value,
+        all_certs=all_certs,
+        summary_only=summary_only,
+        json_output=json_output,
+    )

@@ -164,6 +164,7 @@ Edit your configuration files directly:
 ### 🔐 Certificate Management
 Manage server certificates (like ID cards for servers):
 - View all certificates and their status
+- Browse **trusted facts** (certificate extension requests such as `pp_role`, `pp_environment`) from signed PEMs — also available via `ovox certs trusted-facts`
 - Sign new certificates to allow servers to connect
 - Revoke certificates for decommissioned servers
 - See certificate details and expiration dates
@@ -436,7 +437,7 @@ A full PE-style agent bootstrap workflow for OpenVox:
 - **One-line install on Windows** -- equivalent PowerShell snippet that downloads `install.ps1` and passes the puppetserver FQDN extracted from the URL via `[System.Uri]$url.Host`.
 - **Local OpenVox package mirror** under `/opt/openvox-pkgs/` populated from yum.voxpupuli.org, apt.voxpupuli.org, and downloads.voxpupuli.org. Layout: `yum/`, `apt/`, `windows/`, `mac/` -- one tree per upstream source, mirroring the upstream structure 1:1.
 - **PuppetServer mounts `/packages/*` on port 8140** -- the standard puppetserver port that existing firewall rules already permit. Agents reach the mirror without any new firewall holes. The openvox-gui FastAPI app also serves the same content on its own port (4567) as a fallback.
-- **Top-level "Infrastructure" nav** with three pages: **Certificate Authority** (CA info + signed-cert management), **Orchestration** (Bolt commands/tasks/plans), **Agent Install** (install commands + mirror status + pending CSR signing).
+- **Top-level "Infrastructure" nav** with three pages: **Certificate Authority** (CA info + **Trusted Facts** from signed-cert extension requests + signed-cert management), **Orchestration** (Bolt commands/tasks/plans), **Agent Install** (install commands + mirror status + pending CSR signing). CLI: `ovox certs trusted-facts`.
 - **Agent Install page** is one tabbed Card (Linux | Windows | Direct URLs | Mirror Status | Sync Log) plus a Pending Certificate Requests card -- the whole agent bring-up workflow in one place: paste install command -> wait for CSR to appear -> click Sign -> done.
 - **Nightly auto-sync** via systemd timer (02:30 + randomised delay). Both `install.sh` (fresh install) and `update_local.sh` (upgrade) offer an interactive "Sync now?" prompt so the mirror is populated before the first agent installs.
 - **Self-configuring agent scripts** -- `install.bash` resolves the puppetserver FQDN from a 4-step chain: `--server` arg / env var → `/proc/net/tcp` + reverse DNS of the curl connection (the "just works" path) → server-side rendered placeholder → existing `puppet.conf`. Permanent puppet CA trust installed into `/etc/pki/ca-trust/source/anchors/` (RHEL) or `/usr/local/share/ca-certificates/` (Debian/Ubuntu) so subsequent `apt-get update` / `dnf upgrade` work without flags.

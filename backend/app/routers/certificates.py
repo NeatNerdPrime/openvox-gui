@@ -377,6 +377,46 @@ async def get_ca_info():
         return {"error": f"Error getting CA information: {str(e)}"}
 
 
+@router.get("/trusted-facts")
+async def list_trusted_facts(
+    certname: Optional[str] = None,
+    key: Optional[str] = None,
+    value: Optional[str] = None,
+    only_with_extensions: bool = True,
+):
+    """Extract Puppet trusted facts (certificate extension requests) from signed PEMs.
+
+    Trusted facts are the values agents requested via ``csr_attributes.yaml``
+    ``extension_requests`` (e.g. ``pp_role``, ``pp_environment``,
+    ``pp_datacenter``). They are baked into the signed certificate and exposed
+    to catalog compilation as ``$trusted['extensions']``.
+
+    This endpoint scans ``/etc/puppetlabs/puppet/ssl/ca/signed/*.pem``, maps
+    known Puppet OIDs (plus any ``custom_trusted_oid_mapping.yaml``) to short
+    names, and returns a per-node extension map plus a fleet-wide value summary.
+
+    Query parameters:
+      - certname: exact certname filter
+      - key: extension shortname filter (e.g. pp_role)
+      - value: extension value filter (case-insensitive exact match)
+      - only_with_extensions: if true (default), omit certs with no Puppet extensions
+    """
+    if certname:
+        # Reuse the same allowlist used for path-sensitive cert operations
+        certname = _validate_certname(certname)
+    try:
+        return await certificates_service.get_trusted_facts(
+            use_cache=True,
+            certname=certname,
+            key=key,
+            value=value,
+            only_with_extensions=only_with_extensions,
+        )
+    except Exception as e:
+        logger.error("Error listing trusted facts: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to extract trusted facts: {e}")
+
+
 @router.get("/info/{certname}")
 async def certificate_info(certname: str):
     """Get detailed x509 information about a specific signed certificate.

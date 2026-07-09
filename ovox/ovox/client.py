@@ -315,6 +315,29 @@ class OvoxClient:
                 [c for c in all_certs if "requested" in str(c.get("raw", "")).lower()]
         return [_normalize_cert_entry(c, status="requested") for c in items]
 
+    def get_trusted_facts(
+        self,
+        *,
+        certname: Optional[str] = None,
+        key: Optional[str] = None,
+        value: Optional[str] = None,
+        only_with_extensions: bool = True,
+    ) -> Dict[str, Any]:
+        """Return Puppet trusted facts (certificate extension requests) from signed PEMs.
+
+        Maps to GET /api/certificates/trusted-facts.
+        """
+        params: Dict[str, Any] = {
+            "only_with_extensions": str(only_with_extensions).lower(),
+        }
+        if certname:
+            params["certname"] = certname
+        if key:
+            params["key"] = key
+        if value is not None and value != "":
+            params["value"] = value
+        return self.get("/api/certificates/trusted-facts", params=params)  # type: ignore[return-value]
+
     def sign_certificate(self, certname: str) -> Dict[str, Any]:
         """Sign a pending CSR. Backend expects JSON body { "certname": "..." }."""
         return self.post("/api/certificates/sign", json={"certname": certname})

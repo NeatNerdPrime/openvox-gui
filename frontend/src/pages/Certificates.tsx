@@ -1,24 +1,41 @@
 /**
  * OpenVox GUI - Certificates.tsx
- * 
- * Component documentation to be expanded.
+ *
+ * Infrastructure | Certificate Authority
+ * - CA health / expiry summary
+ * - Trusted Facts (certificate extension requests → $trusted['extensions'])
+ * - Signed certificate list (revoke / clean / detail)
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Title, Card, Stack, Group, Text, Button, Alert, Loader, Center,
   Table, Badge, Code, Modal, ActionIcon, Tooltip, ScrollArea, Grid,
-  ThemeIcon,
+  ThemeIcon, TextInput, Switch, Select,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconCertificate, IconX, IconTrash, IconRefresh, IconInfoCircle,
   IconShield, IconClock, IconKey, IconFingerprint, IconCalendar,
+  IconLock, IconSearch,
 } from '@tabler/icons-react';
 import { certificates } from '../services/api';
 import { useAppTheme } from '../hooks/ThemeContext';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { LoadingState, ErrorState } from '../components/StateComponents';
+
+/** Prefer these columns when present; remaining keys follow alphabetically. */
+const PREFERRED_TRUSTED_COLUMNS = [
+  'pp_role',
+  'pp_environment',
+  'pp_datacenter',
+  'pp_zone',
+  'pp_region',
+  'pp_application',
+  'pp_apptier',
+  'pp_cluster',
+  'pp_provisioner',
+];
 
 /* ═══════════════════════════════════════════════════════════════
    CERT-O-STAMP 3000 — the certificate stamping machine
@@ -129,6 +146,9 @@ export function CertificatesPage() {
   const { isRobots } = useAppTheme();
   const [data, setData] = useState<any>(null);
   const [caInfo, setCaInfo] = useState<any>(null);
+  const [trustedFacts, setTrustedFacts] = useState<any>(null);
+  const [trustedError, setTrustedError] = useState<string | null>(null);
+  const [trustedLoading, setTrustedLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -136,15 +156,33 @@ export function CertificatesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<null | { type: 'revoke' | 'clean'; certname: string }>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  // Client-side filters for the Trusted Facts pane (server already returns the fleet scan)
+  const [tfSearch, setTfSearch] = useState('');
+  const [tfKey, setTfKey] = useState<string | null>(null);
+  const [tfShowAll, setTfShowAll] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadTrustedFacts = useCallback(async () => {
+    setTrustedLoading(true);
+    setTrustedError(null);
+    try {
+      const tfData = await certificates.trustedFacts({
+        only_with_extensions: !tfShowAll,
+      });
+      setTrustedFacts(tfData);
+    } catch (e: any) {
+      setTrustedError(e?.message || 'Failed to load trusted facts');
+      setTrustedFacts(null);
+    }
+    setTrustedLoading(false);
+  }, [tfShowAll]);
+
+  const loadCore = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch both certificates list and CA info in parallel
       const [certData, caData] = await Promise.all([
         certificates.list(),
-        certificates.caInfo()
+        certificates.caInfo(),
       ]);
       setData(certData);
       setCaInfo(caData.ca_info || null);
@@ -156,7 +194,36 @@ export function CertificatesPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  /** Full page refresh (CA list + info + trusted facts). */
+  const load = useCallback(async () => {
+    await Promise.all([loadCore(), loadTrustedFacts()]);
+  }, [loadCore, loadTrustedFacts]);
+
+  useEffect(() => { loadCore(); }, [loadCore]);
+  // Re-fetch trusted facts when the show-all toggle changes (no full-page spinner)
+  useEffect(() => { loadTrustedFacts(); }, [loadTrustedFacts]);
+
+  const trustedColumns = useMemo(() => {
+    const keys: string[] = trustedFacts?.extension_keys || [];
+    const preferred = PREFERRED_TRUSTED_COLUMNS.filter((k) => keys.includes(k));
+    const rest = keys.filter((k) => !PREFERRED_TRUSTED_COLUMNS.includes(k)).sort();
+    return [...preferred, ...rest];
+  }, [trustedFacts]);
+
+  const filteredTrustedNodes = useMemo(() => {
+    const nodes: any[] = trustedFacts?.nodes || [];
+    const q = tfSearch.trim().toLowerCase();
+    return nodes.filter((n) => {
+      const cn = (n.certname || '').toLowerCase();
+      const exts = n.extensions || {};
+      if (tfKey && !(tfKey in exts)) return false;
+      if (!q) return true;
+      if (cn.includes(q)) return true;
+      return Object.entries(exts).some(
+        ([k, v]) => k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q),
+      );
+    });
+  }, [trustedFacts, tfSearch, tfKey]);
 
   // NB: Pending-CSR signing UI lives on the Agent Install page now
   // (3.3.5-20+). This page only handles already-signed certs:
@@ -369,6 +436,178 @@ export function CertificatesPage() {
           )}
         </Card>
       )}
+
+      {/* Trusted Facts — certificate extension requests (pp_role, etc.) */}
+      <Card withBorder shadow="sm" padding="md" style={{ overflow: 'hidden' }}>
+        <Group justify="space-between" mb="md" wrap="wrap">
+          <Group>
+            <ThemeIcon size="lg" variant="light" color="blue">
+              <IconLock size={20} />
+            </ThemeIcon>
+            <div>
+              <Title order={4}>Trusted Facts</Title>
+              <Text size="xs" c="dimmed">
+                Certificate extension requests baked into signed PEMs
+                (catalog: <Code>$trusted['extensions']</Code>)
+              </Text>
+            </div>
+          </Group>
+          {trustedFacts && (
+            <Group gap="xs">
+              <Badge color="blue" variant="light">
+                {trustedFacts.with_extensions ?? 0} with extensions
+              </Badge>
+              <Badge color="gray" variant="light">
+                {trustedFacts.without_extensions ?? 0} without
+              </Badge>
+              <Badge color="gray" variant="outline">
+                {trustedFacts.total_signed ?? 0} signed
+              </Badge>
+            </Group>
+          )}
+        </Group>
+
+        {trustedLoading && !trustedFacts && (
+          <Center py="md"><Loader size="sm" /></Center>
+        )}
+
+        {trustedError && (
+          <Alert color="yellow" mb="md" title="Trusted facts unavailable">
+            {trustedError}
+          </Alert>
+        )}
+
+        {!trustedError && trustedFacts && (
+          <>
+            <Text size="sm" c="dimmed" mb="sm">
+              These values come from agent <Code>csr_attributes.yaml</Code> extension
+              requests (or installer <Code>extension_requests:…</Code> options) and are
+              signed into the certificate — agents cannot change them after signing.
+              CLI: <Code>ovox certs trusted-facts</Code>
+            </Text>
+
+            {/* Fleet summary of unique values per key */}
+            {trustedFacts.summary && Object.keys(trustedFacts.summary).length > 0 && (
+              <Stack gap="xs" mb="md">
+                <Text size="sm" fw={500}>Fleet summary</Text>
+                <Group gap="sm" align="flex-start">
+                  {Object.entries(trustedFacts.summary as Record<string, Record<string, number>>)
+                    .slice(0, 8)
+                    .map(([k, counts]) => (
+                      <Card key={k} withBorder padding="xs" radius="sm" style={{ minWidth: 140 }}>
+                        <Text size="xs" c="dimmed" mb={4}>{k}</Text>
+                        <Stack gap={2}>
+                          {Object.entries(counts).slice(0, 5).map(([val, n]) => (
+                            <Group key={val} gap={6} justify="space-between">
+                              <Code style={{ fontSize: 11 }}>{val || '(empty)'}</Code>
+                              <Badge size="xs" variant="light">{n}</Badge>
+                            </Group>
+                          ))}
+                          {Object.keys(counts).length > 5 && (
+                            <Text size="xs" c="dimmed">+{Object.keys(counts).length - 5} more</Text>
+                          )}
+                        </Stack>
+                      </Card>
+                    ))}
+                </Group>
+              </Stack>
+            )}
+
+            <Group mb="sm" wrap="wrap" align="flex-end">
+              <TextInput
+                placeholder="Filter by certname or value…"
+                leftSection={<IconSearch size={14} />}
+                value={tfSearch}
+                onChange={(e) => setTfSearch(e.currentTarget.value)}
+                style={{ minWidth: 240, flex: 1 }}
+                size="sm"
+              />
+              <Select
+                placeholder="Extension key"
+                clearable
+                searchable
+                data={(trustedFacts.extension_keys || []).map((k: string) => ({ value: k, label: k }))}
+                value={tfKey}
+                onChange={setTfKey}
+                size="sm"
+                style={{ minWidth: 180 }}
+              />
+              <Switch
+                label="Show certs without extensions"
+                checked={tfShowAll}
+                onChange={(e) => setTfShowAll(e.currentTarget.checked)}
+                size="sm"
+              />
+            </Group>
+
+            <ScrollArea h={Math.min(420, 80 + filteredTrustedNodes.length * 40)} type="auto" offsetScrollbars scrollbarSize={6}>
+              <Table striped highlightOnHover withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Certname</Table.Th>
+                    {trustedColumns.map((col) => (
+                      <Table.Th key={col}><Code style={{ fontSize: 11 }}>{col}</Code></Table.Th>
+                    ))}
+                    {trustedColumns.length === 0 && (
+                      <Table.Th>Extensions</Table.Th>
+                    )}
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {filteredTrustedNodes.map((node: any) => {
+                    const exts = node.extensions || {};
+                    const hasAny = Object.keys(exts).length > 0;
+                    return (
+                      <Table.Tr key={node.certname}>
+                        <Table.Td>
+                          <Text
+                            fw={500}
+                            c="blue"
+                            style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                            onClick={() => navigate(`/nodes/${node.certname}`)}
+                          >
+                            {node.certname}
+                          </Text>
+                        </Table.Td>
+                        {trustedColumns.length > 0 ? (
+                          trustedColumns.map((col) => (
+                            <Table.Td key={col}>
+                              {exts[col] != null && exts[col] !== '' ? (
+                                <Code style={{ fontSize: 11 }}>{String(exts[col])}</Code>
+                              ) : (
+                                <Text size="xs" c="dimmed">—</Text>
+                              )}
+                            </Table.Td>
+                          ))
+                        ) : (
+                          <Table.Td>
+                            {hasAny ? (
+                              <Code style={{ fontSize: 11 }}>{JSON.stringify(exts)}</Code>
+                            ) : (
+                              <Text size="xs" c="dimmed">none</Text>
+                            )}
+                          </Table.Td>
+                        )}
+                      </Table.Tr>
+                    );
+                  })}
+                  {filteredTrustedNodes.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={Math.max(2, trustedColumns.length + 1)}>
+                        <Text c="dimmed" ta="center" py="lg">
+                          {tfShowAll
+                            ? 'No signed certificates match the current filters.'
+                            : 'No trusted facts found on signed certificates. Agents only get these when CSR extension_requests (e.g. pp_role) are set before signing.'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </ScrollArea>
+          </>
+        )}
+      </Card>
 
       {/* Casual illustration */}
       {isRobots && (

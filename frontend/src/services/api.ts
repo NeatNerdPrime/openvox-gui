@@ -411,6 +411,24 @@ export const pql = {
 export const certificates = {
   list: () => fetchJSON<any>('/certificates/list'),
   caInfo: () => fetchJSON<any>('/certificates/ca-info'),
+  /**
+   * Trusted facts = Puppet certificate extension requests (pp_role, etc.)
+   * baked into signed PEMs. See GET /api/certificates/trusted-facts.
+   */
+  trustedFacts: (opts?: {
+    certname?: string;
+    key?: string;
+    value?: string;
+    only_with_extensions?: boolean;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts?.certname) params.set('certname', opts.certname);
+    if (opts?.key) params.set('key', opts.key);
+    if (opts?.value) params.set('value', opts.value);
+    if (opts?.only_with_extensions === false) params.set('only_with_extensions', 'false');
+    const qs = params.toString();
+    return fetchJSON<any>('/certificates/trusted-facts' + (qs ? `?${qs}` : ''));
+  },
   sign: (certname: string) =>
     fetchJSON<any>('/certificates/sign', {
       method: 'POST',

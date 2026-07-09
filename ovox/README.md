@@ -79,6 +79,12 @@ ovox certs list --pending
 ovox certs sign web01.example.com
 ovox certs revoke oldbox.example.com --clean
 
+# Trusted facts (certificate extension requests → $trusted['extensions'])
+ovox certs trusted-facts
+ovox certs trusted-facts --key pp_role
+ovox certs trusted-facts -k pp_role -v webserver
+ovox certs trusted-facts --certname web01.example.com --json
+
 # Code deployment
 ovox deploy run --environment production
 
