@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.11] - 2026-07-20 (dev — r10k wrapper resolves working binary after AIO Ruby bumps)
+
+### Fixed
+- **`r10k-deploy.sh`**: no longer hard-codes only
+  `/opt/puppetlabs/puppet/bin/r10k`. After Puppet AIO Ruby major upgrades
+  (e.g. 3.2 → 4.0) the binstub can outlive the gem install path and fail with
+  `can't find gem r10k (>= 0.a)`. The wrapper now probes known paths, smoke-tests
+  `r10k version`, and prints a clear reinstall hint if none work.
+
 ## [3.10.7-dev.10] - 2026-07-20 (dev — Code Deployment requiretty permanent fix)
 
 ### Fixed

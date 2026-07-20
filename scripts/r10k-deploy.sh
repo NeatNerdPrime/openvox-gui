@@ -89,5 +89,39 @@ for arg in "$@"; do
     fi
 done
 
+# ─── Locate a working r10k binary ─────────────────────────────
+# After Puppet agent / AIO Ruby major bumps (e.g. 3.2 → 4.0), the
+# gem binstub at /opt/puppetlabs/puppet/bin/r10k can remain while the
+# r10k gem is still only installed under the old RubyGems path, which
+# produces: can't find gem r10k (>= 0.a). Prefer an executable that
+# actually runs, then fall back to the canonical AIO path.
+_resolve_r10k() {
+    local candidate
+    for candidate in \
+        /opt/puppetlabs/puppet/bin/r10k \
+        /usr/bin/r10k \
+        /opt/puppetlabs/bin/r10k \
+        "$(command -v r10k 2>/dev/null || true)"
+    do
+        [ -n "$candidate" ] || continue
+        [ -x "$candidate" ] || continue
+        # Smoke-check: must be able to print a version without GemNotFound.
+        if "$candidate" version >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+R10K_BIN="$(_resolve_r10k || true)"
+if [ -z "$R10K_BIN" ]; then
+    echo "r10k-deploy.sh: no working r10k found." >&2
+    echo "r10k-deploy.sh: reinstall for the current AIO Ruby, e.g.:" >&2
+    echo "  sudo /opt/puppetlabs/puppet/bin/gem install r10k --no-document" >&2
+    exit 127
+fi
+echo "r10k-deploy.sh: using $R10K_BIN ($("$R10K_BIN" version 2>/dev/null | head -1))" >&2
+
 # ─── Execute r10k ─────────────────────────────────────────────
-exec /opt/puppetlabs/puppet/bin/r10k deploy environment "$@"
+exec "$R10K_BIN" deploy environment "$@"
