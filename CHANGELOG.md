@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.10] - 2026-07-20 (dev — Code Deployment requiretty permanent fix)
+
+### Fixed
+- **Code Deployment (`Classification & Code | Code Deployment`)** no longer fails with
+  `sudo: sorry, you must have a tty to run sudo` under systemd + enterprise
+  `Defaults requiretty`.
+  - Root cause: `/api/deploy/run` and the deploy webhook still used bare
+    `subprocess.run(["sudo", "…/r10k-deploy.sh", …])`, while CA, Bolt, Logs,
+    and Config already went through PTY-aware `run_sudo`. Fixing other pages
+    (or re-applying `!requiretty` in sudoers) never covered this path — so the
+    error kept returning on r10k deploys from the UI.
+  - Both UI deploy and webhook now call `_run_r10k_deploy` → `run_sudo`.
+- **`run_sudo` hardened again** for long-term requiretty resilience:
+  - Prefer util-linux `script -q -e -c … /dev/null` when present (`-e` preserves
+    the child exit code so r10k failures are not reported as success).
+  - Fall back to manual PTY + session + `TIOCSCTTY` if `script` is missing.
+  - Tolerate double-`setsid` when `start_new_session=True` is also set.
+
+### Docs
+- TROUBLESHOOTING: Code Deployment requiretty section with sudoers + `run_sudo`
+  dual-layer guidance and verification commands.
+
 ## [3.10.7-dev.9] - 2026-07-09 (dev — Trusted Facts pane + ovox certs trusted-facts)
 
 ### Added

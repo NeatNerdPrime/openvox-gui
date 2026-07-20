@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.10.7-dev.9**
+**OpenVox GUI Version 3.10.7-dev.10**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.10.7-dev.9"}
+   # Should return: {"status":"ok","version":"3.10.7-dev.10"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -575,27 +575,60 @@ To use a real certificate, see the Configuration documentation.
 
 **Solutions:**
 
-1. **Check r10k configuration:**
+1. **`sudo: sorry, you must have a tty to run sudo`**
+
+   The GUI service runs under systemd with no real TTY. Enterprise
+   `Defaults requiretty` rejects bare `sudo` from that context.
+
+   OpenVox GUI defends against this in two layers:
+
+   - **Sudoers**: `Defaults:puppet !requiretty` in
+     `/etc/sudoers.d/openvox-gui-users` (written by
+     `scripts/ensure-sudoers.sh` on install/update/deploy).
+   - **Code path**: Code Deployment and the deploy webhook run r10k
+     through `run_sudo` (util-linux `script` + PTY fallback), same as
+     CA/Bolt/config reads — **not** bare `subprocess` sudo.
+
+   Quick checks:
+
+   ```bash
+   # Service user must be exempt from requiretty
+   sudo grep -E 'requiretty|r10k-deploy' /etc/sudoers.d/openvox-gui-users
+
+   # Re-apply canonical sudoers if the Defaults line is missing
+   sudo /opt/openvox-gui/scripts/ensure-sudoers.sh
+
+   # Confirm as the service user (no TTY simulation)
+   sudo -u puppet sudo -n /opt/openvox-gui/scripts/r10k-deploy.sh -pv
+   ```
+
+   If the GUI was updated before 3.10.7-dev.10 and only other pages
+   were fixed, redeploy so `backend/app/routers/deploy.py` uses
+   `run_sudo` for r10k.
+
+2. **Check r10k configuration:**
 
    ```bash
    sudo r10k deploy display
    ```
 
-2. **Verify Git access:**
+3. **Verify Git access:**
 
    ```bash
    # Test Git repository access
    git ls-remote https://your-git-repo.com/control-repo.git
    ```
 
-3. **Check sudo permissions:**
+4. **Check sudo permissions:**
 
    ```bash
    grep r10k /etc/sudoers.d/openvox-gui-users
    ```
 
-4. **Run r10k manually to see errors:**
+5. **Run r10k manually to see errors:**
    ```bash
+   sudo /opt/openvox-gui/scripts/r10k-deploy.sh -pv
+   # or:
    sudo r10k deploy environment -pv
    ```
 

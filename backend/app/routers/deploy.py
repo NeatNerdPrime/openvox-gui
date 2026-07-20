@@ -2,11 +2,7 @@
 Code Deployment API - Interface with r10k for Puppet code deployment.
 """
 import subprocess
-import asyncio
 import logging
-import json
-import os
-import tempfile
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import PlainTextResponse
@@ -15,9 +11,14 @@ from typing import Optional, List
 
 from ..middleware.security import rate_limit_heavy, concurrency_heavy
 from ..dependencies import require_role
+from ..utils.sudo import run_sudo
 
 router = APIRouter(prefix="/api/deploy", tags=["deploy"])
 logger = logging.getLogger(__name__)
+
+# r10k can take several minutes on large Puppetfiles; keep this aligned with the UI.
+R10K_DEPLOY_TIMEOUT = 300
+R10K_DEPLOY_SCRIPT = "/opt/openvox-gui/scripts/r10k-deploy.sh"
 
 
 class DeployRequest(BaseModel):
@@ -25,7 +26,12 @@ class DeployRequest(BaseModel):
 
 
 def _run_command(cmd: List[str], timeout: int = 300) -> dict:
-    """Run a shell command and return output."""
+    """Run a non-privileged shell command (e.g. git status reads) and return output.
+
+    Do **not** use this for ``sudo`` / r10k. Privileged deploy paths must go
+    through ``_run_r10k_deploy`` → ``run_sudo`` so requiretty is satisfied under
+    systemd (see backend/app/utils/sudo.py).
+    """
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout
@@ -44,14 +50,45 @@ def _run_command(cmd: List[str], timeout: int = 300) -> dict:
             "success": False,
         }
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error("deploy _run_command failed: %s", e, exc_info=True)
+        logger.error("deploy _run_command failed: %s", e, exc_info=True)
         return {
             "exit_code": -1,
             "stdout": "",
             "stderr": str(e),
             "success": False,
         }
+
+
+def _r10k_cmd(environment: Optional[str] = None) -> List[str]:
+    """Build the exact argv allowed by sudoers for r10k-deploy.sh."""
+    cmd = ["sudo", R10K_DEPLOY_SCRIPT]
+    if environment:
+        cmd.append(environment)
+    cmd.extend(["-pv"])
+    return cmd
+
+
+async def _run_r10k_deploy(environment: Optional[str] = None, timeout: int = R10K_DEPLOY_TIMEOUT) -> dict:
+    """Run r10k via run_sudo (PTY/script) so Code Deployment works under requiretty.
+
+    Historically this path used bare ``subprocess.run(["sudo", ...])``, which
+    fails with ``sudo: sorry, you must have a tty to run sudo`` whenever the
+    service has no TTY and ``Defaults requiretty`` is in effect — even when
+    other GUI pages worked because they already used ``run_sudo``.
+    """
+    cmd = _r10k_cmd(environment)
+    result = await run_sudo(cmd, timeout=timeout)
+    rc = result.get("returncode", -1)
+    try:
+        exit_code = int(rc) if rc is not None else -1
+    except (TypeError, ValueError):
+        exit_code = -1
+    return {
+        "exit_code": exit_code,
+        "stdout": result.get("stdout") or "",
+        "stderr": result.get("stderr") or "",
+        "success": exit_code == 0,
+    }
 
 
 @router.get("/environments")
@@ -254,13 +291,10 @@ async def webhook_deploy(request: Request):
 
     # Trigger r10k deploy for the pushed branch (or all environments
     # if the ref couldn't be determined / is the default 'main').
-    cmd = ["sudo", "/opt/openvox-gui/scripts/r10k-deploy.sh"]
-    if branch and branch not in ("", "main"):
-        cmd.append(branch)
-    cmd.extend(["-pv"])
-
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, lambda: _run_command(cmd, timeout=300))
+    # Must use run_sudo (via _run_r10k_deploy) — bare subprocess sudo fails
+    # under systemd when requiretty is set.
+    env_name = branch if branch and branch not in ("", "main") else None
+    result = await _run_r10k_deploy(environment=env_name, timeout=R10K_DEPLOY_TIMEOUT)
 
     from ..utils.audit import audit_event
     from ..services import deploy_history as deploy_hist
@@ -321,15 +355,15 @@ async def run_deployment(
     username = current_user or "anonymous"
 
     try:
-        cmd = ["sudo", "/opt/openvox-gui/scripts/r10k-deploy.sh"]
-        if deploy.environment:
-            cmd.append(deploy.environment)
-        cmd.extend(["-pv"])
+        cmd = _r10k_cmd(deploy.environment)
+        logger.info("User '%s' triggered r10k deployment: %s", username, " ".join(cmd))
 
-        logger.info(f"User '{username}' triggered r10k deployment: {' '.join(cmd)}")
-
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: _run_command(cmd, timeout=300))
+        # PTY-aware sudo runner — Code Deployment used to call bare subprocess
+        # and hit "must have a tty to run sudo" on RHEL requiretty systems.
+        result = await _run_r10k_deploy(
+            environment=deploy.environment,
+            timeout=R10K_DEPLOY_TIMEOUT,
+        )
 
         from ..utils.audit import audit_event
         from ..services import deploy_history as deploy_hist
