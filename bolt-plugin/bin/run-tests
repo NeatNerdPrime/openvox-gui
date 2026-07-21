@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Run openvox_enc Bolt plugin unit tests (no Bundler required).
+#
+# Usage (from repo root or bolt-plugin/):
+#   bolt-plugin/bin/run-tests
+#   bolt-plugin/bin/run-tests --ruby /opt/puppetlabs/puppet/bin/ruby
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RUBY_BIN="${RUBY_BIN:-ruby}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ruby)
+      RUBY_BIN="$2"
+      shift 2
+      ;;
+    -h|--help)
+      sed -n '2,12p' "$0"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if ! command -v "$RUBY_BIN" >/dev/null 2>&1 && [[ ! -x "$RUBY_BIN" ]]; then
+  echo "Ruby not found: $RUBY_BIN" >&2
+  echo "Install Ruby or pass --ruby /path/to/ruby" >&2
+  exit 127
+fi
+
+echo "Using Ruby: $("$RUBY_BIN" --version)"
+echo "Plugin root: $PLUGIN_ROOT"
+echo
+
+failed=0
+for test_file in "$PLUGIN_ROOT"/spec/*_test.rb; do
+  echo "── $(basename "$test_file") ──"
+  if ! "$RUBY_BIN" "$test_file"; then
+    failed=1
+  fi
+  echo
+done
+
+# Optional: exercise the thin task CLI with a fake HTTP client is covered in
+# inventory_test via OpenvoxEnc::Inventory.resolve. Smoke-check the task loads.
+echo "── task load smoke ──"
+if "$RUBY_BIN" -e "
+  \$LOAD_PATH.unshift('${PLUGIN_ROOT}/openvox_enc/lib')
+  require '${PLUGIN_ROOT}/openvox_enc/lib/openvox_enc/inventory'
+  raise 'missing resolve' unless OpenvoxEnc::Inventory.respond_to?(:resolve)
+  puts '  OK  task library loads'
+"; then
+  :
+else
+  failed=1
+fi
+
+echo
+if [[ "$failed" -eq 0 ]]; then
+  echo "bolt-plugin: all tests passed."
+  exit 0
+else
+  echo "bolt-plugin: one or more tests failed." >&2
+  exit 1
+fi

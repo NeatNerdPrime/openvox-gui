@@ -1,0 +1,25 @@
+{
+  "groups": [
+    {
+      "name": "webservers",
+      "targets": ["web1.example.com", "web2.example.com"]
+    },
+    {
+      "name": "dbservers",
+      "targets": ["db1.example.com", "web1.example.com"]
+    },
+    {
+      "name": "puppetdb_dynamic",
+      "targets": [
+        {
+          "_plugin": "puppetdb",
+          "query": "nodes[certname] {}"
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "targets": []
+    }
+  ]
+}

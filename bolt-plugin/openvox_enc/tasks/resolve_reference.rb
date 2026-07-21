@@ -4,150 +4,17 @@
 ###############################################################################
 # OpenVox ENC Bolt Inventory Plugin — resolve_reference task
 #
-# Queries the OpenVox GUI API to dynamically resolve Bolt inventory
-# targets from the ENC (External Node Classifier) database.
-#
-# When Bolt encounters '_plugin: openvox_enc' in inventory.yaml, it
-# calls this task. The task hits the /api/enc/inventory/bolt endpoint,
-# which returns all classified nodes organized by ENC group. The task
-# transforms that into the array of target hashes that Bolt expects.
-#
-# This eliminates manual inventory.yaml maintenance — nodes and groups
-# are managed in the GUI's Node Classifier, and Bolt reads them live.
+# Thin Bolt task entrypoint. All logic lives in
+# openvox_enc/lib/openvox_enc/inventory.rb so it can be unit-tested without
+# Bolt. When inventory.yaml has `_plugin: openvox_enc`, Bolt invokes this
+# task with JSON on stdin and expects JSON on stdout.
 ###############################################################################
 
 require 'json'
-require 'net/http'
-require 'uri'
-require 'openssl'
+require_relative '../lib/openvox_enc/inventory'
 
 params = JSON.parse($stdin.read)
+outcome = OpenvoxEnc::Inventory.resolve(params)
 
-api_url         = params['api_url'] || 'https://localhost:4567'
-group_filter    = params['group']
-transport       = params['transport'] || 'ssh'
-ssl_verify      = params.fetch('ssl_verify', false)
-api_token       = params['api_token']
-token_file      = params['token_file'] || '/etc/puppetlabs/bolt/.bolt_token'
-user            = params['user'] || 'bolt'  # SSH user for targets; defaults to 'bolt' to match inventory config and GUI expectations (whoami returns 'bolt' by default)
-
-# Run-as settings.
-# - For remote targets: default none (run as the SSH 'user' from inventory, i.e. 'bolt').
-#   Escalation only when GUI sends run_as or prefixes "sudo " in command.
-# - For the controller itself (detected via puppet certname/hostname): always use
-#   transport: local + run-as: <user> so default GUI commands run as 'bolt' user
-#   (whoami returns bolt). This matches the SSH targets and the documented
-#   Orchestration default.
-#
-# The plugin does NOT force global run-as. Escalation is per-invocation.
-run_as          = params['run_as']
-run_as_command  = params['run_as_command']
-
-# Support reading token from a file (preferred for the local bolt user)
-if (api_token.nil? || api_token.empty?) && File.exist?(token_file)
-  begin
-    api_token = File.read(token_file).strip
-  rescue => e
-    # If we can't read the token file, continue without it (will likely 401)
-  end
-end
-
-# ─── Query the OpenVox GUI API ────────────────────────────────
-
-uri = URI.parse("#{api_url}/api/enc/inventory/bolt")
-
-http = Net::HTTP.new(uri.host, uri.port)
-if uri.scheme == 'https'
-  http.use_ssl = true
-  http.verify_mode = ssl_verify ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE
-end
-
-begin
-  request = Net::HTTP::Get.new(uri.request_uri)
-  request['Accept'] = 'application/json'
-  if api_token && !api_token.empty?
-    request['Authorization'] = "Bearer #{api_token}"
-  end
-  response = http.request(request)
-
-  unless response.code.to_i == 200
-    raise "API returned HTTP #{response.code}: #{response.body}"
-  end
-
-  inventory = JSON.parse(response.body)
-rescue StandardError => e
-  # Return error in Bolt's expected format
-  result = { '_error' => {
-    'msg'     => "Failed to query OpenVox GUI ENC API: #{e.message}",
-    'kind'    => 'openvox_enc/api_error',
-    'details' => { 'api_url' => api_url },
-  } }
-  puts result.to_json
-  exit 1
-end
-
-# ─── Build Bolt target list from ENC groups ───────────────────
-
-targets = []
-seen = {}
-
-groups = inventory['groups'] || []
-
-groups.each do |grp|
-  grp_name = grp['name']
-
-  # Skip PuppetDB plugin groups (Bolt handles those natively)
-  next if grp['targets'].is_a?(Array) && grp['targets'].any? { |t| t.is_a?(Hash) && t.key?('_plugin') }
-
-  # If a group filter is specified, only include matching groups
-  next if group_filter && grp_name != group_filter
-
-  grp_targets = grp['targets'] || []
-  grp_targets.each do |certname|
-    next if certname.is_a?(Hash) # Skip plugin references
-    next if seen[certname]       # Deduplicate across groups
-
-    seen[certname] = true
-    target = {
-      'uri'  => certname,
-      'name' => certname,
-      'config' => {
-        'transport' => transport,
-        transport   => { 'host-key-check' => false },
-      },
-      'vars' => {
-        'enc_groups' => [],
-      },
-    }
-
-    # Only inject run-as settings if the inventory _plugin stanza explicitly
-    # supplied them. By default we do *not* force escalation — the SSH user
-    # (bolt) runs commands as itself unless the operator or GUI requests sudo.
-    # This keeps direct CLI `bolt command run` / `bolt task run` (as the bolt
-    # shell user) and GUI Orchestration defaults producing identical results
-    # (e.g. whoami returns "bolt" from both when no escalation is requested).
-    if run_as && !run_as.to_s.empty?
-      target['config'][transport] ||= {}
-      target['config'][transport]['run-as'] = run_as
-    end
-
-    if run_as_command && run_as_command.is_a?(Array) && !run_as_command.empty?
-      target['config'][transport] ||= {}
-      target['config'][transport]['run-as-command'] = run_as_command
-    end
-
-    # Collect all groups this node belongs to
-    groups.each do |g|
-      ts = g['targets'] || []
-      if ts.include?(certname)
-        target['vars']['enc_groups'] << g['name']
-      end
-    end
-
-    targets << target
-  end
-end
-
-# ─── Return targets to Bolt ──────────────────────────────────
-
-puts({ 'value' => targets }.to_json)
+puts outcome[:payload].to_json
+exit outcome[:exit_code]

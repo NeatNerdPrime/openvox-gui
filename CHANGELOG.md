@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.12] - 2026-07-21 (dev — bolt-plugin openvox_enc unit tests)
+
+### Added
+- **`bolt-plugin` unit tests** for the `openvox_enc` inventory plugin (previously untested).
+  - Extracted pure logic to `bolt-plugin/openvox_enc/lib/openvox_enc/inventory.rb`.
+  - Thin task entrypoint: `tasks/resolve_reference.rb` → `OpenvoxEnc::Inventory.resolve`.
+  - Specs under `bolt-plugin/spec/` (token file, group filter, dedupe, run-as, HTTP 401/500,
+    metadata JSON, inventory example).
+  - Runner: `bolt-plugin/bin/run-tests` (no Bundler; works with system or AIO Ruby).
+
 ## [3.10.7-dev.11] - 2026-07-20 (dev — r10k wrapper resolves working binary after AIO Ruby bumps)
 
 ### Fixed

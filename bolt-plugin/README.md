@@ -4,6 +4,49 @@ A Bolt inventory plugin that dynamically reads targets and groups from the
 OpenVox GUI's Node Classifier database. This eliminates manual `inventory.yaml`
 maintenance — manage nodes and groups in the GUI, and Bolt picks them up live.
 
+## Layout
+
+```
+bolt-plugin/
+├── bin/run-tests                 # unit test runner (no Bundler)
+├── inventory.yaml.example        # sample /etc/puppetlabs/bolt/inventory.yaml
+├── openvox_enc/
+│   ├── bolt_plugin.json          # Bolt plugin registration
+│   ├── metadata.json
+│   ├── lib/openvox_enc/inventory.rb   # pure logic (unit-tested)
+│   └── tasks/resolve_reference.rb     # thin Bolt task entrypoint
+└── spec/
+    ├── fixtures/
+    ├── support/fake_http.rb
+    ├── inventory_test.rb
+    └── plugin_metadata_test.rb
+```
+
+Logic lives in `lib/openvox_enc/inventory.rb`. The task file only parses
+stdin JSON, calls `OpenvoxEnc::Inventory.resolve`, prints the payload, and
+exits with the status code.
+
+## Unit tests
+
+Tests ship next to the plugin (not under `backend/tests/`) because the
+implementation is Ruby. They use a small zero-dependency harness so you can
+run them with system Ruby or Puppet AIO Ruby — no Gemfile required.
+
+```bash
+# From the openvox-gui repo root
+bolt-plugin/bin/run-tests
+
+# Prefer Puppet AIO Ruby (closest to production Bolt)
+bolt-plugin/bin/run-tests --ruby /opt/puppetlabs/puppet/bin/ruby
+```
+
+Coverage includes:
+
+- Token resolution (`api_token` vs `token_file`)
+- Target build (dedupe, group filter, nested `_plugin` skip, run-as injection)
+- HTTP 200 / 401 / 500 mapping into Bolt `_error` payloads
+- Plugin metadata / task JSON / inventory example contracts
+
 ## How It Works
 
 1. You classify nodes and assign them to groups in the OpenVox GUI Node Classifier
