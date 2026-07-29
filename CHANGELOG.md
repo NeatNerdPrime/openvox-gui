@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.7-dev.13] - 2026-07-29 (dev — remediate react-router Dependabot alerts)
+
+### Security
+- **Frontend `react-router-dom` 6.30.4 → 7.18.2** to close three open GitHub Dependabot alerts:
+  - GHSA-wrjc-x8rr-h8h6 / #48 — open redirect via backslash in `<Link>` / `useNavigate`
+  - GHSA-337j-9hxr-rhxg / #47 — constructor injection in `deserializeErrors()` SSR hydration
+  - GHSA-jjmj-jmhj-qwj2 / #46 — open redirect leading to XSS (`react-router-dom` 6.30.2–6.30.4)
+- Classic `BrowserRouter` / `Routes` / `Route` usage retained (declarative SPA). No RSC / framework-mode APIs adopted.
+- **Note:** `react-router` 7.18.x still carries GHSA-qwww-vcr4-c8h2 (RSC-mode CSRF). The real patch is 8.3.0, which requires **React ≥ 19.2.7** and drops `react-router-dom` as a separate package. Not taken in this patch — we do not use RSC mode. Track as a follow-up with a React 19 upgrade.
+- **postcss** bumped to ^8.5.25 (GHSA-r28c-9q8g-f849 source-map path traversal).
+- `cookie` npm override aligned to ^1.0.2 for react-router 7.
+
 ## [3.10.7-dev.12] - 2026-07-21 (dev — bolt-plugin openvox_enc unit tests)
 
 ### Added
