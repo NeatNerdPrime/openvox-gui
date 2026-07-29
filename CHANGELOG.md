@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.8-dev.2] - 2026-07-29 (dev — pin starlette + Pillow for published CVEs)
+
+### Security
+- **`starlette==1.3.1`** explicit pin (was an unpinned FastAPI transitive `>=0.46.0`).
+  Closes residual exposure to CVE-2026-54283 / 54282 / 48817 / 48818 / 48710 on any install that resolved &lt; 1.3.1.
+- **`Pillow==12.3.0`** (was `>=10.0`). Closes a large OSV set on 10.x–12.2.x including CVE-2023-50447, CVE-2024-28219, and 2026 heap/DoS advisories through 12.3.0.
+
 ## [3.10.8-dev.1] - 2026-07-29 (dev — React 19 + react-router 8)
 
 ### Security / Dependencies
