@@ -3,7 +3,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, TextInput, ScrollArea, UnstyledButton, Text, Group, Kbd, Stack } from '@mantine/core';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { IconSearch } from '@tabler/icons-react';
 
 export type PaletteAction = {

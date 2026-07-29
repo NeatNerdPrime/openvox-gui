@@ -5,7 +5,7 @@
  * Green = unchanged, Blue = changed, Red = failed, Yellow = noop, Gray = unreported.
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert, Tooltip,
   Paper, ScrollArea, Select,

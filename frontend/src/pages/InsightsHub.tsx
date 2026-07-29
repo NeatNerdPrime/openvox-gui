@@ -3,7 +3,7 @@
  * Primary continuous monitoring lives on MonitoringDashboard (/insights).
  */
 import { Title, Text, SimpleGrid, Card, Stack, ThemeIcon, Group, Badge, Button, Alert } from '@mantine/core';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   IconHeartRateMonitor,
   IconActivity,

@@ -6,7 +6,7 @@
  * badges, resource info, timestamps, and corrective-change drift markers.
  */
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert,
   Select, ScrollArea,

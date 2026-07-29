@@ -10,7 +10,7 @@
  * lookback (Compliance, Run Performance). Server/DB health remain live poll series.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Title, Text, Stack, Group, Card, Badge, Button, MultiSelect,
   Divider, ThemeIcon, Select, NumberInput,

@@ -6,7 +6,7 @@
  * summary stat cards, and expandable per-category node lists.
  */
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert,
   Select, Table, Paper, ScrollArea, Grid, Collapse, ActionIcon, Box, NumberInput,

@@ -7,7 +7,7 @@
  * - Signed certificate list (revoke / clean / detail)
  */
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Title, Card, Stack, Group, Text, Button, Alert, Loader, Center,
   Table, Badge, Code, Modal, ActionIcon, Tooltip, ScrollArea, Grid,

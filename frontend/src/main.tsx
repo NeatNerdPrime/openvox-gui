@@ -19,7 +19,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { MantineProvider, createTheme, MantineColorScheme } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 import { App } from './App';
 import { ThemeProvider, useAppTheme } from './hooks/ThemeContext';
 import '@mantine/core/styles.css';

@@ -4,7 +4,7 @@
  * Component documentation to be expanded.
  */
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Title, Table, Card, Loader, Center, Alert, TextInput, Stack, Group, Text, Grid,
   Select, Badge, Collapse, ActionIcon, ScrollArea, Button, Divider, Switch, Tooltip, Box,

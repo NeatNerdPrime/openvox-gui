@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.8-dev.1] - 2026-07-29 (dev — React 19 + react-router 8)
+
+### Security / Dependencies
+- **React 18.2 → 19.2.8** and **react-dom 19.2.8** (required peer for `react-router` 8.3).
+- **`react-router-dom` 7.18 → `react-router` 8.3.0** (package rename upstream). Closes Dependabot #49 (GHSA-qwww-vcr4-c8h2 RSC CSRF). Imports updated from `react-router-dom` to `react-router`; declarative `BrowserRouter` / `Routes` / `Route` retained.
+- **@mantine/\*** aligned to **7.17.8** (React 18/19 peer range; matches existing dropzone pin).
+- **recharts** 2.10.4 → **2.15.1** (React 19 peer support, stay on v2 API).
+- `npm audit`: **0 vulnerabilities** after upgrade.
+- Note: `react-router@8.3.0` declares `engines.node >= 22.22`. Vite production build still succeeds on Node 20.20; prefer Node 22+ for local/dev installs going forward.
+
 ## [3.10.7-dev.13] - 2026-07-29 (dev — remediate react-router Dependabot alerts)
 
 ### Security
