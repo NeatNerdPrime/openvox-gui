@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.8-dev.4] - 2026-07-30 (dev — fail deploy if frontend dist missing)
+
+### Fixed
+- **`scripts/deploy.sh`**: no longer silently skip or continue without a frontend build.
+  `HOME=/root` for npm under sudo (avoids deployer `.npmrc` prefix errors), require `node`+`npm`, and **exit 1** unless `frontend/dist/index.html` exists. Prevents API-only `{"message":"Frontend not built yet"}` after a “successful” deploy.
+
 ## [3.10.8-dev.3] - 2026-07-30 (dev — fix CSR Reject 500)
 
 ### Fixed

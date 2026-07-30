@@ -253,17 +253,31 @@ fi
 
 # 3. Rebuild frontend (if Node.js is available)
 echo "[3/6] Building frontend..."
-if command -v node &>/dev/null; then
+# npm 10 refuses a user ~/.npmrc prefix when sudo keeps HOME=deployer.
+# Force a clean root home so install/build is deterministic.
+export HOME=/root
+export npm_config_cache=/root/.npm
+unset npm_config_prefix 2>/dev/null || true
+if command -v node &>/dev/null && command -v npm &>/dev/null; then
     cd "${INSTALL_DIR}/frontend"
     npm install
     npm run build
+    if [ ! -f "${INSTALL_DIR}/frontend/dist/index.html" ]; then
+        echo "ERROR: frontend build produced no dist/index.html" >&2
+        exit 1
+    fi
     for logo in openvox-logo.svg openvox-logo-orange.svg; do
         if [ -f "${INSTALL_DIR}/frontend/public/${logo}" ]; then
             cp "${INSTALL_DIR}/frontend/public/${logo}" "${INSTALL_DIR}/frontend/dist/" 2>/dev/null || true
         fi
     done
+    echo "  frontend dist/index.html present"
 else
-    echo "  Node.js not found — skipping frontend build"
+    echo "ERROR: node/npm not found in PATH — refusing to leave API-only GUI" >&2
+    command -v node || true
+    command -v npm || true
+    echo "PATH=${PATH}" >&2
+    exit 1
 fi
 
 # 4. Fix permissions + refresh main systemd unit (workers / resource limits)
