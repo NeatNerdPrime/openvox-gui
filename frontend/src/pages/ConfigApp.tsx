@@ -34,8 +34,16 @@ interface User {
 const roleBadgeColor: Record<string, string> = {
   admin: 'red',
   operator: 'blue',
+  certops: 'orange',
   viewer: 'gray',
 };
+
+const ROLE_SELECT_DATA = [
+  { value: 'admin', label: 'Admin — Full access' },
+  { value: 'operator', label: 'Operator — Deploy & manage' },
+  { value: 'certops', label: 'Certops — View + clean agent certs' },
+  { value: 'viewer', label: 'Viewer — Read only' },
+];
 
 const authSourceColor: Record<string, string> = {
   local: 'cyan',
@@ -493,7 +501,7 @@ function LdapConfigPanel() {
       <Text size="sm" c="dimmed" mb="md">
         Configure LDAP authentication to allow users to sign in with their corporate credentials.
         Local accounts (for service accounts etc.) continue to work alongside LDAP.
-        <Text span fw={500}> User roles (Admin, Operator, Viewer) are managed in the User Manager tab — not here.</Text>
+        <Text span fw={500}> User roles (Admin, Operator, Certops, Viewer) are managed in the User Manager tab — not here.</Text>
       </Text>
 
       {/* Directory Type Presets */}
@@ -773,11 +781,8 @@ function UserManagerTab() {
               <Collapse in={newAuthSource === 'local'}>
                 <PasswordInput label="Password" placeholder="Enter password" value={newPassword} onChange={(e) => setNewPassword(e.currentTarget.value)} />
               </Collapse>
-              <Select label="Role" data={[
-                { value: 'admin', label: 'Admin \u2014 Full access' },
-                { value: 'operator', label: 'Operator \u2014 Deploy & manage' },
-                { value: 'viewer', label: 'Viewer \u2014 Read only' },
-              ]} value={newRole} onChange={(v) => setNewRole(v || 'viewer')} />
+              <Select label="Role" data={ROLE_SELECT_DATA}
+                value={newRole} onChange={(v) => setNewRole(v || 'viewer')} />
               <Button leftSection={<IconPlus size={16} />} onClick={handleAddUser} loading={addLoading}
                 disabled={!newUsername || (newAuthSource === 'local' && !newPassword)}>Create User</Button>
             </Stack>
@@ -845,11 +850,8 @@ function UserManagerTab() {
       </Modal>
       <Modal opened={roleOpen} onClose={() => setRoleOpen(false)} title={`Change Role \u2014 ${roleUser}`} centered>
         <Stack>
-          <Select label="Role" data={[
-            { value: 'admin', label: 'Admin \u2014 Full access' },
-            { value: 'operator', label: 'Operator \u2014 Deploy & manage' },
-            { value: 'viewer', label: 'Viewer \u2014 Read only' },
-          ]} value={roleValue} onChange={(v) => setRoleValue(v || 'viewer')} />
+          <Select label="Role" data={ROLE_SELECT_DATA}
+            value={roleValue} onChange={(v) => setRoleValue(v || 'viewer')} />
           <Button onClick={handleChangeRole} loading={roleLoading} fullWidth>Update Role</Button>
         </Stack>
       </Modal>

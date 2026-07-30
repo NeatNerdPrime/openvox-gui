@@ -3,7 +3,7 @@ LDAP/Active Directory authentication backend.
 
 Supports split authentication:
 - Username + password authenticated against LDAP (OpenLDAP, 389 DS, Red Hat DS, Active Directory)
-- Roles (admin, operator, viewer) managed locally in the database
+- Roles (admin, operator, certops, viewer) managed locally in the database
 - LDAP group membership can optionally map to local roles for new users
 
 Flow:
@@ -292,7 +292,7 @@ async def ldap_login(username: str, password: str) -> Optional[Dict[str, Any]]:
     3. Auto-provision or look up local user record
     4. Return user info with locally-managed role
 
-    LDAP handles authentication only. Roles (admin/operator/viewer) are
+    LDAP handles authentication only. Roles (admin/operator/certops/viewer) are
     managed exclusively in the User Manager — LDAP never reads or writes
     the user's role.
 

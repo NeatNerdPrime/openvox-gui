@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from ..dependencies import require_role
+from ..dependencies import require_role, READ_ROLES
 from ..utils.maintenance import (
     enable_maintenance,
     disable_maintenance,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/maintenance", tags=["maintenance"])
 
 # Anyone who can log in can check status. Only operators/admins can toggle.
-_STATUS_AUTH = require_role("admin", "operator", "viewer")
+_STATUS_AUTH = require_role(*READ_ROLES)
 _TOGGLE_AUTH = require_role("admin", "operator")
 
 

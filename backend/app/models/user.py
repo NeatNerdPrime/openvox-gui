@@ -12,7 +12,7 @@ class User(Base):
 
     username = Column(String(255), primary_key=True)
     password_hash = Column(String(255), nullable=False)
-    role = Column(String(50), nullable=False, default="viewer")  # admin | operator | viewer
+    role = Column(String(50), nullable=False, default="viewer")  # admin | operator | certops | viewer
     auth_source = Column(String(50), nullable=False, default="local")  # local | ldap
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),

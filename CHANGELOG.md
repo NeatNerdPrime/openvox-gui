@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.8-dev.5] - 2026-07-30 (dev — certops role + server cert protection)
+
+### Added
+- **`certops` role** — fourth fixed GUI role between viewer and operator:
+  - Read access to nodes, reports, graphs, metrics, classes/modules (same as viewer)
+  - **Revoke** and **clean** agent certificates
+  - Cannot sign CSRs, run Bolt, deploy code, edit ENC, or manage users
+- **Server certificate protection** on revoke/clean for **all** roles: the Puppet/OpenVox
+  server certname (from `puppet.conf` `certname`, `dns_alt_names`, and agent cert path)
+  is refused with HTTP 403. Protects against accidental master-cert revocation.
+- CA info API exposes `protected_certnames`; Certificate Authority UI badges protected
+  rows as **server** and disables Revoke/Clean on them.
+- User Manager role picker and `manage_users.py --role` accept `certops`.
+
 ## [3.10.8-dev.4] - 2026-07-30 (dev — fail deploy if frontend dist missing)
 
 ### Fixed

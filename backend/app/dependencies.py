@@ -12,14 +12,34 @@ This module provides:
   - require_role: Factory that creates role-checking dependencies. Returns
     a dependency function that verifies the user has one of the specified
     roles before allowing access to the endpoint.
+  - Role constants used for validation and route allowlists.
 
-Role hierarchy:
+Role hierarchy (GUI user roles):
   - admin:    Full access to everything (user management, deployment, config)
   - operator: Can run commands, deploy code, manage nodes (but not users)
+  - certops:  Viewer-level read access + revoke/clean agent certs only
+              (cannot sign CSRs, cannot revoke the Puppet server cert)
   - viewer:   Read-only access to dashboards, reports, and explorers
 """
 from fastapi import Request, HTTPException
-from typing import List
+from typing import FrozenSet, Tuple
+
+# ─── GUI user roles (local/LDAP accounts in User Manager) ───────────────
+# Service/API token scopes (bolt, service, …) are separate and live in
+# middleware/service_tokens.py — do not mix them into VALID_USER_ROLES.
+VALID_USER_ROLES: Tuple[str, ...] = ("admin", "operator", "certops", "viewer")
+VALID_USER_ROLES_SET: FrozenSet[str] = frozenset(VALID_USER_ROLES)
+
+# Anyone who may use read-only fleet views (nodes, reports, metrics, ENC read).
+READ_ROLES: Tuple[str, ...] = ("admin", "operator", "certops", "viewer")
+
+# Revoke / clean agent certificates (not CSR sign — that stays admin/operator).
+CERT_MUTATE_ROLES: Tuple[str, ...] = ("admin", "operator", "certops")
+
+
+def is_valid_user_role(role: str) -> bool:
+    """Return True if *role* is an assignable GUI user role."""
+    return (role or "").strip().lower() in VALID_USER_ROLES_SET
 
 
 async def get_current_user(request: Request) -> str:
@@ -53,12 +73,16 @@ def require_role(*allowed_roles: str):
         async def deploy(user: str = Depends(require_role("admin", "operator"))):
             ...
 
+        @router.post("/certificates/revoke")
+        async def revoke(user: str = Depends(require_role(*CERT_MUTATE_ROLES))):
+            ...
+
     When the authenticated user's role is not in the allowed_roles list,
     a 403 Forbidden response is returned with a clear message indicating
     which roles are permitted.
 
     Args:
-        *allowed_roles: One or more role strings (admin, operator, viewer).
+        *allowed_roles: One or more role strings (admin, operator, certops, viewer).
 
     Returns:
         An async dependency function suitable for use with FastAPI's Depends().

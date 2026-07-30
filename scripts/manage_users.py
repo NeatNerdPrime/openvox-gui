@@ -12,7 +12,7 @@ SQLAlchemy's async session), so this CLI uses asyncio.run() to bridge
 the synchronous CLI world with the asynchronous database layer.
 
 Usage:
-    manage_users.py add <username> [--role admin|operator|viewer]
+    manage_users.py add <username> [--role admin|operator|certops|viewer]
     manage_users.py remove <username>
     manage_users.py list
     manage_users.py passwd <username>
@@ -108,7 +108,8 @@ def main():
 
     add_p = sub.add_parser("add", help="Add a new user")
     add_p.add_argument("username", help="Username for the new account")
-    add_p.add_argument("--role", default="viewer", choices=["admin", "operator", "viewer"],
+    add_p.add_argument("--role", default="viewer",
+                       choices=["admin", "operator", "certops", "viewer"],
                        help="Role to assign (default: viewer)")
     add_p.set_defaults(func=cmd_add)
 

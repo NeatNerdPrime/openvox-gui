@@ -2,7 +2,7 @@
 Local authentication backend using SQLite database.
 
 Users are stored in the 'users' table with bcrypt-hashed passwords and roles.
-Roles: admin, operator, viewer
+Roles: admin, operator, certops, viewer
 
 On startup, any existing htpasswd-file users are automatically migrated
 into the database.
@@ -272,8 +272,9 @@ async def change_password(username: str, password: str) -> bool:
 
 async def change_role(username: str, role: str) -> bool:
     """Change a user's role."""
-    if role not in ("admin", "operator", "viewer"):
-        raise ValueError(f"Invalid role: {role}")
+    from ..dependencies import is_valid_user_role, VALID_USER_ROLES
+    if not is_valid_user_role(role):
+        raise ValueError(f"Invalid role: {role}. Must be one of: {', '.join(VALID_USER_ROLES)}")
     async with async_session() as session:
         result = await session.execute(select(User).where(User.username == username))
         user = result.scalar_one_or_none()

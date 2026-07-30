@@ -42,7 +42,7 @@ Both interfaces are clients of the same backend. There is no "API tier" that is 
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │   • Authentication (Local bcrypt + LDAP/AD)                     │
-│   • Authorization (role-based: admin / operator / viewer)       │
+│   • Authorization (role-based: admin / operator / certops / viewer) │
 │   • Business logic for all features                             │
 │   • Thin orchestration layer                                    │
 │                                                                 │

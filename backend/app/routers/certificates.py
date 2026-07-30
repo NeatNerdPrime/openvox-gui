@@ -19,7 +19,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from ..dependencies import require_role
+from ..dependencies import require_role, CERT_MUTATE_ROLES
 from ..middleware.security import rate_limit_heavy, concurrency_heavy
 from ..services.puppetdb import puppetdb_service
 from ..utils.sudo import run_sudo
@@ -117,6 +117,25 @@ def _ca_failure_detail(result: dict) -> str:
     return f"rc={rc}: puppetserver ca command failed with no output"
 
 
+def _reject_if_protected_server_cert(certname: str) -> None:
+    """Block revoke/clean of the Puppet server certificate for all roles.
+
+    certops (and operators) must be able to clean agent certs without any
+    risk of revoking the master itself. Admins can still use the CLI if a
+    deliberate server-cert operation is required outside the GUI.
+    """
+    if certificates_service.is_protected_certname(certname):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Refusing to revoke/clean '{certname}': this is the Puppet/OpenVox "
+                "server certificate (or a related identity from puppet.conf). "
+                "Agent certificates only. Use the CLI as an admin if you truly "
+                "need to operate on the server cert."
+            ),
+        )
+
+
 # NB: an earlier _parse_cert_list helper was deleted in 3.3.5-22 -- it
 # was never called. The single caller (list_certificates below) has its
 # own inline parser at the same place where this helper would have run.
@@ -171,17 +190,19 @@ async def sign_certificate(
 async def revoke_certificate(
     body: CertActionRequest,
     request: Request,
-    current_user: str = Depends(require_role("admin", "operator")),
+    current_user: str = Depends(require_role(*CERT_MUTATE_ROLES)),
     _ = Depends(concurrency_heavy),
 ):
     """Revoke a signed certificate.
 
     Validates the certname before passing it to the puppetserver ca
-    subprocess to prevent command injection. Operator/admin only --
+    subprocess to prevent command injection. Admin, operator, or certops --
     revoking a cert immediately stops a node from getting catalogs.
+    The Puppet server certificate itself is always blocked.
     Rate/concurrency limited (srsysarch1 P1).
     """
     _validate_certname(body.certname)
+    _reject_if_protected_server_cert(body.certname)
     result = await _run_ca_command(["revoke", "--certname", body.certname], timeout=120)
     from ..utils.audit import audit_event
     audit_event(
@@ -203,14 +224,15 @@ async def revoke_certificate(
 async def clean_certificate(
     body: CertActionRequest,
     request: Request,
-    current_user: str = Depends(require_role("admin", "operator")),
+    current_user: str = Depends(require_role(*CERT_MUTATE_ROLES)),
     _ = Depends(concurrency_heavy),
 ):
     """Clean (remove) a certificate and all associated key material.
 
     Validates the certname before passing it to the puppetserver ca
-    subprocess to prevent command injection. Operator/admin only --
-    cleaning destroys CA-side state for a node.
+    subprocess to prevent command injection. Admin, operator, or certops --
+    cleaning destroys CA-side state for a node. The Puppet server
+    certificate itself is always blocked.
 
     After cleaning the certificate, also deactivates the node in
     PuppetDB and removes it from the ENC so it disappears everywhere.
@@ -221,6 +243,7 @@ async def clean_certificate(
     from ..database import get_db as _get_db
 
     _validate_certname(body.certname)
+    _reject_if_protected_server_cert(body.certname)
     result = await _run_ca_command(["clean", "--certname", body.certname], timeout=120)
     from ..utils.audit import audit_event
     audit_event(
@@ -440,6 +463,9 @@ async def get_ca_info():
         else:
             info["total_signed"] = 0
             info["total_pending"] = 0
+
+        # Server cert (and related identities) — GUI will not revoke/clean these
+        info["protected_certnames"] = sorted(certificates_service.get_protected_certnames())
         
         result = {"ca_info": info}
         _set_cached_ca_info(result)

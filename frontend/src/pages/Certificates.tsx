@@ -21,6 +21,7 @@ import {
 } from '@tabler/icons-react';
 import { certificates } from '../services/api';
 import { useAppTheme } from '../hooks/ThemeContext';
+import { useAuth } from '../hooks/AuthContext';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { LoadingState, ErrorState } from '../components/StateComponents';
 
@@ -144,6 +145,9 @@ function CertOStamp() {
 export function CertificatesPage() {
   const navigate = useNavigate();
   const { isRobots } = useAppTheme();
+  const { user } = useAuth();
+  // admin / operator / certops may revoke & clean agent certs; viewers are read-only
+  const canMutateCerts = !!user && ['admin', 'operator', 'certops'].includes(user.role);
   const [data, setData] = useState<any>(null);
   const [caInfo, setCaInfo] = useState<any>(null);
   const [trustedFacts, setTrustedFacts] = useState<any>(null);
@@ -266,6 +270,12 @@ export function CertificatesPage() {
     setDetailLoading(false);
   };
 
+  const protectedSet = useMemo(() => {
+    const list: string[] = caInfo?.protected_certnames || [];
+    return new Set(list.map((n) => n.toLowerCase()));
+  }, [caInfo]);
+  const isProtected = (certname: string) => protectedSet.has((certname || '').toLowerCase());
+
   if (loading) return <LoadingState label="Loading certificates…" />;
   if (error && !data) return <ErrorState title="Failed to load certificates" message={error} onRetry={load} />;
 
@@ -293,6 +303,7 @@ export function CertificatesPage() {
       <Alert variant="light" color="blue">
         Manage OpenVox CA certificates. Sign pending requests, revoke compromised certs,
         or clean removed nodes. This interfaces with <Code>puppetserver ca</Code>.
+        The Puppet server certificate itself cannot be revoked or cleaned from the GUI.
       </Alert>
 
       {/* CA Information Panel */}
@@ -635,10 +646,20 @@ export function CertificatesPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {[...signed].sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')).map((cert: any) => (
+              {[...signed].sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '')).map((cert: any) => {
+                const protectedCert = isProtected(cert.name);
+                const canAct = canMutateCerts && !protectedCert;
+                return (
                 <Table.Tr key={cert.name}>
-                  <Table.Td><Text fw={500} c="blue" style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                    onClick={() => navigate(`/nodes/${cert.name}`)}>{cert.name}</Text></Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Text fw={500} c="blue" style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                        onClick={() => navigate(`/nodes/${cert.name}`)}>{cert.name}</Text>
+                      {protectedCert && (
+                        <Badge size="xs" color="red" variant="light">server</Badge>
+                      )}
+                    </Group>
+                  </Table.Td>
                   <Table.Td><Code style={{ fontSize: 10, maxWidth: 280, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cert.fingerprint || 'N/A'}</Code></Table.Td>
                   <Table.Td>
                     <Group gap="xs" justify="flex-end">
@@ -647,20 +668,43 @@ export function CertificatesPage() {
                           <IconInfoCircle size={16} />
                         </ActionIcon>
                       </Tooltip>
-                      <Tooltip label="Revoke certificate">
-                        <ActionIcon variant="subtle" color="yellow" onClick={() => requestRevoke(cert.name)}>
+                      <Tooltip label={
+                        protectedCert
+                          ? 'Server certificate — cannot revoke from GUI'
+                          : !canMutateCerts
+                            ? 'Requires admin, operator, or certops role'
+                            : 'Revoke certificate'
+                      }>
+                        <ActionIcon
+                          variant="subtle"
+                          color="yellow"
+                          disabled={!canAct}
+                          onClick={() => requestRevoke(cert.name)}
+                        >
                           <IconX size={16} />
                         </ActionIcon>
                       </Tooltip>
-                      <Tooltip label="Clean certificate">
-                        <ActionIcon variant="subtle" color="red" onClick={() => requestClean(cert.name)}>
+                      <Tooltip label={
+                        protectedCert
+                          ? 'Server certificate — cannot clean from GUI'
+                          : !canMutateCerts
+                            ? 'Requires admin, operator, or certops role'
+                            : 'Clean certificate'
+                      }>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          disabled={!canAct}
+                          onClick={() => requestClean(cert.name)}
+                        >
                           <IconTrash size={16} />
                         </ActionIcon>
                       </Tooltip>
                     </Group>
                   </Table.Td>
                 </Table.Tr>
-              ))}
+              );
+              })}
               {signed.length === 0 && (
                 <Table.Tr>
                   <Table.Td colSpan={3}><Text c="dimmed" ta="center" py="lg">No signed certificates found</Text></Table.Td>

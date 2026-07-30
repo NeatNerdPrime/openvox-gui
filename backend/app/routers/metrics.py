@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..dependencies import require_role
+from ..dependencies import require_role, READ_ROLES
 from ..services.puppetdb import puppetdb_service
 from ..services.puppetserver import puppetserver_service
 from ..database import get_db
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
-_AUTH = require_role("admin", "operator", "viewer")
+_AUTH = require_role(*READ_ROLES)
 
 # ─── Response cache (TTL-based) ──────────────────────────
 _cache: Dict[str, Any] = {}

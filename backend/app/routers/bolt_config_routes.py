@@ -140,7 +140,7 @@ async def _read_bolt_config_file(filename: str) -> Dict[str, Any]:
 
 @router.get("/config")
 async def get_config(
-    _user: str = Depends(require_role("admin", "operator", "viewer")),
+    _user: str = Depends(require_role("admin", "operator", "certops", "viewer")),
 ):
     """Read all Bolt configuration files.
 

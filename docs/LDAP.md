@@ -25,7 +25,7 @@ This guide explains how to configure OpenVox GUI to authenticate users against a
 OpenVox GUI supports **split authentication** — a hybrid model where:
 
 - **Credentials** (username + password) are validated against your LDAP directory
-- **Roles** (Admin, Operator, Viewer) are managed locally in the OpenVox GUI database
+- **Roles** (Admin, Operator, Certops, Viewer) are managed locally in the OpenVox GUI database
 - **Local accounts** continue to work alongside LDAP for service accounts and break-glass access
 - **Each user** can be individually configured to authenticate via LDAP or local password
 

@@ -39,7 +39,7 @@ from ..services.puppetdb import puppetdb_service
 from ..services.puppetserver import puppetserver_service
 from ..models.schemas import ReportSummary, ReportDetail, ExecutiveReportRecipient as ExecutiveRecipientSchema, AddExecutiveRecipient, SendExecutiveReportRequest, ExecutiveReportConfigSchema, UpdateExecutiveReportConfig
 from ..models.executive_report import ExecutiveReportRecipient, ExecutiveReportConfig
-from ..dependencies import require_role
+from ..dependencies import require_role, READ_ROLES
 from ..database import get_db
 from ..config import settings
 
@@ -56,7 +56,7 @@ def validate_pql_value(value: str, field_name: str) -> str:
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
-_AUTH = require_role("admin", "operator", "viewer")
+_AUTH = require_role(*READ_ROLES)
 
 # ─── Snapshot cache (short TTL, reduces load when generator + other tools poll) ──
 _snapshot_cache: Dict[str, Any] = {}

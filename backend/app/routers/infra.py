@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 
-from ..dependencies import require_role
+from ..dependencies import require_role, READ_ROLES
 from ..services.puppetdb import puppetdb_service
 from ..services.infra_config import InfraConfigService
 from ..utils.sudo import run_sudo
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/infra", tags=["infrastructure"])
 
 _infra_config = InfraConfigService()
 
-_AUTH = require_role("admin", "operator", "viewer")
+_AUTH = require_role(*READ_ROLES)
 
 
 @router.get("/health")

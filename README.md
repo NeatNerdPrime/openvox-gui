@@ -197,7 +197,7 @@ Shared patterns so list pages behave the same way:
 - Dual themes: **Casual** (fun, dark-leaning accents) and **Formal** (clean business)
 
 ### 🔐 Authentication
-- Local users (bcrypt + JWT) with roles: **admin**, **operator**, **viewer**
+- Local users (bcrypt + JWT) with roles: **admin**, **operator**, **certops**, **viewer**
 - Optional **LDAP / Active Directory** per-user or enterprise bind (see [docs/LDAP.md](docs/LDAP.md))
 - Privileged API routes require explicit role checks (hardened since 3.6.0)
 

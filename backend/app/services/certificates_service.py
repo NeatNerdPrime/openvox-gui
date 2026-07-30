@@ -83,6 +83,59 @@ def invalidate_cert_list_cache() -> None:
     _cache_trusted_facts_time = 0.0
 
 
+def get_protected_certnames() -> set[str]:
+    """Return certnames that must never be revoked/cleaned via the GUI.
+
+    Protects the Puppet/OpenVox *server* agent certificate (and related
+    identities) so a certops (or even operator) account cannot brick the
+    master by accident. Includes:
+
+      - puppet.conf ``certname`` (main and server sections)
+      - ``dns_alt_names`` entries from puppet.conf
+      - basename of the configured mTLS agent cert path
+      - ``puppet_server_host`` when it is not localhost
+    """
+    protected: set[str] = set()
+
+    def _add(name: Optional[str]) -> None:
+        if not name:
+            return
+        n = name.strip().lower()
+        if not n or n in ("localhost", "127.0.0.1", "::1"):
+            return
+        protected.add(n)
+
+    try:
+        from ..config import settings
+        from .puppetserver import puppetserver_service
+
+        conf = puppetserver_service.read_puppet_conf()
+        for section in conf.values():
+            if not isinstance(section, dict):
+                continue
+            _add(section.get("certname"))
+            alt = section.get("dns_alt_names") or section.get("dns_alt_name") or ""
+            for part in str(alt).split(","):
+                _add(part)
+
+        cert_path = Path(getattr(settings, "puppet_ssl_cert", "") or "")
+        if cert_path.suffix == ".pem":
+            _add(cert_path.stem)
+
+        _add(getattr(settings, "puppet_server_host", None))
+    except Exception as e:
+        logger.warning("Could not resolve protected certnames: %s", e, exc_info=True)
+
+    return protected
+
+
+def is_protected_certname(certname: str) -> bool:
+    """True if *certname* is the Puppet server (or related) cert."""
+    if not certname:
+        return False
+    return certname.strip().lower() in get_protected_certnames()
+
+
 async def run_ca_command(args: List[str], timeout: int = 30) -> dict:
     cmd = ["sudo", PUPPETSERVER_CA, "ca"] + args
     return await run_sudo(cmd, timeout=timeout)

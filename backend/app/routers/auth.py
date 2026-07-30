@@ -285,8 +285,12 @@ async def create_user(data: AddUserRequest, _user: str = Depends(require_role("a
     username = data.username.strip()
     if not username:
         raise HTTPException(status_code=400, detail="Username cannot be empty")
-    if data.role not in ("admin", "operator", "viewer"):
-        raise HTTPException(status_code=400, detail="Role must be admin, operator, or viewer")
+    from ..dependencies import is_valid_user_role, VALID_USER_ROLES
+    if not is_valid_user_role(data.role):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Role must be one of: {', '.join(VALID_USER_ROLES)}",
+        )
     if data.auth_source not in ("local", "ldap"):
         raise HTTPException(status_code=400, detail="Auth source must be 'local' or 'ldap'")
     if data.auth_source == "local" and not data.password:
@@ -323,8 +327,12 @@ async def update_password(username: str, data: ChangePasswordRequest, request: R
 @router.put("/users/{username}/role")
 async def update_role(username: str, data: ChangeRoleRequest, _user: str = Depends(require_role("admin"))):
     """Change a user's role (admin only). Works for both local and LDAP users."""
-    if data.role not in ("admin", "operator", "viewer"):
-        raise HTTPException(status_code=400, detail="Role must be admin, operator, or viewer")
+    from ..dependencies import is_valid_user_role, VALID_USER_ROLES
+    if not is_valid_user_role(data.role):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Role must be one of: {', '.join(VALID_USER_ROLES)}",
+        )
     try:
         if not await change_role(username, data.role):
             raise HTTPException(status_code=404, detail="User not found")

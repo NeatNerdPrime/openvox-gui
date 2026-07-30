@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..services.enc import enc_service
 from ..services.puppetdb import puppetdb_service
-from ..dependencies import require_role
+from ..dependencies import require_role, READ_ROLES
 
 router = APIRouter(prefix="/api/enc", tags=["enc"])
 
@@ -23,11 +23,11 @@ router = APIRouter(prefix="/api/enc", tags=["enc"])
 # commonly assign nodes to groups / promote nodes to environments;
 # admins do everything operators do plus group/environment lifecycle.
 _ENC_WRITE = require_role("admin", "operator")
-_ENC_READ = require_role("admin", "operator", "viewer")
+_ENC_READ = require_role(*READ_ROLES)
 
 # Bolt inventory: UI operators + scoped service tokens (bolt / bolt-inventory-readonly).
 _BOLT_INVENTORY = require_role(
-    "admin", "operator", "viewer", "bolt", "bolt-inventory-readonly", "service",
+    *READ_ROLES, "bolt", "bolt-inventory-readonly", "service",
 )
 
 
