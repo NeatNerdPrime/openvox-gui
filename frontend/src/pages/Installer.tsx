@@ -323,10 +323,10 @@ export function InstallerPage() {
     if (!canManage) return;
     setCertActionLoading(true);
     try {
-      await certificates.clean(certname);
+      await certificates.reject(certname);
       notifications.show({
         title: 'Rejected',
-        message: `Certificate request for ${certname} cleaned`,
+        message: `Certificate request for ${certname} rejected`,
         color: 'yellow',
       });
       setPendingCertAction(null);

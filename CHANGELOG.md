@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.10.8-dev.3] - 2026-07-30 (dev — fix CSR Reject 500)
+
+### Fixed
+- **Installer / Certificates “Reject”** no longer calls full `ca clean` + ENC/PuppetDB purge with an opaque `API Error 500: {"detail":""}`.
+  - New `POST /api/certificates/reject` deletes pending CSR PEMs via `scripts/ca-reject-csr.sh` (path-jailed), then falls back to `puppetserver ca clean`.
+  - CA command failures now return stdout+stderr+rc (puppetserver often writes errors to stdout only).
+  - sudoers: `ca sign --certname *` and wrapper `ca-reject-csr.sh *`.
+
 ## [3.10.8-dev.2] - 2026-07-29 (dev — pin starlette + Pillow for published CVEs)
 
 ### Security

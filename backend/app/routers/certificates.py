@@ -106,6 +106,17 @@ async def _run_ca_command(args: List[str], timeout: int = 30) -> dict:
     return await run_sudo(cmd, timeout=timeout)
 
 
+def _ca_failure_detail(result: dict) -> str:
+    """Build a non-empty API error from sudo/ca output (stdout often holds the fault)."""
+    rc = result.get("returncode")
+    stdout = (result.get("stdout") or "").strip()
+    stderr = (result.get("stderr") or "").strip()
+    parts = [p for p in (stderr, stdout) if p]
+    if parts:
+        return f"rc={rc}: " + " | ".join(parts)
+    return f"rc={rc}: puppetserver ca command failed with no output"
+
+
 # NB: an earlier _parse_cert_list helper was deleted in 3.3.5-22 -- it
 # was never called. The single caller (list_certificates below) has its
 # own inline parser at the same place where this helper would have run.
@@ -149,7 +160,7 @@ async def sign_certificate(
         success=result["returncode"] == 0,
     )
     if result["returncode"] != 0:
-        raise HTTPException(status_code=500, detail=result["stderr"])
+        raise HTTPException(status_code=500, detail=_ca_failure_detail(result))
     _invalidate_cert_list_cache()  # Invalidate cache after mutation
     return {"status": "success", "message": f"Certificate signed for {body.certname}",
             "output": result["stdout"]}
@@ -182,7 +193,7 @@ async def revoke_certificate(
     )
     _invalidate_cert_list_cache()  # Invalidate cache after mutation
     if result["returncode"] != 0:
-        raise HTTPException(status_code=500, detail=result["stderr"])
+        raise HTTPException(status_code=500, detail=_ca_failure_detail(result))
     return {"status": "success", "message": f"Certificate revoked for {body.certname}",
             "output": result["stdout"]}
 
@@ -221,7 +232,7 @@ async def clean_certificate(
     )
     _invalidate_cert_list_cache()  # Invalidate cache after mutation
     if result["returncode"] != 0:
-        raise HTTPException(status_code=500, detail=result["stderr"])
+        raise HTTPException(status_code=500, detail=_ca_failure_detail(result))
 
     # Deactivate from PuppetDB
     pdb_deactivated = await puppetdb_service.deactivate_node(body.certname)
@@ -244,6 +255,68 @@ async def clean_certificate(
         parts.append("removed from ENC")
 
     return {"status": "success", "message": ", ".join(parts), "output": result["stdout"]}
+
+
+@router.post("/reject")
+@rate_limit_heavy()
+async def reject_certificate_request(
+    body: CertActionRequest,
+    request: Request,
+    current_user: str = Depends(require_role("admin", "operator")),
+    _ = Depends(concurrency_heavy),
+):
+    """Reject a *pending* CSR without ENC/PuppetDB purge.
+
+    ``ca clean`` often fails on unsigned requests (empty stderr → opaque
+    GUI 500). Prefer deleting the CSR PEM via ca-reject-csr.sh, then fall
+    back to ``puppetserver ca clean``.
+    """
+    from pathlib import Path
+
+    _validate_certname(body.certname)
+    script = Path("/opt/openvox-gui/scripts/ca-reject-csr.sh")
+    repo_script = Path(__file__).resolve().parents[3] / "scripts" / "ca-reject-csr.sh"
+    wrapper = script if script.is_file() else repo_script
+
+    result: dict
+    if wrapper.is_file():
+        result = await run_sudo(["sudo", str(wrapper), body.certname], timeout=120)
+    else:
+        result = await _run_ca_command(["clean", "--certname", body.certname], timeout=120)
+
+    from ..utils.audit import audit_event
+    audit_event(
+        "cert_reject",
+        user=current_user,
+        targets=body.certname,
+        rc=result.get("returncode"),
+        success=result.get("returncode") == 0,
+    )
+    if result.get("returncode") != 0:
+        # Last resort: ca clean (signed-or-API path)
+        fallback = await _run_ca_command(["clean", "--certname", body.certname], timeout=120)
+        audit_event(
+            "cert_reject_clean_fallback",
+            user=current_user,
+            targets=body.certname,
+            rc=fallback.get("returncode"),
+            success=fallback.get("returncode") == 0,
+        )
+        if fallback.get("returncode") != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=_ca_failure_detail(result)
+                + " :: fallback "
+                + _ca_failure_detail(fallback),
+            )
+        result = fallback
+
+    _invalidate_cert_list_cache()
+    return {
+        "status": "success",
+        "message": f"Certificate request rejected for {body.certname}",
+        "output": (result.get("stdout") or "") + (result.get("stderr") or ""),
+    }
 
 
 @router.get("/ca-info")

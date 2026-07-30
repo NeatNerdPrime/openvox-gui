@@ -444,6 +444,11 @@ export const certificates = {
       method: 'POST',
       body: JSON.stringify({ certname }),
     }),
+  reject: (certname: string) =>
+    fetchJSON<any>('/certificates/reject', {
+      method: 'POST',
+      body: JSON.stringify({ certname }),
+    }),
   info: (certname: string) => fetchJSON<any>('/certificates/info/' + certname),
   audit: () => fetchJSON<any>('/certificates/audit'),
 };

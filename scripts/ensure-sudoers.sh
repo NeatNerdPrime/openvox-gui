@@ -206,10 +206,12 @@ ${SERVICE_USER} ALL=(root) NOPASSWD:SETENV: /usr/local/bin/bolt
 #            "puppetserver ca *" was replaced with these after a security
 #            audit.
 ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppetserver ca list --all
-${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppetserver ca sign --certname
+${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppetserver ca sign --certname *
 ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppetserver ca revoke --certname *
 # CA clean — certname must be a wildcard arg or sudo never matches and purge fails
 ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppetserver ca clean --certname *
+# Pending CSR reject (Installer "Reject") — wrapper validates certname then rm CSR or ca clean
+${SERVICE_USER} ALL=(root) NOPASSWD: /opt/openvox-gui/scripts/ca-reject-csr.sh *
 # PuppetDB deactivate + master-side node cache clean (Orchestration / Node Purge)
 ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppet node deactivate *
 ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppet node clean *
