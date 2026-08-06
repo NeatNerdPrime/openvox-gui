@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.11.0-alpha.2] - 2026-08-06 (cluster health depth)
+
+### Added
+- **Full cluster health API** `GET /api/config/cluster/health` and richer `/api/config/services` payload:
+  - **Compilers** (per FQDN :8140): `/status/v1/simple`, `/status/v1/services` (master state)
+  - **OpenVoxDB** (per FQDN :8081): simple status, services, `/pdb/meta/v1/version`, sample `/pdb/query/v4/nodes?limit=1`
+  - **CA nodes + CA VIPs** (per FQDN :8140): simple, services, CA certificate endpoint
+  - **Pacemaker HA**: local `pcs status` (+ `drbdadm status`) or bolt to first `ca_nodes` entry — online/offline, resource map, **Promoted/primary** and VIP node
+- Cluster settings fields: `ca_nodes`, `ca_vips`
+- Services UI: HA primary/VIP badges, resource table, raw pcs/drbd expanders
+
+### Notes
+- Production **openvox.pdxc-it.twitter.biz** remains on **3.10.8-dev.3** until cluster cutover.
+
+
 
 ## [3.10.8-dev.5] - 2026-07-30 (dev — certops role + server cert protection)
 

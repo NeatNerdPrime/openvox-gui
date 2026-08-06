@@ -265,6 +265,191 @@ function ApplicationTab({ onSwitchToServices }: { onSwitchToServices: () => void
   );
 }
 
+/* ────────────────────── Cluster health (FQDN APIs + HA) ────────────────────── */
+function ClusterHealthPanel({
+  members,
+  full,
+  onRefresh,
+}: {
+  members: any[];
+  full?: any;
+  onRefresh: () => void;
+}) {
+  const ha = full?.ha;
+  const summary = full?.summary || {};
+  const pcs = ha?.pcs;
+
+  return (
+    <Stack>
+      <Card withBorder shadow="sm" padding="md">
+        <Group justify="space-between" mb="sm">
+          <Text fw={700}>Cluster member health (per-FQDN service APIs)</Text>
+          <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={onRefresh}>
+            Refresh
+          </Button>
+        </Group>
+        <Text size="xs" c="dimmed" mb="sm">
+          Compilers: /status/v1/simple + /status/v1/services on :8140.
+          PuppetDB: simple + services + /pdb/meta/v1/version + sample /pdb/query/v4/nodes.
+          CA: simple + services + CA certificate endpoint. Probes use host FQDNs, not VIP.
+        </Text>
+        {summary && (
+          <Group gap="md" mb="sm">
+            <Badge variant="outline">
+              compilers {summary.compilers_healthy ?? '—'}/{summary.compilers_total ?? '—'}
+            </Badge>
+            <Badge variant="outline">
+              puppetdb {summary.puppetdb_healthy ?? '—'}/{summary.puppetdb_total ?? '—'}
+            </Badge>
+            <Badge variant="outline">
+              ca {summary.ca_healthy ?? '—'}/{summary.ca_total ?? '—'}
+            </Badge>
+            {summary.ha_primary && (
+              <Badge color="blue" variant="light">HA primary: {summary.ha_primary}</Badge>
+            )}
+            {summary.ha_vip_node && (
+              <Badge color="cyan" variant="light">VIP on: {summary.ha_vip_node}</Badge>
+            )}
+          </Group>
+        )}
+        <Table striped highlightOnHover withTableBorder>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>FQDN</Table.Th>
+              <Table.Th>Role</Table.Th>
+              <Table.Th>Port</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th>Detail</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {(members || []).length === 0 ? (
+              <Table.Tr>
+                <Table.Td colSpan={5}>
+                  <Text c="dimmed" size="sm">No members configured — add FQDNs under Settings → Cluster.</Text>
+                </Table.Td>
+              </Table.Tr>
+            ) : (
+              members.map((m: any) => (
+                <Table.Tr key={`${m.role}-${m.fqdn}`}>
+                  <Table.Td><Code>{m.fqdn}</Code></Table.Td>
+                  <Table.Td>{m.role}</Table.Td>
+                  <Table.Td>{m.port}</Table.Td>
+                  <Table.Td>
+                    <Badge color={m.healthy ? 'green' : 'red'} variant="light">
+                      {m.healthy ? 'healthy' : 'unhealthy'}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="xs" c="dimmed">
+                      {m.version ? `v${m.version} · ` : ''}
+                      {m.error || m.body || (m.http_status != null ? `HTTP ${m.http_status}` : '—')}
+                      {m.query_nodes && !m.query_nodes.ok ? ` · query: ${m.query_nodes.error || 'fail'}` : ''}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))
+            )}
+          </Table.Tbody>
+        </Table>
+      </Card>
+
+      <Card withBorder shadow="sm" padding="md">
+        <Text fw={700} mb="sm">Pacemaker / Corosync / DRBD (CA HA)</Text>
+        {!ha ? (
+          <Text size="sm" c="dimmed">No HA data yet.</Text>
+        ) : (
+          <Stack gap="xs">
+            <Group gap="sm">
+              <Badge color={ha.available ? 'green' : 'gray'} variant="light">
+                {ha.available ? 'pcs available' : 'pcs unavailable'}
+              </Badge>
+              {ha.method && <Text size="xs" c="dimmed">via {ha.method}</Text>}
+            </Group>
+            {ha.error && <Alert color="orange" variant="light">{ha.error}</Alert>}
+            {pcs && (
+              <>
+                <Text size="sm">
+                  <strong>Primary (Promoted):</strong>{' '}
+                  {pcs.primary_node || pcs.drbd_promoted || '—'}
+                  {' · '}
+                  <strong>VIP node:</strong> {pcs.vip_node || '—'}
+                </Text>
+                <Text size="sm">
+                  <strong>Online:</strong> {(pcs.online || []).join(', ') || '—'}
+                  {(pcs.offline || []).length > 0 && (
+                    <> · <strong>Offline:</strong> {(pcs.offline || []).join(', ')}</>
+                  )}
+                </Text>
+                {pcs.cluster_name && (
+                  <Text size="xs" c="dimmed">Cluster name: {pcs.cluster_name}</Text>
+                )}
+                {(pcs.resources || []).length > 0 && (
+                  <Table withTableBorder>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Resource</Table.Th>
+                        <Table.Th>State</Table.Th>
+                        <Table.Th>Node</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {pcs.resources.map((r: any, i: number) => (
+                        <Table.Tr key={`${r.name}-${i}`}>
+                          <Table.Td><Code>{r.name}</Code></Table.Td>
+                          <Table.Td>
+                            <Badge
+                              size="sm"
+                              color={
+                                r.state === 'Promoted' || r.state === 'Started'
+                                  ? 'green'
+                                  : r.state === 'FAILED'
+                                    ? 'red'
+                                    : 'gray'
+                              }
+                            >
+                              {r.state}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>{r.node}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                )}
+                {pcs.raw && (
+                  <Accordion variant="contained">
+                    <Accordion.Item value="pcs-raw">
+                      <Accordion.Control>Raw pcs status</Accordion.Control>
+                      <Accordion.Panel>
+                        <Code block style={{ maxHeight: 240, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                          {pcs.raw}
+                        </Code>
+                      </Accordion.Panel>
+                    </Accordion.Item>
+                  </Accordion>
+                )}
+              </>
+            )}
+            {ha.drbd?.raw && (
+              <Accordion variant="contained">
+                <Accordion.Item value="drbd-raw">
+                  <Accordion.Control>Raw drbdadm status</Accordion.Control>
+                  <Accordion.Panel>
+                    <Code block style={{ maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                      {ha.drbd.raw}
+                    </Code>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              </Accordion>
+            )}
+          </Stack>
+        )}
+      </Card>
+    </Stack>
+  );
+}
+
 /* ────────────────────── Services Tab ────────────────────── */
 function ServicesTab() {
   const { data: servicesPayload, loading, refetch } = useApi(config.getServices);
@@ -331,45 +516,8 @@ function ServicesTab() {
         </Stack>
       </Card>
 
-      {deploymentMode === 'clustered' && clusterMembers.length > 0 && (
-        <Card withBorder shadow="sm" padding="md">
-          <Group justify="space-between" mb="sm">
-            <Text fw={700}>Cluster member health (FQDN)</Text>
-            <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={() => refetch()}>
-              Refresh
-            </Button>
-          </Group>
-          <Table striped highlightOnHover withTableBorder>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>FQDN</Table.Th>
-                <Table.Th>Role</Table.Th>
-                <Table.Th>Port</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Detail</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {clusterMembers.map((m: any) => (
-                <Table.Tr key={`${m.role}-${m.fqdn}`}>
-                  <Table.Td><Code>{m.fqdn}</Code></Table.Td>
-                  <Table.Td>{m.role}</Table.Td>
-                  <Table.Td>{m.port}</Table.Td>
-                  <Table.Td>
-                    <Badge color={m.healthy ? 'green' : 'red'} variant="light">
-                      {m.healthy ? 'healthy' : 'unhealthy'}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="xs" c="dimmed">
-                      {m.error || m.body || (m.http_status != null ? `HTTP ${m.http_status}` : '—')}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Card>
+      {deploymentMode === 'clustered' && (
+        <ClusterHealthPanel members={clusterMembers} full={servicesPayload?.cluster_health} onRefresh={refetch} />
       )}
 
       <Card withBorder shadow="sm" padding="md">
@@ -408,6 +556,8 @@ function ClusterTab() {
   const [mode, setMode] = useState<'single' | 'clustered'>('single');
   const [compilers, setCompilers] = useState('');
   const [puppetdbNodes, setPuppetdbNodes] = useState('');
+  const [caNodes, setCaNodes] = useState('');
+  const [caVips, setCaVips] = useState('');
   const [deployTargets, setDeployTargets] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -416,6 +566,8 @@ function ClusterTab() {
     setMode((data.deployment_mode === 'clustered' ? 'clustered' : 'single'));
     setCompilers((data.compilers || []).join('\n'));
     setPuppetdbNodes((data.puppetdb_nodes || []).join('\n'));
+    setCaNodes((data.ca_nodes || []).join('\n'));
+    setCaVips((data.ca_vips || []).join('\n'));
     setDeployTargets((data.code_deploy_targets || []).join('\n'));
   }, [data]);
 
@@ -429,6 +581,8 @@ function ClusterTab() {
         deployment_mode: mode,
         compilers: lines(compilers),
         puppetdb_nodes: lines(puppetdbNodes),
+        ca_nodes: lines(caNodes),
+        ca_vips: lines(caVips),
         code_deploy_targets: lines(deployTargets),
         seed_infrastructure_groups: mode === 'clustered',
       });
@@ -483,11 +637,27 @@ function ClusterTab() {
               />
               <Textarea
                 label="OpenVoxDB / PuppetDB node FQDNs"
-                description="Application hosts — health-checked on :8081 by FQDN (not VIP)"
+                description="Application hosts — /status + /pdb/meta + sample query on :8081 by FQDN (not VIP)"
                 minRows={3}
                 value={puppetdbNodes}
                 onChange={(e) => setPuppetdbNodes(e.currentTarget.value)}
                 placeholder="ovdb1.pdxc-it.corp.int-x.ai"
+              />
+              <Textarea
+                label="CA cluster member FQDNs"
+                description="ovca1/ovca2 per site — status APIs + used for pcs/DRBD via bolt when GUI is not on a CA host"
+                minRows={2}
+                value={caNodes}
+                onChange={(e) => setCaNodes(e.currentTarget.value)}
+                placeholder={"ovca1.pdxc-it.corp.int-x.ai\novca2.pdxc-it.corp.int-x.ai"}
+              />
+              <Textarea
+                label="CA VIP FQDNs (optional)"
+                description="e.g. ovca.pdxc-it.corp.int-x.ai, ovca.corp.int-x.ai — health on :8140"
+                minRows={2}
+                value={caVips}
+                onChange={(e) => setCaVips(e.currentTarget.value)}
+                placeholder="ovca.corp.int-x.ai"
               />
               <Textarea
                 label="Code deploy targets (optional)"

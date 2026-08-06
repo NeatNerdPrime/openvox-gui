@@ -316,10 +316,10 @@ async def get_services_status():
         "cluster_members": [],
     }
     if is_clustered():
+        from ..services.cluster_health import probe_cluster_full
+
         payload["cluster_members"] = await probe_cluster_members(cfg)
-    # Backward compatible: also return bare list shape consumers already use
-    # via frontend that expects an array — keep array-like top-level when not
-    # clustered by wrapping. Frontend will prefer the object shape.
+        payload["cluster_health"] = await probe_cluster_full(cfg)
     return payload
 
 
@@ -330,10 +330,38 @@ async def get_cluster_config():
     return load_cluster_config()
 
 
+@router.get("/cluster/health")
+async def get_cluster_health():
+    """
+    Full cluster health document (clustered mode).
+
+    Includes per-FQDN PuppetDB/compiler/CA API probes and Pacemaker HA summary
+    (primary / VIP node / online list) when available.
+    """
+    from ..services.cluster_config import load_cluster_config, is_clustered
+    from ..services.cluster_health import probe_cluster_full
+
+    cfg = load_cluster_config()
+    if not is_clustered():
+        return {
+            "deployment_mode": "single",
+            "message": "Cluster health is only populated when deployment_mode is clustered.",
+            "compilers": [],
+            "puppetdb_nodes": [],
+            "ca_nodes": [],
+            "ca_vips": [],
+            "ha": None,
+            "summary": {},
+        }
+    return await probe_cluster_full(cfg)
+
+
 class ClusterConfigUpdate(BaseModel):
     deployment_mode: str = "single"
     compilers: List[str] = []
     puppetdb_nodes: List[str] = []
+    ca_nodes: List[str] = []
+    ca_vips: List[str] = []
     code_deploy_targets: List[str] = []
     staging_codedir: Optional[str] = None
     live_codedir: Optional[str] = None

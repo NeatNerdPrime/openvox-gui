@@ -371,10 +371,13 @@ export const config = {
       body: JSON.stringify({ service, action: 'restart' }),
     }),
   getCluster: () => fetchJSON<any>('/config/cluster'),
+  getClusterHealth: () => fetchJSON<any>('/config/cluster/health'),
   updateCluster: (data: {
     deployment_mode: string;
     compilers: string[];
     puppetdb_nodes: string[];
+    ca_nodes?: string[];
+    ca_vips?: string[];
     code_deploy_targets: string[];
     staging_codedir?: string;
     live_codedir?: string;

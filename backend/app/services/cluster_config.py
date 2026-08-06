@@ -26,6 +26,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "deployment_mode": "single",  # single | clustered
     "compilers": [],  # list of FQDNs (catalog compilers / deploy targets)
     "puppetdb_nodes": [],  # list of FQDNs (OpenVoxDB application hosts)
+    "ca_nodes": [],  # list of CA member FQDNs (ovca1, ovca2 per site)
+    "ca_vips": [],  # optional CA VIP FQDNs (ovca.pdxc…, ovca.corp…)
     "code_deploy_targets": [],  # FQDNs that receive r10k stage/activate (defaults to compilers)
     "staging_codedir": "/etc/puppetlabs/code-staging",
     "live_codedir": "/etc/puppetlabs/code",
@@ -52,7 +54,7 @@ def _normalize(data: Dict[str, Any]) -> Dict[str, Any]:
         mode = "single"
     out["deployment_mode"] = mode
 
-    for key in ("compilers", "puppetdb_nodes", "code_deploy_targets"):
+    for key in ("compilers", "puppetdb_nodes", "ca_nodes", "ca_vips", "code_deploy_targets"):
         raw = data.get(key) or []
         if not isinstance(raw, list):
             raw = []
