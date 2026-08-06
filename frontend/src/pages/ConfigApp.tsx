@@ -587,13 +587,21 @@ function ClusterTab() {
         seed_infrastructure_groups: mode === 'clustered',
       });
       const seeded = (result?.seeded_groups || []).join(', ') || 'none';
-      notifications.show({
-        title: 'Cluster settings saved',
-        message: mode === 'clustered'
-          ? `Clustered mode on. ENC groups seeded: ${seeded}`
-          : 'Single-server mode (cluster UI hidden)',
-        color: 'green',
-      });
+      if (result?.seed_warning) {
+        notifications.show({
+          title: 'Cluster config saved (ENC seed warning)',
+          message: result.seed_warning,
+          color: 'yellow',
+        });
+      } else {
+        notifications.show({
+          title: 'Cluster settings saved',
+          message: mode === 'clustered'
+            ? `Clustered mode on. ENC groups seeded: ${seeded}`
+            : 'Single-server mode (cluster UI hidden)',
+          color: 'green',
+        });
+      }
       refetch();
     } catch (e: any) {
       notifications.show({ title: 'Save failed', message: e.message, color: 'red' });

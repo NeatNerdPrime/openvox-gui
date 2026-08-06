@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.6] - 2026-08-06 (fix — cluster save 500)
+
+### Fixed
+- **Settings → Cluster save HTTP 500:** ENC infrastructure seed after `PUT /api/config/cluster` accessed `node.groups` without `selectinload`, causing SQLAlchemy async `MissingGreenlet` and an opaque 500. Seed path now eager-loads groups; write failures return a clear detail (e.g. data_dir permissions); ENC seed errors no longer roll back a successful config write (warning in response).
+
 ## [3.11.0-alpha.5] - 2026-08-06 (fix — stage/activate rate-limit import)
 
 ### Fixed

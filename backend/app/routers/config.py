@@ -388,25 +388,58 @@ async def update_cluster_config(
         saved = save_cluster_config(data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        # Typical: /opt/openvox-gui/data not writable by service user (puppet)
+        logger.exception("Failed to write cluster_config.json")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Cannot write cluster config under data dir: {e}. "
+                "Ensure OPENVOX_GUI data_dir is owned by the service user "
+                "(e.g. chown -R puppet:puppet /opt/openvox-gui/data)."
+            ),
+        )
+    except Exception as e:
+        logger.exception("Unexpected error saving cluster config")
+        raise HTTPException(status_code=500, detail=f"Failed to save cluster config: {e}")
 
     seeded: List[str] = []
+    seed_error: Optional[str] = None
     if saved.get("deployment_mode") == "clustered" and seed:
-        seeded = await _seed_infrastructure_enc_groups(saved)
+        try:
+            seeded = await _seed_infrastructure_enc_groups(saved)
+        except Exception as e:
+            # Config is already on disk — do not fail the whole save for ENC seed issues.
+            logger.exception("Cluster config saved but ENC infrastructure seed failed")
+            seed_error = str(e)
 
     audit_event(
         "cluster_config_update",
         user=_user,
-        detail={"mode": saved.get("deployment_mode"), "seeded_groups": seeded},
+        detail=(
+            f"mode={saved.get('deployment_mode')} "
+            f"seeded={','.join(seeded) or 'none'}"
+            + (f" seed_error={seed_error}" if seed_error else "")
+        ),
     )
-    return {"config": saved, "seeded_groups": seeded}
+    out: Dict[str, Any] = {"config": saved, "seeded_groups": seeded}
+    if seed_error:
+        out["seed_warning"] = (
+            f"Cluster config saved, but ENC group seed failed: {seed_error}"
+        )
+    return out
 
 
 async def _seed_infrastructure_enc_groups(cfg: Dict[str, Any]) -> List[str]:
-    """Ensure Puppet Compiler and PuppetDB ENC groups exist; attach known FQDNs."""
+    """Ensure Puppet Compiler and PuppetDB ENC groups exist; attach known FQDNs.
+
+    Uses selectinload for node.groups so SQLAlchemy async does not raise
+    MissingGreenlet (lazy load in async context → HTTP 500 on Save).
+    """
     from ..database import async_session
-    from ..services.enc import enc_service
     from ..models.enc import EncGroup, EncNode, EncEnvironment
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     seeded: List[str] = []
     env_name = "production"
@@ -437,7 +470,12 @@ async def _seed_infrastructure_enc_groups(cfg: Dict[str, Any]) -> List[str]:
                 await db.flush()
                 seeded.append(gname)
             for cert in members:
-                node = await db.get(EncNode, cert)
+                nresult = await db.execute(
+                    select(EncNode)
+                    .options(selectinload(EncNode.groups))
+                    .where(EncNode.certname == cert)
+                )
+                node = nresult.scalar_one_or_none()
                 if not node:
                     node = EncNode(
                         certname=cert,
@@ -447,13 +485,17 @@ async def _seed_infrastructure_enc_groups(cfg: Dict[str, Any]) -> List[str]:
                     )
                     db.add(node)
                     await db.flush()
-                if group not in (node.groups or []):
-                    # relationship may be list
-                    try:
-                        if group not in node.groups:
-                            node.groups.append(group)
-                    except Exception:
-                        node.groups = list(node.groups or []) + [group]
+                    nresult = await db.execute(
+                        select(EncNode)
+                        .options(selectinload(EncNode.groups))
+                        .where(EncNode.certname == cert)
+                    )
+                    node = nresult.scalar_one_or_none()
+                if node is None:
+                    continue
+                existing_ids = {g.id for g in (node.groups or [])}
+                if group.id not in existing_ids:
+                    node.groups.append(group)
         await db.commit()
     return seeded
 
