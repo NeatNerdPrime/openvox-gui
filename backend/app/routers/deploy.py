@@ -518,6 +518,7 @@ async def _run_on_targets(
 @rate_limit_heavy()
 async def stage_deployment(
     deploy: ClusterDeployRequest,
+    request: Request,
     current_user: str = Depends(require_role("admin", "operator")),
     _=Depends(concurrency_heavy),
 ):
@@ -549,6 +550,7 @@ async def stage_deployment(
 @rate_limit_heavy()
 async def activate_deployment(
     deploy: ClusterDeployRequest,
+    request: Request,
     current_user: str = Depends(require_role("admin", "operator")),
     _=Depends(concurrency_heavy),
 ):

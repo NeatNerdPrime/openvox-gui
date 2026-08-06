@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.5] - 2026-08-06 (fix — stage/activate rate-limit import)
+
+### Fixed
+- **Service crash on import:** `POST /api/deploy/stage` and `/activate` used `@rate_limit_heavy()` without a `request: Request` parameter. slowapi requires `request` on limited handlers; missing it raised at import time and left `openvox-gui.service` crash-looping (traceback at `deploy.py` `@rate_limit_heavy()`).
+
 ## [3.11.0-alpha.1] - 2026-08-06 (3.11 multi-server / clustered alpha train)
 
 ### Added
