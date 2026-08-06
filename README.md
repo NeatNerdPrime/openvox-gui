@@ -76,7 +76,7 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 
 ## 📚 Documentation
 
-- **[Installation Guide](INSTALL.md)** — Step-by-step guide for new installations
+- **[Installation Guide](INSTALL.md)** — Step-by-step guide for new installations (includes **Advanced Installations / Extra Large & Clustered** estates at the end—design and workflow, not a multi-DC build book)
 - **[Update Guide](UPDATE.md)** — How to update to newer versions (clone-then-deploy architecture)
 - **[LDAP / Active Directory Guide](docs/LDAP.md)** — Configure enterprise authentication
 - **[Sudoers Configuration](docs/SUDOERS.md)** — Required sudo rules for the GUI service

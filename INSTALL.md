@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.11.0-alpha.2**
+**OpenVox GUI Version 3.11.0-alpha.3**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -12,6 +12,7 @@ This guide will walk you through installing OpenVox GUI on your server. Don't wo
 4. [After Installation](#after-installation)
 5. [Troubleshooting Installation](#troubleshooting-installation)
 6. [Advanced Installation Options](#advanced-installation-options)
+7. [Advanced Installations (Extra Large / Clustered Estates)](#advanced-installations-extra-large--clustered-estates)
 
 ---
 
@@ -320,7 +321,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.11.0-alpha.2"}` if everything is working.
+You should see `{"status":"ok","version":"3.11.0-alpha.3"}` if everything is working.
 
 ---
 
@@ -651,7 +652,131 @@ Now that you have OpenVox GUI installed:
 
 ---
 
-**Need help?** Check the [Troubleshooting Guide](TROUBLESHOOTING.md) or visit our [GitHub page](https://github.com/cvquesty/openvox-gui).
+## Advanced Installations (Extra Large / Clustered Estates)
+
+> **Most sites stop here.** The standard install places OpenVox GUI on a single OpenVox Server host. That model is intentional, well-supported, and sufficient for the large majority of environments (roughly **90%+** of deployments).
+>
+> This section is for **extra large** estates—many catalog compilers, multi-node OpenVoxDB, site-loss resilience, or multi–data-center designs—where OpenVox GUI’s **clustered** features become useful. It describes **capabilities, design philosophy, and workflow**, not a full multi-DC build runbook.
+
+### Philosophy of operation
+
+| Principle | What it means |
+|-----------|----------------|
+| **Singleton first** | Ship and operate a single-server GUI by default. Operators should not see multi-host knobs until they choose them. |
+| **Opt-in clustered mode** | A explicit **Settings → Cluster** switch turns on multi-server awareness. Until then, the product behaves as a classic one-box console. |
+| **GUI is not the control plane fabric** | Compilers, OpenVoxDB mesh, and CA HA are **infrastructure** concerns. OpenVox GUI observes, configures, deploys, and classifies—it does not replace Pacemaker, Spock, or your load balancers. |
+| **FQDN over VIP for member health** | When checking individual machines, probe **each host’s FQDN** (compiler :8140, OpenVoxDB :8081, CA members :8140). VIPs answer “is the service reachable?”; FQDNs answer “is **this** member healthy?” |
+| **Same moment, same code** | In multi-compiler estates, code must not go live on one compiler minutes before another. Clustered **stage → activate** is about aligning that cutover. |
+| **Classification segments roles** | Compilers and OpenVoxDB hosts are fleet members too. ENC groups such as **Puppet Compiler** and **PuppetDB** keep roles visible and manageable without inventing a second inventory system. |
+
+### Basic design (conceptual)
+
+```text
+                         Agents / operators
+                                |
+              +-----------------+------------------+
+              |                                    |
+     Compiler VIP (HAProxy)              OpenVoxDB VIP (HAProxy)
+              |                                    |
+     +--------+--------+                  +--------+--------+
+     |                 |                  |                 |
+  compiler1 …     compilerN           ovdb1 …           ovdbN
+     |                 |                  |                 |
+     +-------- OpenVox GUI (operator console) --------+
+                       |
+              Settings → Cluster (opt-in)
+                       |
+         health by FQDN · stage/activate · ENC groups
+```
+
+**Typical extra-large building blocks** (you already design these outside the GUI installer):
+
+- **Multiple catalog compilers** behind a TCP load balancer (pass-through TLS).
+- **Multiple OpenVoxDB / PostgreSQL hosts** with multi-master or multi-site data strategy, fronted by a VIP for clients.
+- **CA high availability** (shared CA data, fencing, floating VIP)—GUI may report Pacemaker/DRBD **primary** and VIP placement when `pcs` (or Bolt to a CA node) is available.
+- **One OpenVox GUI** installation (still co-located with local access to Puppet paths today), configured for **clustered** mode so operators can see and drive the multi-node estate.
+
+OpenVox GUI does **not** currently replace a dedicated multi-site architecture engagement. Use this product surface to **operate** a design you already own.
+
+### Expected sizing (guidance, not a quote)
+
+These ranges are **planning heuristics**. Real capacity depends on agent count, catalog complexity, report retention, compile concurrency, and geography.
+
+| Scale band | Rough agent order | Compilers (typical) | OpenVoxDB / PG | Notes |
+|------------|-------------------|---------------------|----------------|-------|
+| Small / standard | up to low thousands | 1 (GUI co-located) | 1 | Default OpenVox GUI install |
+| Medium | thousands–tens of thousands | 2+ behind LB | 1–2 | Cluster mode optional |
+| **Extra large** | tens–hundreds of thousands | N behind VIP(s), often multi-site | Multi-node mesh / multi-site | Cluster mode recommended in GUI; architecture review strongly advised |
+| Multi-DC / site-loss | as above + geo | Compilers per site + global DNS policy | Multi-site DB + promote story | Beyond “turn on a switch”—design before tooling |
+
+For OpenVox GUI itself on the console host: more **UVICORN_WORKERS** (see High-Performance Installation above) helps the web tier; it does not replace compiler or database capacity.
+
+### Capabilities of a clustered environment (what the GUI can do)
+
+When **Settings → Cluster** is set to **clustered**, OpenVox GUI can:
+
+1. **Record estate topology**  
+   Compiler FQDNs, OpenVoxDB application host FQDNs, optional CA members and CA VIPs, and code-deploy targets.
+
+2. **Health by member, not only VIP**  
+   - Compilers: Puppet Server status APIs on each FQDN (`:8140`).  
+   - OpenVoxDB: status, services, version meta, and a lightweight query probe on each FQDN (`:8081`).  
+   - CA: status/services (and certificate endpoint) on CA members and optional VIPs.  
+   - **CA HA snapshot** (when available): Pacemaker online/offline, resource map, **which node is Promoted (primary)**, VIP placement, optional DRBD text—via local `pcs` or Bolt to a configured CA host.
+
+3. **Code deployment for many servers**  
+   - Configure multiple deploy targets (usually compilers).  
+   - **Stage** code into a staging codedir on all targets.  
+   - **Activate** staged code to the live codedir so cutover is coordinated across the set (Bolt when inventory exists).  
+   - Single-host “Deploy Now” remains for classic r10k on the local box.
+
+4. **Classification segmentation**  
+   Seeded ENC groups such as **Puppet Compiler** and **PuppetDB**, with configured FQDNs attached, so infrastructure roles are first-class in **Classification and Code → Classification**.
+
+5. **What stays out of scope for this document**  
+   Full multi-DC bootstrap, DRBD/Pacemaker recipes, Spock mesh procedures, and VIP/SAN design deep-dives are **not** reproduced here. Those are infrastructure projects; the GUI assumes that foundation exists or is being built under separate design work.
+
+### Basic operator workflow (clustered GUI)
+
+This is the **console workflow**, not a green-field build checklist.
+
+1. **Install OpenVox GUI** the normal way on the host that has appropriate local access (see earlier sections).  
+2. **Operate single-server** until compilers, DB, and CA topology are real and healthy.  
+3. Open **Settings → Cluster**, switch **Deployment mode** to **Clustered**, and enter:
+   - Compiler FQDNs  
+   - OpenVoxDB node FQDNs  
+   - CA member FQDNs (and optional CA VIPs)  
+   - Optional explicit code-deploy targets  
+4. Save—optionally seeding **Puppet Compiler** / **PuppetDB** ENC groups.  
+5. Use **Settings → Services** to review local units **and** per-FQDN member health / HA primary.  
+6. Use **Code Deployment** for local deploy, or **Stage** then **Activate** when multiple targets must cut over together.  
+7. Use **Classification** to manage group membership and classes for infrastructure roles.
+
+If Cluster mode is left at **Single server**, multi-host panels and stage/activate stay out of the way.
+
+### When to call for design help
+
+Extra large and multi-site OpenVox estates mix capacity planning, HA fencing, certificate SANs/VIPs, database multi-master policy, and change management. The GUI features above make day-2 operation safer **after** that design is solid.
+
+For architecture review, multi-site OpenVox, or a formal “extra large installation” engagement—beyond what community docs and this product alone provide—contact:
+
+**S & S Consulting Group (SSCG)**  
+Specialists in Puppet and OpenVox platform engineering  
+
+| | |
+|--|--|
+| **Web** | [ssconsultinggroup.net](https://ssconsultinggroup.net) |
+| **Email** | [info@ssconsultinggroup.net](mailto:info@ssconsultinggroup.net) |
+| **Phone** | [912-549-0272](tel:+19125490272) |
+
+A more detailed advanced installation example may be published in a later OpenVox GUI release; until then, treat multi-DC build procedures as a separate engagement, not as something the installer automates.
+
+---
+
+**Need help with a standard install?** Check the [Troubleshooting Guide](TROUBLESHOOTING.md) or visit our [GitHub page](https://github.com/cvquesty/openvox-gui).
+
+**Need help with an extra large or multi-site design?** Contact **SSCG** using the details above.
+
 ---
 
 <div align="center">

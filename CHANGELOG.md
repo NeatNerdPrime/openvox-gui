@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.11.0-alpha.3] - 2026-08-06 (docs — Extra Large / clustered estates)
+
+### Added
+- **INSTALL.md — Advanced Installations (Extra Large / Clustered Estates)** at the bottom of the guide:
+  - Philosophy (singleton first, opt-in cluster mode, FQDN health, stage/activate cutover)
+  - Conceptual multi-server design diagram (no multi-DC build cookbook)
+  - Sizing bands (small → extra large / multi-DC guidance)
+  - Clustered GUI capabilities and basic operator workflow
+  - **SSCG** contact for architecture engagement: info@ssconsultinggroup.net, 912-549-0272, ssconsultinggroup.net
+- README link callout to the Advanced Installations section
+
 ## [3.11.0-alpha.2] - 2026-08-06 (cluster health depth)
 
 ### Added
