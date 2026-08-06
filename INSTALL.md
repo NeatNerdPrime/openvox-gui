@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.11.0-alpha.3**
+**OpenVox GUI Version 3.11.0-alpha.4**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -321,7 +321,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.11.0-alpha.3"}` if everything is working.
+You should see `{"status":"ok","version":"3.11.0-alpha.4"}` if everything is working.
 
 ---
 
@@ -770,6 +770,17 @@ Specialists in Puppet and OpenVox platform engineering
 | **Phone** | [912-549-0272](tel:+19125490272) |
 
 A more detailed advanced installation example may be published in a later OpenVox GUI release; until then, treat multi-DC build procedures as a separate engagement, not as something the installer automates.
+
+### Migration stance (extra large / new cluster)
+
+Typical path for an existing singleton (or smaller) production estate:
+
+1. **Stand up** the new multi-server OpenVox + GUI (3.11+ clustered) environment separately.  
+2. **Migrate agents and roles** onto that estate (compilers, OpenVoxDB, CA policy as designed).  
+3. **Do not** require a big-bang “upgrade the old production box to clustered 3.11 in place.”  
+4. After migration, **repurpose the former production OpenVox host(s)** as a **development / lab instance** (lower risk experiments, GUI alpha trains, training).
+
+That keeps production stable on a known 3.10.x line until agents are moved, then gives you a permanent internal machine for ongoing OpenVox GUI and platform development.
 
 ---
 

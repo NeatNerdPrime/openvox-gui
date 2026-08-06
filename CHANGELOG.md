@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [3.11.0-alpha.4] - 2026-08-06 (docs — migration stance)
+
+### Changed
+- **Estate strategy:** migrate nodes to the new multi-server cluster; convert the former production singleton into a **development instance** (documented in INSTALL Advanced Installations + AGENTS). No in-place production cutover assumed.
+
 ## [3.11.0-alpha.3] - 2026-08-06 (docs — Extra Large / clustered estates)
 
 ### Added
@@ -33,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Conceptual multi-server design diagram (no multi-DC build cookbook)
   - Sizing bands (small → extra large / multi-DC guidance)
   - Clustered GUI capabilities and basic operator workflow
+  - **Migration stance:** new cluster + migrate nodes; former production becomes a **dev instance** (not in-place production cutover)
   - **SSCG** contact for architecture engagement: info@ssconsultinggroup.net, 912-549-0272, ssconsultinggroup.net
 - README link callout to the Advanced Installations section
 

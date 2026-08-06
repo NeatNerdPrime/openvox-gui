@@ -6,8 +6,9 @@
 
 ### 3.11 multi-server / clustered train (started **3.11.0-alpha.1**)
 - Active feature train for multi-compiler / multi-OpenVoxDB GUI support (cluster mode, stage/activate deploy, FQDN health).
-- **Do not deploy 3.11 alphas to openvox.pdxc-it.twitter.biz production** until explicitly ready — production remains on **3.10.8-dev.3** (or the pinned 3.10.x build in use).
-- Lab / new cluster validation only unless the user names production.
+- **Estate strategy (not an in-place cutover):** build/validate the **new** multi-server cluster; **migrate nodes** onto it; then **repurpose the current production estate** (e.g. openvox.pdxc-it.twitter.biz / legacy singleton) as a **development instance**. Do not treat “upgrade production GUI to 3.11 in place” as the path.
+- While migration is in progress, leave the live estate on its **3.10.x** pin (e.g. **3.10.8-dev.3**) for day-to-day production; install **3.11 alphas only** on internal/lab or the new cluster hosts.
+- Lab / new-cluster validation is the default deploy target for this train unless the user explicitly names another host.
 
 
 ### 3.10 line status (as of **3.10.6** stable on `main`)
