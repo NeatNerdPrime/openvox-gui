@@ -180,6 +180,18 @@ export const deploy = {
       method: 'POST',
       body: JSON.stringify({ environment: environment || null }),
     }),
+  /** Clustered: stage code on all deploy targets */
+  stage: (environment?: string) =>
+    fetchJSON<any>('/deploy/stage', {
+      method: 'POST',
+      body: JSON.stringify({ environment: environment || null }),
+    }),
+  /** Clustered: activate staged code on all deploy targets */
+  activate: (environment?: string) =>
+    fetchJSON<any>('/deploy/activate', {
+      method: 'POST',
+      body: JSON.stringify({ environment: environment || null }),
+    }),
 };
 
 // ─── ENC ────────────────────────────────────────────────────
@@ -350,13 +362,27 @@ export const config = {
   getEnvironments: () => fetchJSON<any>('/config/environments'),
   getModules: (environment: string) =>
     fetchJSON<any>(`/config/environments/${environment}/modules`),
-  getServices: () => fetchJSON<any[]>('/config/services'),
+  getServices: () => fetchJSON<any>('/config/services'),
   restartPuppetStack: () =>
     fetchJSON<any>('/config/services/restart-puppet-stack', { method: 'POST' }),
   restartService: (service: string) =>
     fetchJSON<any>('/config/services/restart', {
       method: 'POST',
       body: JSON.stringify({ service, action: 'restart' }),
+    }),
+  getCluster: () => fetchJSON<any>('/config/cluster'),
+  updateCluster: (data: {
+    deployment_mode: string;
+    compilers: string[];
+    puppetdb_nodes: string[];
+    code_deploy_targets: string[];
+    staging_codedir?: string;
+    live_codedir?: string;
+    seed_infrastructure_groups?: boolean;
+  }) =>
+    fetchJSON<any>('/config/cluster', {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
   getAppName: () => fetchJSON<any>('/config/app/name'),
   getApp: () => fetchJSON<any>('/config/app'),

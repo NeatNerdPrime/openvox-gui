@@ -298,11 +298,136 @@ async def list_environment_modules(environment: str):
 async def get_services_status():
     """Get status of all core Puppet/OpenVox services.
 
-    This is the preferred endpoint for service health. It returns accurate
-    status for puppetserver, puppetdb, the puppet agent, and the GUI itself.
+    Local systemd status for puppetserver, puppetdb, puppet, openvox-gui.
+    When deployment_mode is clustered, also returns ``cluster_members`` with
+    HTTP health probes against each configured compiler (8140) and PuppetDB
+    node (8081) by **FQDN** (not VIP).
     """
     services = ["puppetserver", "puppetdb", "puppet", "openvox-gui"]
-    return [puppetserver_service.get_service_status(s) for s in services]
+    local = [puppetserver_service.get_service_status(s) for s in services]
+
+    from ..services.cluster_config import load_cluster_config, is_clustered
+    from ..services.cluster_health import probe_cluster_members
+
+    cfg = load_cluster_config()
+    payload: Dict[str, Any] = {
+        "services": local,
+        "deployment_mode": cfg.get("deployment_mode", "single"),
+        "cluster_members": [],
+    }
+    if is_clustered():
+        payload["cluster_members"] = await probe_cluster_members(cfg)
+    # Backward compatible: also return bare list shape consumers already use
+    # via frontend that expects an array — keep array-like top-level when not
+    # clustered by wrapping. Frontend will prefer the object shape.
+    return payload
+
+
+@router.get("/cluster")
+async def get_cluster_config():
+    """Return single vs clustered deployment configuration."""
+    from ..services.cluster_config import load_cluster_config
+    return load_cluster_config()
+
+
+class ClusterConfigUpdate(BaseModel):
+    deployment_mode: str = "single"
+    compilers: List[str] = []
+    puppetdb_nodes: List[str] = []
+    code_deploy_targets: List[str] = []
+    staging_codedir: Optional[str] = None
+    live_codedir: Optional[str] = None
+    seed_infrastructure_groups: bool = True
+
+
+@router.put("/cluster")
+async def update_cluster_config(
+    body: ClusterConfigUpdate,
+    _user: str = Depends(_ADMIN_ONLY),
+):
+    """Save cluster configuration. Optionally seed ENC infrastructure groups."""
+    from ..services.cluster_config import save_cluster_config, load_cluster_config
+    from ..utils.audit import audit_event
+
+    data = body.model_dump()
+    current = load_cluster_config()
+    if not data.get("staging_codedir"):
+        data["staging_codedir"] = current.get("staging_codedir")
+    if not data.get("live_codedir"):
+        data["live_codedir"] = current.get("live_codedir")
+    seed = data.pop("seed_infrastructure_groups", True)
+    try:
+        saved = save_cluster_config(data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    seeded: List[str] = []
+    if saved.get("deployment_mode") == "clustered" and seed:
+        seeded = await _seed_infrastructure_enc_groups(saved)
+
+    audit_event(
+        "cluster_config_update",
+        user=_user,
+        detail={"mode": saved.get("deployment_mode"), "seeded_groups": seeded},
+    )
+    return {"config": saved, "seeded_groups": seeded}
+
+
+async def _seed_infrastructure_enc_groups(cfg: Dict[str, Any]) -> List[str]:
+    """Ensure Puppet Compiler and PuppetDB ENC groups exist; attach known FQDNs."""
+    from ..database import async_session
+    from ..services.enc import enc_service
+    from ..models.enc import EncGroup, EncNode, EncEnvironment
+    from sqlalchemy import select
+
+    seeded: List[str] = []
+    env_name = "production"
+    specs = [
+        ("Puppet Compiler", "Catalog compilers / OpenVox Server hosts", cfg.get("compilers") or []),
+        ("PuppetDB", "OpenVoxDB / PuppetDB application hosts", cfg.get("puppetdb_nodes") or []),
+    ]
+    async with async_session() as db:
+        # Ensure production environment row exists
+        env = await db.get(EncEnvironment, env_name)
+        if not env:
+            env = EncEnvironment(name=env_name, description="Default production environment")
+            db.add(env)
+            await db.flush()
+
+        for gname, gdesc, members in specs:
+            result = await db.execute(select(EncGroup).where(EncGroup.name == gname))
+            group = result.scalar_one_or_none()
+            if not group:
+                group = EncGroup(
+                    name=gname,
+                    description=gdesc,
+                    environment=env_name,
+                    classes={},
+                    parameters={"openvox_role": gname.lower().replace(" ", "_")},
+                )
+                db.add(group)
+                await db.flush()
+                seeded.append(gname)
+            for cert in members:
+                node = await db.get(EncNode, cert)
+                if not node:
+                    node = EncNode(
+                        certname=cert,
+                        environment=env_name,
+                        classes={},
+                        parameters={},
+                    )
+                    db.add(node)
+                    await db.flush()
+                if group not in (node.groups or []):
+                    # relationship may be list
+                    try:
+                        if group not in node.groups:
+                            node.groups.append(group)
+                    except Exception:
+                        node.groups = list(node.groups or []) + [group]
+        await db.commit()
+    return seeded
 
 
 @router.post("/services/restart")

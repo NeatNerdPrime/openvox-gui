@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Card, Stack, Group, Text, Badge, Button, Select, Alert, Table,
-  Code, Paper, ThemeIcon, Grid, ScrollArea, Loader, Divider,
+  Code, Paper, ThemeIcon, Grid, ScrollArea, Loader, Divider, Tabs,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -249,6 +249,7 @@ export function CodeDeploymentPage() {
   const { isRobots } = useAppTheme();
   const { data: envsData, loading: envsLoading } = useApi(() => deploy.getEnvironments());
   const { data: statusData, loading: statusLoading, refetch: refetchStatus } = useApi(() => deploy.getStatus());
+  const { data: clusterCfg } = useApi(() => config.getCluster());
 
   const [selectedEnv, setSelectedEnv] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
@@ -257,10 +258,16 @@ export function CodeDeploymentPage() {
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
   const [lastSuccess, setLastSuccess] = useState<boolean | null>(null);
   const [confirmDeploy, setConfirmDeploy] = useState(false);
+  const [pageTab, setPageTab] = useState<string | null>('deploy');
   const { begin, end } = useActivity();
   const skipConfirm = useSkipAdhocConfirm();
 
   const [restartingStack, setRestartingStack] = useState(false);
+  const clustered = clusterCfg?.deployment_mode === 'clustered';
+  const deployTargets: string[] = clusterCfg?.code_deploy_targets?.length
+    ? clusterCfg.code_deploy_targets
+    : (clusterCfg?.compilers || []);
+
 
   // Poll deploy status while running (live affordance; output still from run response)
   useEffect(() => {
@@ -283,6 +290,22 @@ export function CodeDeploymentPage() {
 
   const environments = envsData?.environments || [];
 
+  const appendResult = (result: any, label: string) => {
+    const lines = result.output || [];
+    setOutputLog((prev) => [
+      ...prev,
+      ...lines,
+      '',
+      result.hosts
+        ? `── Hosts: ${JSON.stringify(result.hosts)} ──`
+        : '',
+      `── ${label} exit ${result.exit_code} (${result.success ? 'SUCCESS' : 'FAILED'}) ──`,
+      '',
+    ]);
+    setLastExitCode(result.exit_code);
+    setLastSuccess(result.success);
+  };
+
   const handleDeploy = async () => {
     setConfirmDeploy(false);
     setDeploying(true);
@@ -299,26 +322,50 @@ export function CodeDeploymentPage() {
       `═══════════════════════════════════════════════════════`,
       `  Deploy started: ${timestamp}`,
       `  Environment: ${env}`,
+      `  Mode: single-host (local r10k)`,
       `═══════════════════════════════════════════════════════`,
       '',
     ]);
 
     try {
       const result = await deploy.run(selectedEnv || undefined);
-      const lines = result.output || [];
-      setOutputLog((prev) => [
-        ...prev,
-        ...lines,
-        '',
-        `── Exit code: ${result.exit_code} (${result.success ? 'SUCCESS' : 'FAILED'}) ──`,
-        '',
-      ]);
-      setLastExitCode(result.exit_code);
-      setLastSuccess(result.success);
+      appendResult(result, 'Deploy');
       end(actId, result.success ? 'done' : 'error', `exit ${result.exit_code}`);
       refetchStatus();
     } catch (e: any) {
       const errMsg = e.message || 'Deployment failed';
+      setDeployError(errMsg);
+      setOutputLog((prev) => [...prev, `ERROR: ${errMsg}`, '']);
+      end(actId, 'error', errMsg);
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  const handleStageOrActivate = async (kind: 'stage' | 'activate') => {
+    setDeploying(true);
+    setDeployError(null);
+    const env = selectedEnv || 'all';
+    const actId = begin(`r10k ${kind}: ${env}`, { href: '/deployment' });
+    setOutputLog((prev) => [
+      ...prev,
+      '',
+      `═══════════════════════════════════════════════════════`,
+      `  Cluster ${kind} started: ${new Date().toLocaleString()}`,
+      `  Environment: ${env}`,
+      `  Targets: ${deployTargets.join(', ') || '(none configured)'}`,
+      `═══════════════════════════════════════════════════════`,
+      '',
+    ]);
+    try {
+      const result = kind === 'stage'
+        ? await deploy.stage(selectedEnv || undefined)
+        : await deploy.activate(selectedEnv || undefined);
+      appendResult(result, kind);
+      end(actId, result.success ? 'done' : 'error', `exit ${result.exit_code}`);
+      refetchStatus();
+    } catch (e: any) {
+      const errMsg = e.message || `${kind} failed`;
       setDeployError(errMsg);
       setOutputLog((prev) => [...prev, `ERROR: ${errMsg}`, '']);
       end(actId, 'error', errMsg);
@@ -338,8 +385,15 @@ export function CodeDeploymentPage() {
           <IconRocket size={24} />
         </ThemeIcon>
         <Title order={2}>Code Deployment</Title>
+        {clustered && <Badge color="violet" variant="light">Clustered</Badge>}
       </Group>
 
+      <Tabs value={pageTab} onChange={setPageTab} variant="outline">
+        <Tabs.List>
+          <Tabs.Tab value="deploy">Deploy</Tabs.Tab>
+          {clustered && <Tabs.Tab value="settings">Configuration</Tabs.Tab>}
+        </Tabs.List>
+        <Tabs.Panel value="deploy" pt="md">
       <Grid>
         {/* Left half: Deploy controls + Services */}
         <Grid.Col span={{ base: 12, md: isRobots ? 6 : 12 }}>
@@ -369,6 +423,35 @@ export function CodeDeploymentPage() {
                   {deploying ? 'Deploying...' : 'Deploy Now'}
                 </Button>
               </Group>
+
+              {clustered && (
+                <Group mt="md">
+                  <Button
+                    variant="outline"
+                    color="violet"
+                    disabled={deploying || deployTargets.length === 0}
+                    loading={deploying}
+                    onClick={() => handleStageOrActivate('stage')}
+                  >
+                    Stage on all targets
+                  </Button>
+                  <Button
+                    color="violet"
+                    disabled={deploying || deployTargets.length === 0}
+                    loading={deploying}
+                    onClick={() => handleStageOrActivate('activate')}
+                  >
+                    Activate staged code
+                  </Button>
+                </Group>
+              )}
+
+              {clustered && (
+                <Text size="xs" c="dimmed" mt="sm">
+                  Stage → r10k into code-staging on each target; Activate → promote to live codedir
+                  on all targets (Bolt when available). Targets: {deployTargets.join(', ') || 'configure under Configuration tab / Settings → Cluster'}.
+                </Text>
+              )}
 
               {!statusLoading && statusData?.last_commit && statusData.last_commit !== 'unknown' && (
                 <Text size="xs" c="dimmed" mt="sm">
@@ -446,6 +529,42 @@ export function CodeDeploymentPage() {
           )}
         </Paper>
       </Card>
+        </Tabs.Panel>
+        {clustered && (
+          <Tabs.Panel value="settings" pt="md">
+            <Card withBorder padding="md">
+              <Title order={4} mb="sm">Multiple Puppet Servers (deploy targets)</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                Configure compiler / server FQDNs under <strong>Settings → Cluster</strong>.
+                Those hosts receive Stage and Activate. Bolt inventory at
+                {' '}<Code>/etc/puppetlabs/bolt/inventory.yaml</Code> should list them when using remote deploy.
+              </Text>
+              <Table withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Deploy target FQDN</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {deployTargets.length === 0 ? (
+                    <Table.Tr>
+                      <Table.Td>
+                        <Text c="dimmed" size="sm">No targets configured yet.</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ) : (
+                    deployTargets.map((t) => (
+                      <Table.Tr key={t}>
+                        <Table.Td><Code>{t}</Code></Table.Td>
+                      </Table.Tr>
+                    ))
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Card>
+          </Tabs.Panel>
+        )}
+      </Tabs>
       <ConfirmModal
         opened={confirmDeploy && !skipConfirm}
         onClose={() => setConfirmDeploy(false)}

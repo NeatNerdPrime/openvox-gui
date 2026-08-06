@@ -4,6 +4,12 @@
 - **Default branch is `main`** — staging branch has been removed
 - All development and releases go through `main`
 
+### 3.11 multi-server / clustered train (started **3.11.0-alpha.1**)
+- Active feature train for multi-compiler / multi-OpenVoxDB GUI support (cluster mode, stage/activate deploy, FQDN health).
+- **Do not deploy 3.11 alphas to openvox.pdxc-it.twitter.biz production** until explicitly ready — production remains on **3.10.8-dev.3** (or the pinned 3.10.x build in use).
+- Lab / new cluster validation only unless the user names production.
+
+
 ### 3.10 line status (as of **3.10.6** stable on `main`)
 
 The 2026-06 evaluation-driven alpha effort (**`3.10.a_r_alpha.N`**, trains `3.10.01`–`3.10.04` / srdev1–sruiux2) was **merged into `main`** and promoted through **3.10.1.b*** / stable **3.10.2**, the **3.10.3b*** functionality train to stable **`3.10.4`**, then the **3.10.5-dev** performance train to stable **`3.10.6`**. Day-to-day development and releases go through **`main`** again.

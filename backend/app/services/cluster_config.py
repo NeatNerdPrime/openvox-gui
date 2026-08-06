@@ -1,0 +1,124 @@
+"""
+Cluster / multi-server configuration for openvox-gui.
+
+Single-server (default) keeps the historic singleton UX. When
+``deployment_mode`` is ``clustered``, the UI exposes multi-compiler
+code deploy, infrastructure ENC groups, and per-FQDN service health.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from ..config import settings
+
+logger = logging.getLogger(__name__)
+
+_FQDN_RE = re.compile(
+    r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
+)
+
+DEFAULT_CONFIG: Dict[str, Any] = {
+    "deployment_mode": "single",  # single | clustered
+    "compilers": [],  # list of FQDNs (catalog compilers / deploy targets)
+    "puppetdb_nodes": [],  # list of FQDNs (OpenVoxDB application hosts)
+    "code_deploy_targets": [],  # FQDNs that receive r10k stage/activate (defaults to compilers)
+    "staging_codedir": "/etc/puppetlabs/code-staging",
+    "live_codedir": "/etc/puppetlabs/code",
+}
+
+
+def _config_path() -> Path:
+    return Path(settings.data_dir) / "cluster_config.json"
+
+
+def _validate_fqdn(name: str) -> str:
+    n = (name or "").strip().lower()
+    if not n or len(n) > 253 or not _FQDN_RE.match(n):
+        raise ValueError(f"Invalid FQDN: {name!r}")
+    return n
+
+
+def _normalize(data: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(DEFAULT_CONFIG)
+    if not isinstance(data, dict):
+        return out
+    mode = data.get("deployment_mode", "single")
+    if mode not in ("single", "clustered"):
+        mode = "single"
+    out["deployment_mode"] = mode
+
+    for key in ("compilers", "puppetdb_nodes", "code_deploy_targets"):
+        raw = data.get(key) or []
+        if not isinstance(raw, list):
+            raw = []
+        cleaned: List[str] = []
+        for item in raw:
+            try:
+                cleaned.append(_validate_fqdn(str(item)))
+            except ValueError:
+                logger.warning("Skipping invalid FQDN in %s: %r", key, item)
+        # de-dupe preserve order
+        seen = set()
+        uniq = []
+        for c in cleaned:
+            if c not in seen:
+                seen.add(c)
+                uniq.append(c)
+        out[key] = uniq
+
+    for key in ("staging_codedir", "live_codedir"):
+        val = data.get(key) or DEFAULT_CONFIG[key]
+        if isinstance(val, str) and val.startswith("/") and ".." not in val:
+            out[key] = val
+
+    # Default deploy targets to compilers when clustered and empty
+    if out["deployment_mode"] == "clustered" and not out["code_deploy_targets"]:
+        out["code_deploy_targets"] = list(out["compilers"])
+
+    return out
+
+
+def load_cluster_config() -> Dict[str, Any]:
+    path = _config_path()
+    if not path.exists():
+        return dict(DEFAULT_CONFIG)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return _normalize(data)
+    except Exception as e:
+        logger.error("Failed to load cluster_config.json: %s", e)
+        return dict(DEFAULT_CONFIG)
+
+
+def save_cluster_config(data: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = _normalize(data)
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(normalized, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    logger.info(
+        "Saved cluster config mode=%s compilers=%s puppetdb=%s deploy=%s",
+        normalized["deployment_mode"],
+        len(normalized["compilers"]),
+        len(normalized["puppetdb_nodes"]),
+        len(normalized["code_deploy_targets"]),
+    )
+    return normalized
+
+
+def is_clustered() -> bool:
+    return load_cluster_config().get("deployment_mode") == "clustered"
+
+
+def deploy_targets() -> List[str]:
+    cfg = load_cluster_config()
+    if cfg.get("deployment_mode") != "clustered":
+        return []
+    targets = cfg.get("code_deploy_targets") or cfg.get("compilers") or []
+    return list(targets)

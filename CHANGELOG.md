@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.1] - 2026-08-06 (3.11 multi-server / clustered alpha train)
+
+### Added
+- **Clustered deployment mode** (default remains single-server for ~90% of installs):
+  - Settings → **Cluster** tab: `single` | `clustered`, compiler FQDNs, OpenVoxDB node FQDNs, optional code deploy targets
+  - When clustered, seeds ENC groups **Puppet Compiler** and **PuppetDB** and attaches configured certnames
+  - Code Deployment: Stage / Activate multi-target r10k flow (`scripts/r10k-stage-activate.sh` + Bolt when available)
+  - Settings → Services: HTTP health checks against each cluster member **FQDN** (:8140 compilers, :8081 PuppetDB), not VIP
+- Backend: `cluster_config.json` under data dir; `GET/PUT /api/config/cluster`; enhanced `GET /api/config/services`; `POST /api/deploy/stage` and `/activate`
+
+### Notes
+- **Production stay-put:** Keep **openvox.pdxc-it.twitter.biz** on **3.10.8-dev.3** (or current 3.10.x lab pin) until the multi-DC cluster is ready. This 3.11.0-alpha train is for multi-server development and lab validation (e.g. questy.org / new cluster), not a production cutover.
+- Logging and Settings → OpenVox Configuration multi-host content deferred to a later 3.11 iteration.
+
 ## Unreleased
+
 
 ## [3.10.8-dev.5] - 2026-07-30 (dev — certops role + server cert protection)
 

@@ -17,6 +17,7 @@ import {
 } from '@tabler/icons-react';
 import { enc, nodes as nodesApi, config } from '../services/api';
 import { useAppTheme } from '../hooks/ThemeContext';
+import { useApi } from '../hooks/useApi';
 import { PrettyJson } from '../components/PrettyJson';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { LoadingState } from '../components/StateComponents';
@@ -1222,10 +1223,24 @@ function CommonTab() {
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE
    ═══════════════════════════════════════════════════════════════ */
+function InfrastructureGroupsHint() {
+  const { data: cluster } = useApi(config.getCluster);
+  if (!cluster || cluster.deployment_mode !== 'clustered') return null;
+  return (
+    <Alert variant="light" color="violet" title="Infrastructure node groups (clustered)">
+      When clustered mode is enabled under Settings → Cluster, the ENC seeds{' '}
+      <strong>Puppet Compiler</strong> and <strong>PuppetDB</strong> node groups (production)
+      and attaches configured FQDNs. Use the Node Groups tab to review membership and classes.
+      These groups segment compilers and OpenVoxDB hosts from the general fleet.
+    </Alert>
+  );
+}
+
 export function NodeClassifierPage() {
   return (
     <Stack>
       <Title order={2}>Classification</Title>
+      <InfrastructureGroupsHint />
       <Tabs defaultValue="nodes" variant="outline">
         <Tabs.List>
           <Tabs.Tab value="nodes" leftSection={<IconServer size={16} />}>Nodes</Tabs.Tab>

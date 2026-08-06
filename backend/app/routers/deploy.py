@@ -421,8 +421,164 @@ async def run_deployment(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+STAGE_ACTIVATE_SCRIPT = "/opt/openvox-gui/scripts/r10k-stage-activate.sh"
+
+
+class ClusterDeployRequest(BaseModel):
+    environment: Optional[str] = None
+    targets: Optional[List[str]] = None  # override configured deploy targets
+
+
+async def _run_on_targets(
+    mode: str,
+    environment: Optional[str],
+    targets: List[str],
+    timeout: int = R10K_DEPLOY_TIMEOUT,
+) -> dict:
+    """Run stage/activate on each target via bolt when available, else local only."""
+    from ..services.cluster_config import load_cluster_config
+    from ..utils.sudo import run_sudo
+    import shutil
+
+    cfg = load_cluster_config()
+    staging = cfg.get("staging_codedir", "/etc/puppetlabs/code-staging")
+    live = cfg.get("live_codedir", "/etc/puppetlabs/code")
+    env_args: List[str] = [mode]
+    if environment:
+        env_args.append(environment)
+
+    per_host: List[dict] = []
+    all_ok = True
+    combined_out: List[str] = []
+
+    import asyncio
+
+    bolt = shutil.which("bolt")
+    if bolt and targets:
+        remote_cmd = (
+            f"OPENVOX_STAGING_CODEDIR={staging} OPENVOX_LIVE_CODEDIR={live} "
+            f"sudo {STAGE_ACTIVATE_SCRIPT} {' '.join(env_args)}"
+        )
+        bolt_cmd = [
+            bolt,
+            "command",
+            "run",
+            remote_cmd,
+            "--targets",
+            ",".join(targets),
+            "--no-host-key-check",
+        ]
+        inv = Path("/etc/puppetlabs/bolt/inventory.yaml")
+        if inv.exists():
+            bolt_cmd.extend(["-i", str(inv)])
+        proc = await asyncio.create_subprocess_exec(
+            *bolt_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            rc = proc.returncode or 0
+        except asyncio.TimeoutError:
+            proc.kill()
+            stdout_b, stderr_b = b"", b"bolt timed out"
+            rc = -1
+        out = stdout_b.decode("utf-8", errors="replace") + stderr_b.decode("utf-8", errors="replace")
+        combined_out.append(out)
+        all_ok = rc == 0
+        for t in targets:
+            per_host.append({"host": t, "success": all_ok, "via": "bolt", "exit_code": rc})
+    else:
+        # No bolt: run stage/activate on this host (GUI singleton path)
+        env_prefix = f"OPENVOX_STAGING_CODEDIR={staging} OPENVOX_LIVE_CODEDIR={live} "
+        script_args = " ".join(env_args)
+        result = await run_sudo(
+            ["sudo", "bash", "-c", f"{env_prefix}{STAGE_ACTIVATE_SCRIPT} {script_args}"],
+            timeout=timeout,
+        )
+        rc = int(result.get("returncode") or -1)
+        out = (result.get("stdout") or "") + "\n" + (result.get("stderr") or "")
+        combined_out.append(out)
+        host_label = targets[0] if targets else "local"
+        per_host.append({"host": host_label, "success": rc == 0, "via": "local", "exit_code": rc})
+        all_ok = rc == 0
+
+    return {
+        "success": all_ok,
+        "exit_code": 0 if all_ok else 1,
+        "hosts": per_host,
+        "output": "\n".join(combined_out).splitlines(),
+        "mode": mode,
+        "environment": environment or "all",
+        "targets": targets,
+    }
+
+
+@router.post("/stage")
+@rate_limit_heavy()
+async def stage_deployment(
+    deploy: ClusterDeployRequest,
+    current_user: str = Depends(require_role("admin", "operator")),
+    _=Depends(concurrency_heavy),
+):
+    """Stage r10k deploy to staging codedir on all cluster deploy targets."""
+    from ..services.cluster_config import is_clustered, deploy_targets, load_cluster_config
+    from ..utils.audit import audit_event
+
+    if not is_clustered():
+        raise HTTPException(
+            status_code=400,
+            detail="Clustered deployment mode is not enabled. Enable it under Settings → Application → Cluster.",
+        )
+    targets = deploy.targets or deploy_targets()
+    if not targets:
+        raise HTTPException(status_code=400, detail="No code_deploy_targets configured")
+    result = await _run_on_targets("stage", deploy.environment, targets)
+    audit_event(
+        "deploy_stage",
+        user=current_user,
+        targets=",".join(targets),
+        detail=deploy.environment or "all",
+        rc=result["exit_code"],
+        success=result["success"],
+    )
+    return result
+
+
+@router.post("/activate")
+@rate_limit_heavy()
+async def activate_deployment(
+    deploy: ClusterDeployRequest,
+    current_user: str = Depends(require_role("admin", "operator")),
+    _=Depends(concurrency_heavy),
+):
+    """Promote staged code to live codedir on all cluster deploy targets."""
+    from ..services.cluster_config import is_clustered, deploy_targets
+    from ..utils.audit import audit_event
+
+    if not is_clustered():
+        raise HTTPException(
+            status_code=400,
+            detail="Clustered deployment mode is not enabled.",
+        )
+    targets = deploy.targets or deploy_targets()
+    if not targets:
+        raise HTTPException(status_code=400, detail="No code_deploy_targets configured")
+    result = await _run_on_targets("activate", deploy.environment, targets)
+    audit_event(
+        "deploy_activate",
+        user=current_user,
+        targets=",".join(targets),
+        detail=deploy.environment or "all",
+        rc=result["exit_code"],
+        success=result["success"],
+    )
+    return result
+
+
 # ─── Deploy History (JSON via services.deploy_history; srdev2 A6) ──
 from ..services.deploy_history import (
+
     add_json_history_entry as _add_history_entry,
     load_json_history as _load_history,
 )

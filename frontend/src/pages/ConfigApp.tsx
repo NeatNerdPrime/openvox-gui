@@ -267,7 +267,7 @@ function ApplicationTab({ onSwitchToServices }: { onSwitchToServices: () => void
 
 /* ────────────────────── Services Tab ────────────────────── */
 function ServicesTab() {
-  const { data: services, loading, refetch } = useApi(config.getServices);
+  const { data: servicesPayload, loading, refetch } = useApi(config.getServices);
   const [restarting, setRestarting] = useState<string | null>(null);
 
   const handleRestart = async (service: string) => {
@@ -275,7 +275,6 @@ function ServicesTab() {
     try {
       await config.restartService(service);
       notifications.show({ title: 'Restarting', message: `${service} restart initiated`, color: 'blue' });
-      // Wait for service to come back up, then refresh
       setTimeout(() => { refetch(); setRestarting(null); }, 4000);
     } catch (e: any) {
       notifications.show({ title: 'Error', message: e.message, color: 'red' });
@@ -285,19 +284,31 @@ function ServicesTab() {
 
   if (loading) return <Center h={300}><Loader size="xl" /></Center>;
 
-  // Group services by category
-  const puppetServices = (services || []).filter((s: any) => ['puppetserver', 'puppetdb', 'puppet'].includes(s.service));
-  const appServices = (services || []).filter((s: any) => s.service === 'openvox-gui');
+  // Support both legacy array response and new object shape with cluster_members
+  const services: any[] = Array.isArray(servicesPayload)
+    ? servicesPayload
+    : (servicesPayload?.services || []);
+  const deploymentMode = Array.isArray(servicesPayload)
+    ? 'single'
+    : (servicesPayload?.deployment_mode || 'single');
+  const clusterMembers: any[] = Array.isArray(servicesPayload)
+    ? []
+    : (servicesPayload?.cluster_members || []);
+
+  const puppetServices = services.filter((s: any) => ['puppetserver', 'puppetdb', 'puppet'].includes(s.service));
+  const appServices = services.filter((s: any) => s.service === 'openvox-gui');
 
   return (
     <Stack>
       <Alert variant="light" color="blue">
         Manage all services in the OpenVox ecosystem. Restart individual services or the entire OpenVox stack in the correct dependency order.
+        {deploymentMode === 'clustered' && (
+          <> Clustered mode: member health checks use each host&apos;s <strong>FQDN</strong> (not VIP).</>
+        )}
       </Alert>
 
-      {/* OpenVox Infrastructure Services */}
       <Card withBorder shadow="sm" padding="md">
-        <Text fw={700} mb="sm">OpenVox Infrastructure</Text>
+        <Text fw={700} mb="sm">OpenVox Infrastructure (this host)</Text>
         <Stack gap="xs">
           {puppetServices.map((svc: any) => (
             <Card key={svc.service} withBorder padding="sm">
@@ -320,7 +331,47 @@ function ServicesTab() {
         </Stack>
       </Card>
 
-      {/* Application Service */}
+      {deploymentMode === 'clustered' && clusterMembers.length > 0 && (
+        <Card withBorder shadow="sm" padding="md">
+          <Group justify="space-between" mb="sm">
+            <Text fw={700}>Cluster member health (FQDN)</Text>
+            <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={() => refetch()}>
+              Refresh
+            </Button>
+          </Group>
+          <Table striped highlightOnHover withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>FQDN</Table.Th>
+                <Table.Th>Role</Table.Th>
+                <Table.Th>Port</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Detail</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {clusterMembers.map((m: any) => (
+                <Table.Tr key={`${m.role}-${m.fqdn}`}>
+                  <Table.Td><Code>{m.fqdn}</Code></Table.Td>
+                  <Table.Td>{m.role}</Table.Td>
+                  <Table.Td>{m.port}</Table.Td>
+                  <Table.Td>
+                    <Badge color={m.healthy ? 'green' : 'red'} variant="light">
+                      {m.healthy ? 'healthy' : 'unhealthy'}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="xs" c="dimmed">
+                      {m.error || m.body || (m.http_status != null ? `HTTP ${m.http_status}` : '—')}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Card>
+      )}
+
       <Card withBorder shadow="sm" padding="md">
         <Text fw={700} mb="sm">Application</Text>
         <Stack gap="xs">
@@ -346,6 +397,111 @@ function ServicesTab() {
         <Text size="xs" c="dimmed" mt="sm">
           Restarting the OpenVox GUI service will apply any pending configuration changes. The page will briefly disconnect and reconnect automatically.
         </Text>
+      </Card>
+    </Stack>
+  );
+}
+
+/* ────────────────────── Cluster / multi-server Tab ────────────────────── */
+function ClusterTab() {
+  const { data, loading, error, refetch } = useApi(config.getCluster);
+  const [mode, setMode] = useState<'single' | 'clustered'>('single');
+  const [compilers, setCompilers] = useState('');
+  const [puppetdbNodes, setPuppetdbNodes] = useState('');
+  const [deployTargets, setDeployTargets] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!data) return;
+    setMode((data.deployment_mode === 'clustered' ? 'clustered' : 'single'));
+    setCompilers((data.compilers || []).join('\n'));
+    setPuppetdbNodes((data.puppetdb_nodes || []).join('\n'));
+    setDeployTargets((data.code_deploy_targets || []).join('\n'));
+  }, [data]);
+
+  const lines = (s: string) =>
+    s.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const result = await config.updateCluster({
+        deployment_mode: mode,
+        compilers: lines(compilers),
+        puppetdb_nodes: lines(puppetdbNodes),
+        code_deploy_targets: lines(deployTargets),
+        seed_infrastructure_groups: mode === 'clustered',
+      });
+      const seeded = (result?.seeded_groups || []).join(', ') || 'none';
+      notifications.show({
+        title: 'Cluster settings saved',
+        message: mode === 'clustered'
+          ? `Clustered mode on. ENC groups seeded: ${seeded}`
+          : 'Single-server mode (cluster UI hidden)',
+        color: 'green',
+      });
+      refetch();
+    } catch (e: any) {
+      notifications.show({ title: 'Save failed', message: e.message, color: 'red' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <Center h={200}><Loader /></Center>;
+  if (error) return <Alert color="red">{error}</Alert>;
+
+  return (
+    <Stack>
+      <Alert variant="light" color="blue">
+        Default installs are <strong>single-server</strong> (one host for GUI, server, and DB).
+        Enable <strong>clustered</strong> only for multi-compiler / multi-OpenVoxDB estates.
+        Cluster features (multi-target code deploy, infrastructure ENC groups, FQDN health checks)
+        stay hidden until this is set to clustered.
+      </Alert>
+      <Card withBorder padding="md">
+        <Stack>
+          <Select
+            label="Deployment mode"
+            description="Production lab may stay on 3.10.x single-server until the new cluster is ready."
+            data={[
+              { value: 'single', label: 'Single server (default)' },
+              { value: 'clustered', label: 'Clustered (multiple compilers / OpenVoxDB)' },
+            ]}
+            value={mode}
+            onChange={(v) => setMode((v as 'single' | 'clustered') || 'single')}
+          />
+          {mode === 'clustered' && (
+            <>
+              <Textarea
+                label="Compiler FQDNs (one per line)"
+                description="Catalog compilers — health-checked on :8140 by FQDN"
+                minRows={3}
+                value={compilers}
+                onChange={(e) => setCompilers(e.currentTarget.value)}
+                placeholder="ovcompiler1.pdxc-it.corp.int-x.ai"
+              />
+              <Textarea
+                label="OpenVoxDB / PuppetDB node FQDNs"
+                description="Application hosts — health-checked on :8081 by FQDN (not VIP)"
+                minRows={3}
+                value={puppetdbNodes}
+                onChange={(e) => setPuppetdbNodes(e.currentTarget.value)}
+                placeholder="ovdb1.pdxc-it.corp.int-x.ai"
+              />
+              <Textarea
+                label="Code deploy targets (optional)"
+                description="Hosts that receive r10k stage/activate. Defaults to compiler list if empty."
+                minRows={2}
+                value={deployTargets}
+                onChange={(e) => setDeployTargets(e.currentTarget.value)}
+              />
+            </>
+          )}
+          <Button color="#0D6EFD" loading={saving} onClick={handleSave}>
+            Save cluster configuration
+          </Button>
+        </Stack>
       </Card>
     </Stack>
   );
@@ -1042,6 +1198,7 @@ export function ConfigAppPage() {
       <Tabs value={activeTab} onChange={setActiveTab} variant="outline">
         <Tabs.List>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />}>Application Settings</Tabs.Tab>
+          <Tabs.Tab value="cluster" leftSection={<IconServer size={16} />}>Cluster</Tabs.Tab>
           <Tabs.Tab value="services" leftSection={<IconServer size={16} />}>Services</Tabs.Tab>
           <Tabs.Tab value="users" leftSection={<IconUsers size={16} />}>User Manager</Tabs.Tab>
           <Tabs.Tab value="auth" leftSection={<IconPlugConnected size={16} />}>Auth Settings</Tabs.Tab>
@@ -1049,6 +1206,7 @@ export function ConfigAppPage() {
           <Tabs.Tab value="proxy" leftSection={<IconWorld size={16} />}>Proxy Configuration</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="settings" pt="md"><ApplicationTab onSwitchToServices={() => setActiveTab('services')} /></Tabs.Panel>
+        <Tabs.Panel value="cluster" pt="md"><ClusterTab /></Tabs.Panel>
         <Tabs.Panel value="services" pt="md"><ServicesTab /></Tabs.Panel>
         <Tabs.Panel value="auth" pt="md"><AuthSettingsTab /></Tabs.Panel>
         <Tabs.Panel value="users" pt="md"><UserManagerTab /></Tabs.Panel>
