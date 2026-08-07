@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Settings → Cluster save HTTP 500:** ENC infrastructure seed after `PUT /api/config/cluster` accessed `node.groups` without `selectinload`, causing SQLAlchemy async `MissingGreenlet` and an opaque 500. Seed path now eager-loads groups; write failures return a clear detail (e.g. data_dir permissions); ENC seed errors no longer roll back a successful config write (warning in response).
 
+## [3.11.0-alpha.7] - 2026-08-07 (Insights — Host Health serving estate)
+
+### Added
+- **Insights | Host Health** (`/insights/host-health`): OS metrics for the **OpenVox serving estate only** (GUI host, compilers, OpenVoxDB, CA from Settings → Cluster). Agent fleet collection is out of scope.
+  - `/proc` load/mem/CPU always; richer samples via **sysstat** (`sar`, `pidstat`) when installed
+  - Remote members via Bolt when inventory allows
+  - Background collector + history under `data/host_metrics/`
+  - API: `GET /api/insights/host-health`, `GET .../targets`, `POST .../collect`
+  - Docs: [docs/HOST_HEALTH.md](docs/HOST_HEALTH.md)
+
 ## [3.11.0-alpha.5] - 2026-08-06 (fix — stage/activate rate-limit import)
 
 ### Fixed

@@ -2,6 +2,8 @@
 
 This document explains how to configure your OpenVox Server and OpenVoxDB so that the **Metrics** section in OpenVox GUI has full, rich data.
 
+For **OS-level Host Health** on the serving estate (sysstat/pidstat//proc, not agents), see **[HOST_HEALTH.md](HOST_HEALTH.md)**.
+
 Without these changes, pages like **Run Performance**, **PuppetDB Health**, and **OpenVox Server Health** will show limited, partial, or empty charts.
 
 ## How Metrics Data Works
