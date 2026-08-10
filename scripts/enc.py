@@ -14,7 +14,10 @@ Usage in puppet.conf:
 The script expects the certname as the first argument.
 
 Environment variables:
-    OPENVOX_GUI_API_BASE - API base URL (default: https://localhost:4567)
+    OPENVOX_GUI_API_BASE - One URL, or comma-separated URLs tried in order.
+      Clustered two-console example:
+        https://openvox.pdxc-it.corp.int-x.ai:4567,https://openvox.atlc-it.corp.int-x.ai:4567
+      Default: https://localhost:4567
 """
 import os
 import sys
@@ -23,7 +26,12 @@ import urllib.error
 import ssl
 import yaml
 
-API_BASE = os.environ.get("OPENVOX_GUI_API_BASE", "https://localhost:4567")
+def _api_bases() -> list:
+    raw = os.environ.get("OPENVOX_GUI_API_BASE", "https://localhost:4567")
+    return [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
+
+
+API_BASES = _api_bases()
 
 # SSL context for self-signed certs (service uses Puppet certs)
 SSL_CONTEXT = ssl.create_default_context()
@@ -32,31 +40,37 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 
 def classify_node(certname: str) -> str:
-    """Query the OpenVox GUI API for node classification."""
-    url = f"{API_BASE}/api/enc/classify/{certname}/yaml"
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=10, context=SSL_CONTEXT) as response:
-            return response.read().decode('utf-8')
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            # Node not classified - return empty classification
-            return yaml.dump({
-                "environment": "production",
-                "classes": {},
-                "parameters": {},
-            }, default_flow_style=False)
-        else:
-            print(f"Error querying ENC API: {e}", file=sys.stderr)
-            sys.exit(1)
-    except Exception as e:
-        print(f"Error connecting to ENC API: {e}", file=sys.stderr)
-        # Fail open with empty classification rather than breaking Puppet
-        return yaml.dump({
-            "environment": "production",
-            "classes": {},
-            "parameters": {},
-        }, default_flow_style=False)
+    """Query the OpenVox GUI API for node classification.
+
+    Tries each OPENVOX_GUI_API_BASE URL (comma-separated). Both clustered
+    consoles must serve the same ENC (shared PostgreSQL). Failover is for
+    console outage, not split-brain.
+    """
+    last_err = None
+    for base in API_BASES:
+        url = f"{base}/api/enc/classify/{certname}/yaml"
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=10, context=SSL_CONTEXT) as response:
+                return response.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return yaml.dump({
+                    "environment": "production",
+                    "classes": {},
+                    "parameters": {},
+                }, default_flow_style=False)
+            last_err = e
+            print(f"ENC API {url} HTTP {e.code}", file=sys.stderr)
+        except Exception as e:
+            last_err = e
+            print(f"ENC API {url} failed: {e}", file=sys.stderr)
+    print(f"Error connecting to ENC API (tried {API_BASES}): {last_err}", file=sys.stderr)
+    return yaml.dump({
+        "environment": "production",
+        "classes": {},
+        "parameters": {},
+    }, default_flow_style=False)
 
 
 def main():

@@ -1,0 +1,430 @@
+OpenVox GUI — two consoles, shared ENC database, clustered switchover
+=====================================================================
+Date: 2026-08-10
+Estate: PDXC + ATLC
+Consoles: openvox.pdxc-it.corp.int-x.ai  AND  openvox.atlc-it.corp.int-x.ai
+PuppetDB Postgres: four ovdb* hosts (PG 17 + Spock)
+Code train: openvox-gui v3.11.0-alpha.9+ (this work)
+
+Read this top to bottom tomorrow morning. Do not skip. Do not put GUI
+tables inside the PuppetDB database named "puppetdb".
+
+
+------------------------------------------------------------------------
+A. PRINCIPLES (read first)
+------------------------------------------------------------------------
+
+1.  Fleet facts/reports/certs already come from OpenVoxDB + CA. Those
+    are shared. The thing that drifted is the GUI application database:
+    ENC (classes/groups/nodes), local users, sessions, Bolt history,
+    cluster_config.json, encrypted secrets.
+
+2.  Two SQLite files will never stay in sync. Two consoles that classify
+    nodes require ONE PostgreSQL database both GUIs use.
+
+3.  That database MAY live on the same Postgres *instance* as PuppetDB
+    (the ovdb* hosts). It MUST be a SEPARATE database: openvox_gui.
+    Never create ENC tables inside database "puppetdb".
+
+4.  Spock on database "puppetdb" does NOT replicate database
+    "openvox_gui". If ATLC must keep ENC after a PDB site promote, you
+    must add Spock (or a dump/restore) for openvox_gui as well.
+
+5.  Both consoles MUST use the identical OPENVOX_GUI_SECRET_KEY.
+    Secrets and LDAP bind passwords are Fernet-encrypted from that key.
+    Different keys = cannot decrypt = broken LDAP / cluster secrets.
+
+6.  Compilers do not open SQLite. enc.py calls the GUI HTTP API. Point
+    every compiler at BOTH console URLs (comma-separated). Both GUIs
+    must serve the same ENC (shared Postgres). Failover is for a down
+    console, not for two different classifications.
+
+7.  Until the shared DB is live, classify on ONE console only (PDXC).
+    After cutover, either console may classify — they write the same
+    rows. Last write wins. No row-level lock UI in this release; do not
+    have two people edit the same node at the same instant.
+
+8.  Do not NFS-share a SQLite file. Do not let the GUI role own or
+    SELECT PuppetDB catalog tables.
+
+
+------------------------------------------------------------------------
+B. DEPLOY THE GUI BUILD (both consoles)
+------------------------------------------------------------------------
+
+9.  On each console staging clone:
+      cd ~/openvox-gui
+      git fetch origin --tags
+      git checkout v3.11.0-alpha.9
+      sudo ./scripts/update_local.sh
+
+10. Confirm:
+      cat /opt/openvox-gui/VERSION
+      # 3.11.0-alpha.9
+      grep puppet_ca_host /opt/openvox-gui/backend/app/config.py
+      grep asyncpg /opt/openvox-gui/backend/requirements.txt
+
+11. Leave OPENVOX_GUI_DATABASE_URL on SQLite until section E. The new
+    code understands postgresql+asyncpg:// but the empty openvox_gui
+    database is not useful until you create it and migrate ENC.
+
+
+------------------------------------------------------------------------
+C. CREATE DATABASE + ROLE ON POSTGRES (once per ovdb node, same password)
+------------------------------------------------------------------------
+
+12. Choose a vault password. Call it GUI_DB_PASSWORD. Store it in the
+    vault. Do not commit it.
+
+13. On EVERY ovdb host (n1–n4) as postgres, database creation is local
+    (CREATE DATABASE does not replicate via Spock from another DB):
+
+      PSQL=/usr/pgsql-17/bin/psql
+      sudo -u postgres "$PSQL" --no-psqlrc <<'SQL'
+      CREATE USER openvox_gui WITH PASSWORD 'GUI_DB_PASSWORD' LOGIN NOSUPERUSER NOCREATEDB;
+      SQL
+
+    If the role already exists:
+      ALTER USER openvox_gui WITH PASSWORD 'GUI_DB_PASSWORD';
+
+14. Create the database ONCE on n1 (ovdb1.pdxc), then you will either
+    dump/restore it to peers or attach Spock (section D). On n1:
+
+      sudo -u postgres "$PSQL" --no-psqlrc <<'SQL'
+      CREATE DATABASE openvox_gui OWNER openvox_gui;
+      GRANT ALL PRIVILEGES ON DATABASE openvox_gui TO openvox_gui;
+      SQL
+
+15. Connect to openvox_gui and grant schema rights (n1):
+
+      sudo -u postgres "$PSQL" --no-psqlrc -d openvox_gui <<'SQL'
+      GRANT ALL ON SCHEMA public TO openvox_gui;
+      ALTER SCHEMA public OWNER TO openvox_gui;
+      SQL
+
+16. pg_hba — allow consoles (and 127.0.0.1 for local tests). On each
+    ovdb host, in the pg_hba used by this cluster, add:
+
+      host  openvox_gui  openvox_gui  172.29.32.79/32    scram-sha-256
+      host  openvox_gui  openvox_gui  172.29.160.79/32   scram-sha-256
+      host  openvox_gui  openvox_gui  127.0.0.1/32       scram-sha-256
+
+    (32.79 = openvox.pdxc, 160.79 = openvox.atlc — confirm with
+    getent hosts.) Then:
+      sudo -u postgres "$PSQL" --no-psqlrc -c 'SELECT pg_reload_conf();'
+
+17. Firewall: consoles → ovdb :5432 only. Not the fleet. Not 8081
+    replacement. Test from a console:
+
+      PGPASSWORD='GUI_DB_PASSWORD' /usr/pgsql-17/bin/psql \
+        -h ovdb1.pdxc-it.corp.int-x.ai -U openvox_gui -d openvox_gui \
+        -c 'SELECT current_database(), current_user;'
+
+    Prefer a site PG VIP if you have one; otherwise use the current
+    write-region host (n1 / PDXC ovdb VIP only if it load-balances 5432 —
+    your HAProxy today is 8081 TCP, NOT 5432). Day-1: point both GUIs at
+    ovdb1.pdxc-it.corp.int-x.ai:5432 (the Spock write-region primary).
+    After PDB site promote, change the host to the ATLC primary.
+
+18. Confirm the GUI role cannot see PuppetDB:
+
+      PGPASSWORD='GUI_DB_PASSWORD' /usr/pgsql-17/bin/psql \
+        -h ovdb1.pdxc-it.corp.int-x.ai -U openvox_gui -d puppetdb \
+        -c 'SELECT 1;'
+      # must FAIL (no CONNECT on puppetdb)
+
+
+------------------------------------------------------------------------
+D. SPOCK FOR DATABASE openvox_gui (optional but needed for ATLC site-loss)
+------------------------------------------------------------------------
+
+19. Spock is per-database. Repeat node/subscription pattern from Phase 7
+    but connected to database openvox_gui, NOT puppetdb. Use the same
+    REPL_USER if it already has LOGIN on all four nodes; grant it on
+    openvox_gui:
+
+      sudo -u postgres "$PSQL" --no-psqlrc -d openvox_gui <<'SQL'
+      GRANT CONNECT ON DATABASE openvox_gui TO REPL_USER;
+      GRANT USAGE ON SCHEMA public TO REPL_USER;
+      GRANT SELECT ON ALL TABLES IN SCHEMA public TO REPL_USER;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO REPL_USER;
+      SQL
+
+    Do this on all four ovdb hosts after the DB exists on each.
+
+20. Create extension in openvox_gui on all four (after shared_preload
+    already has spock from Phase 7 — do not change GUCs):
+
+      sudo -u postgres "$PSQL" --no-psqlrc -d openvox_gui \
+        -c 'CREATE EXTENSION IF NOT EXISTS spock;'
+
+21. Create Spock nodes inside openvox_gui (names can be gui_n1..gui_n4
+    to avoid clashing with puppetdb node names in the other database):
+
+      -- on each host, in database openvox_gui, as superuser
+      SELECT spock.node_create(
+        node_name := 'gui_n1',
+        dsn := 'host=172.29.32.76 dbname=openvox_gui user=REPL_USER password=SPOCK_REPL_PASS'
+      );
+      -- gui_n2 host=.77, gui_n3 ATLC .76, gui_n4 ATLC .77
+
+22. Create subscriptions the same mesh as Phase 7 (each node subscribes
+    to the other three), still in database openvox_gui. Use set_names
+    := '{default}' first.
+
+23. AFTER the GUI has created tables (section E — first console start
+    against Postgres), on n1:
+
+      SELECT spock.repset_add_all_tables('default', '{public}');
+
+    openvox_gui tables all have primary keys (users, enc_*,
+    cluster_secrets). Do NOT invent a pdb_nopk set here unless a
+    no-PK table appears.
+
+24. Attach default to every subscription (same as Phase 7). Verify
+    row counts on a peer:
+
+      SELECT count(*) FROM enc_nodes;
+      SELECT count(*) FROM cluster_secrets;
+
+25. If you skip Spock for day-1: ATLC console still works by talking
+    to PDXC Postgres over the WAN (step 17 host=ovdb1.pdxc). Site-loss
+    of PDXC then loses ENC until you restore a dump on ATLC. Prefer
+    Spock if ATLC GUI must classify during a PDXC outage.
+
+
+------------------------------------------------------------------------
+E. CUT THE GUIs OVER TO POSTGRES
+------------------------------------------------------------------------
+
+26. Pick a maintenance window. Classify on PDXC only until cutover
+    finishes. Snapshot PDXC SQLite:
+
+      cp -a /opt/openvox-gui/data/openvox_gui.db \
+            /opt/openvox-gui/data/openvox_gui.db.bak.$(date +%Y%m%d%H%M)
+
+27. On PDXC console, add to /opt/openvox-gui/config/.env (one line):
+
+      OPENVOX_GUI_DATABASE_URL=postgresql+asyncpg://openvox_gui:GUI_DB_PASSWORD@ovdb1.pdxc-it.corp.int-x.ai:5432/openvox_gui
+
+    Keep the existing OPENVOX_GUI_SECRET_KEY. Copy that exact
+    SECRET_KEY value — you will put the same string on ATLC.
+
+28. Restart PDXC GUI once (empty PG schema; create_all + alembic):
+
+      systemctl restart openvox-gui
+      journalctl -u openvox-gui -n 40 --no-pager
+      # no traceback
+      curl -sk https://127.0.0.1:4567/health
+
+29. Load schema extras:
+
+      cd /opt/openvox-gui/backend
+      /opt/openvox-gui/venv/bin/alembic upgrade head
+
+30. Copy ENC + users from the SQLite backup into Postgres. Options:
+
+    a) Preferred if you have a laptop with both drivers: use a small
+       Python copy (SQLAlchemy reflect sqlite → insert postgres) — or
+       pgloader if installed.
+
+    b) Practical day-1 if ENC is small: re-classify from the PDXC GUI
+       after cutover (users: recreate admin / rely on LDAP).
+
+    c) If you need a dump of sqlite tables as SQL, use sqlite3 .dump
+       and edit types by hand — last resort.
+
+    After copy, verify:
+      psql -h ovdb1.pdxc… -U openvox_gui -d openvox_gui \
+        -c 'SELECT count(*) FROM enc_nodes;'
+      psql … -c 'SELECT username, role FROM users;'
+
+31. On ATLC console .env:
+
+      OPENVOX_GUI_DATABASE_URL=<same URL as PDXC>
+      OPENVOX_GUI_SECRET_KEY=<exact same key as PDXC>
+
+    Restart ATLC openvox-gui. Log in. Classification and users must
+    match PDXC.
+
+32. If ATLC still shows the old SQLite ENC, the URL did not take or
+    the service did not restart. grep DATABASE_URL the .env; do not
+    leave a stale sqlite+aiosqlite line.
+
+
+------------------------------------------------------------------------
+F. CLUSTER UI + SECRETS (after both GUIs see Postgres)
+------------------------------------------------------------------------
+
+33. In either console: Settings → Cluster → Clustered.
+
+34. Fill compilers, ovdb nodes, CA nodes, CA VIPs (you already know
+    these FQDNs).
+
+35. Console FQDNs (required for 2 GUIs):
+      openvox.pdxc-it.corp.int-x.ai
+      openvox.atlc-it.corp.int-x.ai
+
+36. Database backend: PostgreSQL.
+
+37. ENC API URLs:
+      https://openvox.pdxc-it.corp.int-x.ai:4567
+      https://openvox.atlc-it.corp.int-x.ai:4567
+
+38. Shared PostgreSQL URL field: paste the same postgresql+asyncpg://
+    URL. Save writes .env and asks for restart.
+
+39. Shared SECRET_KEY: only if you still need to force both consoles
+    onto one key. Otherwise leave blank if step 27–31 already matched.
+
+40. Save cluster configuration. If you listed two consoles and left
+    backend=sqlite, save is rejected — that is intentional.
+
+41. Cluster secrets panel: add at least
+      gui_db_password
+      pdb_app_password     (reference only; PDB still uses puppetdb.conf)
+    Values are stored enc:v1: in cluster_secrets. Manage/rotate there.
+    Rotating SECRET_KEY invalidates all encrypted secrets — re-enter
+    them after a key change.
+
+
+------------------------------------------------------------------------
+G. ENC ON COMPILERS (joined classification)
+------------------------------------------------------------------------
+
+42. enc.py is HTTP, not SQLite. After both GUIs share Postgres, either
+    console returns the same YAML for a certname.
+
+43. On EVERY compiler (all four), set the environment for the ENC
+    process. puppetserver does not read the GUI .env. Use a small drop-in
+    or the unit Environment= / a wrapper.
+
+    Example /etc/sysconfig/puppetserver or a file sourced by the ENC:
+
+      OPENVOX_GUI_API_BASE=https://openvox.pdxc-it.corp.int-x.ai:4567,https://openvox.atlc-it.corp.int-x.ai:4567
+
+    Confirm puppet.conf still has:
+      node_terminus = exec
+      external_nodes = /opt/openvox-gui/scripts/enc.py
+
+    The script file must exist on each compiler (copy from the GUI
+    package / rsync / the 3.11.0-alpha.9 tree). chmod 0755.
+
+44. enc.py in 3.11.0-alpha.9 tries each URL in order. 404 = empty
+    production classification. Connection failure = try next URL.
+    Both down = empty classification (fail open, same as before).
+
+45. Test on a compiler:
+      /opt/openvox-gui/scripts/enc.py ovcompiler1.pdxc-it.corp.int-x.ai
+      # YAML; same output if you stop one console and retry
+
+46. Restart puppetserver on compilers after changing ENC env so the
+    master worker sees OPENVOX_GUI_API_BASE.
+
+47. Do not point enc.py at localhost unless the GUI runs on that
+    compiler (it does not).
+
+
+------------------------------------------------------------------------
+H. CLASSIFICATION WORKFLOW WITH TWO WRITERS
+------------------------------------------------------------------------
+
+48. After cutover there is one ENC store. Creating a node on ATLC is
+    immediately visible on PDXC (same SQL).
+
+49. Operational rule: one operator edits a given node at a time. The
+    GUI does not merge concurrent ENC PUTs.
+
+50. Infrastructure groups (Puppet Compiler / PuppetDB) seed on Save
+    Cluster. Run Save once after the shared DB is up so you do not
+    seed two different SQLite files.
+
+51. Purge / deactivate still hits PuppetDB + ENC in one API. Either
+    console may do it; it affects the shared rows + PDB.
+
+52. Local JWT sessions are in the shared DB too (active_sessions).
+    Logging out on one console invalidates that session row for both.
+
+
+------------------------------------------------------------------------
+I. VERIFY
+------------------------------------------------------------------------
+
+53. Both GUIs: same ENC node count, same users.
+
+54. PDB query still drives unreported vs changed — unchanged by this
+    work. Compilers still need reports = store,puppetdb.
+
+55. CA + metrics auth.conf unchanged.
+
+56. From a compiler, enc.py against each console URL separately —
+    identical YAML.
+
+57. Stop PDXC GUI, enc.py should succeed via ATLC URL.
+
+58. psql openvox_gui: enc_nodes and cluster_secrets have rows.
+    psql puppetdb: unchanged table list (no GUI tables).
+
+
+------------------------------------------------------------------------
+J. SITE-LOSS / FAILBACK NOTES
+------------------------------------------------------------------------
+
+59. If openvox_gui is only on PDXC Postgres and ATLC GUI uses the WAN:
+    PDXC site-loss = ENC down unless you promoted Spock (section D)
+    or restored a dump on ATLC ovdb and pointed DATABASE_URL there.
+
+60. When you flip ovdb.corp / write region to ATLC, also flip
+    OPENVOX_GUI_DATABASE_URL host to the ATLC primary (or use a PG
+    VIP you fail over with DNS — you do not have 5432 on the 8081
+    HAProxy today).
+
+61. Never run two Postgres write regions for openvox_gui.
+
+
+------------------------------------------------------------------------
+K. ROLLBACK
+------------------------------------------------------------------------
+
+62. Remove OPENVOX_GUI_DATABASE_URL (or set it back to
+    sqlite+aiosqlite:////opt/openvox-gui/data/openvox_gui.db) and
+    restart. You return to the last local SQLite file. ATLC will
+    diverge again.
+
+63. Keep the .db.bak from step 26 until you are happy.
+
+
+------------------------------------------------------------------------
+L. WHAT THIS RELEASE DOES NOT DO
+------------------------------------------------------------------------
+
+64. No automatic sqlite→postgres row copy in the installer.
+
+65. No multi-master conflict UI for ENC.
+
+66. No 5432 listener on the OpenVoxDB HAProxy (8081 only). Add one
+    later if you want a PG VIP.
+
+67. cluster_config.json remains per-host for non-secret cluster lists
+    until you also store it in Postgres (future). After cutover, Save
+    Cluster on ONE console then copy cluster_config.json to the peer
+    OR re-save the same FQDNs on the peer (secrets live in PG).
+
+    Practical: after first Save on PDXC, scp
+      /opt/openvox-gui/data/cluster_config.json
+    to the ATLC data dir and chown puppet:puppet, then restart ATLC
+    GUI — or click Save on ATLC with the same fields.
+
+
+------------------------------------------------------------------------
+M. QUICK COMMAND CHEAT SHEET
+------------------------------------------------------------------------
+
+68. Create role+db (n1):     steps 13–15
+69. pg_hba + reload:         step 16
+70. Console .env URL+key:    steps 27, 31
+71. alembic:                 step 29
+72. Cluster UI:              steps 33–41
+73. Compiler ENC env:        steps 43–46
+74. Verify enc.py:           step 45
+)

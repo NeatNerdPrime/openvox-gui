@@ -363,9 +363,15 @@ class ClusterConfigUpdate(BaseModel):
     ca_nodes: List[str] = []
     ca_vips: List[str] = []
     code_deploy_targets: List[str] = []
+    consoles: List[str] = []
+    database_backend: str = "sqlite"
+    enc_api_urls: List[str] = []
     staging_codedir: Optional[str] = None
     live_codedir: Optional[str] = None
     seed_infrastructure_groups: bool = True
+    # Optional: persist shared DB URL / JWT key into this host's .env (restart required)
+    database_url: Optional[str] = None
+    shared_secret_key: Optional[str] = None
 
 
 @router.put("/cluster")
@@ -384,6 +390,8 @@ async def update_cluster_config(
     if not data.get("live_codedir"):
         data["live_codedir"] = current.get("live_codedir")
     seed = data.pop("seed_infrastructure_groups", True)
+    database_url = (data.pop("database_url", None) or "").strip()
+    shared_secret = (data.pop("shared_secret_key", None) or "").strip()
     try:
         saved = save_cluster_config(data)
     except ValueError as e:
@@ -413,6 +421,23 @@ async def update_cluster_config(
             logger.exception("Cluster config saved but ENC infrastructure seed failed")
             seed_error = str(e)
 
+    env_notes: List[str] = []
+    if database_url:
+        if not database_url.startswith(("postgresql+asyncpg://", "postgresql://", "postgres://")):
+            raise HTTPException(
+                status_code=400,
+                detail="database_url must be postgresql+asyncpg://… (clustered shared DB)",
+            )
+        if database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        _upsert_env_key("OPENVOX_GUI_DATABASE_URL", database_url)
+        env_notes.append("DATABASE_URL written to .env — restart openvox-gui")
+    if shared_secret:
+        if len(shared_secret) < 16:
+            raise HTTPException(status_code=400, detail="shared_secret_key must be at least 16 characters")
+        _upsert_env_key("OPENVOX_GUI_SECRET_KEY", shared_secret)
+        env_notes.append("SECRET_KEY written to .env — restart both consoles with the SAME key")
+
     audit_event(
         "cluster_config_update",
         user=_user,
@@ -427,7 +452,107 @@ async def update_cluster_config(
         out["seed_warning"] = (
             f"Cluster config saved, but ENC group seed failed: {seed_error}"
         )
+    if env_notes:
+        out["restart_required"] = env_notes
     return out
+
+
+def _env_path() -> Path:
+    return Path(settings.data_dir).parent / "config" / ".env"
+
+
+def _upsert_env_key(env_var: str, value: str) -> None:
+    """Create or replace a KEY=value line in /opt/openvox-gui/config/.env."""
+    path = _env_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(env_var + "="):
+            new_lines.append(f"{env_var}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{env_var}={value}")
+    path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+class ClusterSecretBody(BaseModel):
+    name: str
+    value: str
+    description: str = ""
+
+
+@router.get("/cluster/secrets")
+async def list_cluster_secrets(_user: str = Depends(_ADMIN_ONLY)):
+    """List secret *names* only — values stay encrypted."""
+    from ..database import async_session
+    from ..models.cluster_secret import ClusterSecret
+    from sqlalchemy import select
+
+    async with async_session() as db:
+        rows = (await db.execute(select(ClusterSecret).order_by(ClusterSecret.name))).scalars().all()
+    return {
+        "secrets": [
+            {
+                "name": r.name,
+                "description": r.description,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                "updated_by": r.updated_by,
+                "configured": bool(r.value_enc),
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.put("/cluster/secrets")
+async def upsert_cluster_secret(
+    body: ClusterSecretBody,
+    _user: str = Depends(_ADMIN_ONLY),
+):
+    from ..database import async_session
+    from ..models.cluster_secret import ClusterSecret
+    from ..services.secrets import encrypt_secret
+    from sqlalchemy import select
+
+    name = (body.name or "").strip().lower()
+    if not name or len(name) > 128 or "/" in name or ".." in name:
+        raise HTTPException(status_code=400, detail="Invalid secret name")
+    async with async_session() as db:
+        row = (await db.execute(select(ClusterSecret).where(ClusterSecret.name == name))).scalar_one_or_none()
+        if row is None:
+            row = ClusterSecret(name=name)
+            db.add(row)
+        if body.value:
+            row.value_enc = encrypt_secret(body.value)
+        if body.description:
+            row.description = body.description[:512]
+        row.updated_by = _user
+        await db.commit()
+    from ..utils.audit import audit_event
+    audit_event("cluster_secret_upsert", user=_user, detail=f"name={name}")
+    return {"status": "ok", "name": name}
+
+
+@router.delete("/cluster/secrets/{name}")
+async def delete_cluster_secret(name: str, _user: str = Depends(_ADMIN_ONLY)):
+    from ..database import async_session
+    from ..models.cluster_secret import ClusterSecret
+    from sqlalchemy import select
+
+    name = (name or "").strip().lower()
+    async with async_session() as db:
+        row = (await db.execute(select(ClusterSecret).where(ClusterSecret.name == name))).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Secret not found")
+        await db.delete(row)
+        await db.commit()
+    from ..utils.audit import audit_event
+    audit_event("cluster_secret_delete", user=_user, detail=f"name={name}")
+    return {"status": "ok", "name": name}
 
 
 async def _seed_infrastructure_enc_groups(cfg: Dict[str, Any]) -> List[str]:

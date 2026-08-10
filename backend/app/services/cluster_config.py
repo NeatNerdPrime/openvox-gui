@@ -29,6 +29,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "ca_nodes": [],  # list of CA member FQDNs (ovca1, ovca2 per site)
     "ca_vips": [],  # optional CA VIP FQDNs (ovca.pdxc…, ovca.corp…)
     "code_deploy_targets": [],  # FQDNs that receive r10k stage/activate (defaults to compilers)
+    "consoles": [],  # GUI FQDNs (openvox.pdxc…, openvox.atlc…)
+    "database_backend": "sqlite",  # sqlite | postgresql
+    "enc_api_urls": [],  # ENC script failover list, e.g. https://openvox.pdxc…:4567
     "staging_codedir": "/etc/puppetlabs/code-staging",
     "live_codedir": "/etc/puppetlabs/code",
 }
@@ -54,7 +57,23 @@ def _normalize(data: Dict[str, Any]) -> Dict[str, Any]:
         mode = "single"
     out["deployment_mode"] = mode
 
-    for key in ("compilers", "puppetdb_nodes", "ca_nodes", "ca_vips", "code_deploy_targets"):
+    backend = str(data.get("database_backend") or "sqlite").strip().lower()
+    if backend not in ("sqlite", "postgresql"):
+        backend = "sqlite"
+    out["database_backend"] = backend
+
+    raw_urls = data.get("enc_api_urls") or []
+    if isinstance(raw_urls, str):
+        raw_urls = [u.strip() for u in raw_urls.replace(",", "\n").splitlines() if u.strip()]
+    urls: List[str] = []
+    if isinstance(raw_urls, list):
+        for u in raw_urls:
+            s = str(u).strip().rstrip("/")
+            if s.startswith("https://") or s.startswith("http://"):
+                urls.append(s)
+    out["enc_api_urls"] = list(dict.fromkeys(urls))
+
+    for key in ("compilers", "puppetdb_nodes", "ca_nodes", "ca_vips", "code_deploy_targets", "consoles"):
         raw = data.get(key) or []
         if not isinstance(raw, list):
             raw = []
@@ -99,6 +118,15 @@ def load_cluster_config() -> Dict[str, Any]:
 
 def save_cluster_config(data: Dict[str, Any]) -> Dict[str, Any]:
     normalized = _normalize(data)
+    if (
+        normalized.get("deployment_mode") == "clustered"
+        and len(normalized.get("consoles") or []) > 1
+        and normalized.get("database_backend") != "postgresql"
+    ):
+        raise ValueError(
+            "More than one GUI console requires database_backend=postgresql "
+            "and a shared OPENVOX_GUI_DATABASE_URL. SQLite cannot be shared."
+        )
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")

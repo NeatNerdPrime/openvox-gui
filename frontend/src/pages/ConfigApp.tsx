@@ -559,7 +559,16 @@ function ClusterTab() {
   const [caNodes, setCaNodes] = useState('');
   const [caVips, setCaVips] = useState('');
   const [deployTargets, setDeployTargets] = useState('');
+  const [consoles, setConsoles] = useState('');
+  const [dbBackend, setDbBackend] = useState<'sqlite' | 'postgresql'>('sqlite');
+  const [encUrls, setEncUrls] = useState('');
+  const [databaseUrl, setDatabaseUrl] = useState('');
+  const [sharedSecret, setSharedSecret] = useState('');
+  const [secretName, setSecretName] = useState('');
+  const [secretValue, setSecretValue] = useState('');
+  const [secretDesc, setSecretDesc] = useState('');
   const [saving, setSaving] = useState(false);
+  const { data: secretList, refetch: refetchSecrets } = useApi(config.getClusterSecrets);
 
   useEffect(() => {
     if (!data) return;
@@ -569,6 +578,9 @@ function ClusterTab() {
     setCaNodes((data.ca_nodes || []).join('\n'));
     setCaVips((data.ca_vips || []).join('\n'));
     setDeployTargets((data.code_deploy_targets || []).join('\n'));
+    setConsoles((data.consoles || []).join('\n'));
+    setDbBackend((data.database_backend === 'postgresql' ? 'postgresql' : 'sqlite'));
+    setEncUrls((data.enc_api_urls || []).join('\n'));
   }, [data]);
 
   const lines = (s: string) =>
@@ -584,6 +596,11 @@ function ClusterTab() {
         ca_nodes: lines(caNodes),
         ca_vips: lines(caVips),
         code_deploy_targets: lines(deployTargets),
+        consoles: lines(consoles),
+        database_backend: dbBackend,
+        enc_api_urls: lines(encUrls),
+        database_url: databaseUrl || undefined,
+        shared_secret_key: sharedSecret || undefined,
         seed_infrastructure_groups: mode === 'clustered',
       });
       const seeded = (result?.seeded_groups || []).join(', ') || 'none';
@@ -596,7 +613,9 @@ function ClusterTab() {
       } else {
         notifications.show({
           title: 'Cluster settings saved',
-          message: mode === 'clustered'
+          message: result?.restart_required
+            ? `${result.restart_required.join('; ')}`
+            : mode === 'clustered'
             ? `Clustered mode on. ENC groups seeded: ${seeded}`
             : 'Single-server mode (cluster UI hidden)',
           color: 'green',
@@ -674,6 +693,105 @@ function ClusterTab() {
                 value={deployTargets}
                 onChange={(e) => setDeployTargets(e.currentTarget.value)}
               />
+              <Divider label="Consoles and shared ENC database" labelPosition="left" />
+              <Alert variant="light" color="orange">
+                Two GUIs cannot share SQLite. More than one console FQDN requires PostgreSQL
+                (same instance as OpenVoxDB is fine — <strong>separate database</strong> named
+                openvox_gui, never tables inside puppetdb). Both consoles must use the same
+                OPENVOX_GUI_SECRET_KEY or encrypted secrets will not decrypt.
+              </Alert>
+              <Textarea
+                label="GUI console FQDNs (one per line)"
+                description="openvox.pdxc… and openvox.atlc… — required when both classify nodes"
+                minRows={2}
+                value={consoles}
+                onChange={(e) => setConsoles(e.currentTarget.value)}
+                placeholder={"openvox.pdxc-it.corp.int-x.ai\nopenvox.atlc-it.corp.int-x.ai"}
+              />
+              <Select
+                label="GUI database backend"
+                description="sqlite = this host only. postgresql = shared ENC/users across consoles."
+                data={[
+                  { value: 'sqlite', label: 'SQLite (single console)' },
+                  { value: 'postgresql', label: 'PostgreSQL (shared — required for 2+ consoles)' },
+                ]}
+                value={dbBackend}
+                onChange={(v) => setDbBackend((v as 'sqlite' | 'postgresql') || 'sqlite')}
+              />
+              <Textarea
+                label="ENC API URLs for compilers (one per line)"
+                description="Put these in OPENVOX_GUI_API_BASE on every compiler (comma-separated). enc.py tries each in order."
+                minRows={2}
+                value={encUrls}
+                onChange={(e) => setEncUrls(e.currentTarget.value)}
+                placeholder={"https://openvox.pdxc-it.corp.int-x.ai:4567\nhttps://openvox.atlc-it.corp.int-x.ai:4567"}
+              />
+              <TextInput
+                label="Shared PostgreSQL URL (writes .env — restart required)"
+                description="postgresql+asyncpg://openvox_gui:PASSWORD@ovdb-primary:5432/openvox_gui"
+                value={databaseUrl}
+                onChange={(e) => setDatabaseUrl(e.currentTarget.value)}
+              />
+              <PasswordInput
+                label="Shared SECRET_KEY (optional — writes .env on both consoles must match)"
+                description="Leave blank to keep the current key. Set the same value on the peer console."
+                value={sharedSecret}
+                onChange={(e) => setSharedSecret(e.currentTarget.value)}
+              />
+              <Divider label="Cluster secrets (stored encrypted in the shared DB)" labelPosition="left" />
+              <Text size="sm" c="dimmed">
+                Use for PDB app password, GUI DB password, Bolt, etc. Names only are listed;
+                values are Fernet-encrypted with SECRET_KEY.
+              </Text>
+              {(secretList?.secrets || []).length > 0 && (
+                <Table>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Name</Table.Th>
+                      <Table.Th>Description</Table.Th>
+                      <Table.Th>Updated</Table.Th>
+                      <Table.Th />
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {(secretList?.secrets || []).map((s: any) => (
+                      <Table.Tr key={s.name}>
+                        <Table.Td><Code>{s.name}</Code></Table.Td>
+                        <Table.Td>{s.description}</Table.Td>
+                        <Table.Td>{s.updated_by} {s.updated_at || ''}</Table.Td>
+                        <Table.Td>
+                          <ActionIcon color="red" variant="subtle" onClick={async () => {
+                            try {
+                              await config.deleteClusterSecret(s.name);
+                              refetchSecrets();
+                            } catch (e: any) {
+                              notifications.show({ title: 'Delete failed', message: e.message, color: 'red' });
+                            }
+                          }}>
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              )}
+              <Group align="flex-end">
+                <TextInput label="Secret name" value={secretName} onChange={(e) => setSecretName(e.currentTarget.value)} placeholder="gui_db_password" />
+                <PasswordInput label="Value" value={secretValue} onChange={(e) => setSecretValue(e.currentTarget.value)} />
+                <TextInput label="Description" value={secretDesc} onChange={(e) => setSecretDesc(e.currentTarget.value)} />
+                <Button variant="light" onClick={async () => {
+                  if (!secretName || !secretValue) return;
+                  try {
+                    await config.upsertClusterSecret({ name: secretName, value: secretValue, description: secretDesc });
+                    setSecretName(''); setSecretValue(''); setSecretDesc('');
+                    refetchSecrets();
+                    notifications.show({ title: 'Secret saved', message: secretName, color: 'green' });
+                  } catch (e: any) {
+                    notifications.show({ title: 'Secret save failed', message: e.message, color: 'red' });
+                  }
+                }}>Save secret</Button>
+              </Group>
             </>
           )}
           <Button color="#0D6EFD" loading={saving} onClick={handleSave}>

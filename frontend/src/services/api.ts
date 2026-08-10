@@ -379,6 +379,11 @@ export const config = {
     ca_nodes?: string[];
     ca_vips?: string[];
     code_deploy_targets: string[];
+    consoles?: string[];
+    database_backend?: string;
+    enc_api_urls?: string[];
+    database_url?: string;
+    shared_secret_key?: string;
     staging_codedir?: string;
     live_codedir?: string;
     seed_infrastructure_groups?: boolean;
@@ -386,6 +391,16 @@ export const config = {
     fetchJSON<any>('/config/cluster', {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+  getClusterSecrets: () => fetchJSON<any>('/config/cluster/secrets'),
+  upsertClusterSecret: (data: { name: string; value: string; description?: string }) =>
+    fetchJSON<any>('/config/cluster/secrets', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteClusterSecret: (name: string) =>
+    fetchJSON<any>(`/config/cluster/secrets/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
     }),
   getAppName: () => fetchJSON<any>('/config/app/name'),
   getApp: () => fetchJSON<any>('/config/app'),

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.9] - 2026-08-10 (feat — shared PostgreSQL ENC for clustered consoles)
+
+### Added
+- **PostgreSQL backend** (`postgresql+asyncpg://`) for the GUI application database. SQLite remains the single-console default. WAL PRAGMAs and file backups are skipped on Postgres.
+- **Clustered two-console support** in Settings → Cluster: console FQDNs, database backend (sqlite|postgresql), ENC API URL list, optional write of `OPENVOX_GUI_DATABASE_URL` and shared `SECRET_KEY` to `.env`.
+- Saving clustered mode with **more than one console** and SQLite is rejected.
+- **Cluster secrets** table + API (`GET/PUT/DELETE /api/config/cluster/secrets`): Fernet `enc:v1:` values, names listed in the Cluster tab.
+- **enc.py** accepts comma-separated `OPENVOX_GUI_API_BASE` URLs and tries each (console failover). Compilers should list both GUIs.
+
+### Notes
+- GUI tables must live in database `openvox_gui`, never inside PuppetDB’s `puppetdb` database. Same Postgres instance is supported.
+- Operator runbook: `~/Desktop/OpenVox_GUI_Clustered_Shared_DB_Runbook.txt`.
+
 ## [3.11.0-alpha.8] - 2026-08-10 (fix — remote CA HTTP API for dedicated consoles)
 
 ### Fixed

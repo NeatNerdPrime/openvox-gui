@@ -86,7 +86,13 @@ target_metadata = Base.metadata
 # operations, but Alembic needs 'sqlite:///path/to/db' for its
 # synchronous DDL operations.
 
-db_url = settings.database_url.replace("sqlite+aiosqlite", "sqlite")
+_raw = settings.database_url or ""
+if _raw.startswith("sqlite+aiosqlite"):
+    db_url = _raw.replace("sqlite+aiosqlite", "sqlite")
+elif _raw.startswith("postgresql+asyncpg"):
+    db_url = _raw.replace("postgresql+asyncpg", "postgresql+psycopg2")
+else:
+    db_url = _raw
 
 
 def run_migrations_offline() -> None:

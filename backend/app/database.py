@@ -32,15 +32,27 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def is_postgres_url(url: str) -> bool:
+    u = (url or "").lower()
+    return u.startswith("postgresql") or u.startswith("postgres")
+
+
 # Ensure the data directory exists before the engine tries to open the
 # SQLite database file. Without this, the very first startup on a fresh
 # installation would fail with a "No such file or directory" error.
 Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
 
-# Create the async engine. When debug mode is enabled, echo=True causes
-# all generated SQL to be logged, which is invaluable for diagnosing
-# query issues during development.
-engine = create_async_engine(settings.database_url, echo=settings.debug)
+# Create the async engine. SQLite stays file-based (single console).
+# PostgreSQL (postgresql+asyncpg://…) is the clustered / two-console path.
+_engine_kwargs: dict = {"echo": settings.debug}
+if is_postgres_url(settings.database_url):
+    _engine_kwargs.update(
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+    )
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 
 # Session factory. expire_on_commit=False prevents SQLAlchemy from
 # expiring all attributes on objects after a commit, which would force
@@ -104,18 +116,20 @@ async def init_db():
        from growing unbounded from the start.
     """
     async with engine.begin() as conn:
-        # WAL + strong durability + concurrency settings (P0 from
-        # srsysarch1 report). journal_mode=WAL persists; others are
-        # connection scoped but we set them early and on the startup conn.
-        await conn.execute(text("PRAGMA journal_mode=WAL"))
-        await conn.execute(text("PRAGMA synchronous = FULL"))
-        await conn.execute(text("PRAGMA busy_timeout = 10000"))
-        await conn.execute(text("PRAGMA wal_autocheckpoint = 2000"))
+        # Register ORM tables on Base.metadata (including ClusterSecret).
+        from . import models as _models  # noqa: F401
+
+        if not is_postgres_url(settings.database_url):
+            # WAL + strong durability + concurrency (SQLite only).
+            await conn.execute(text("PRAGMA journal_mode=WAL"))
+            await conn.execute(text("PRAGMA synchronous = FULL"))
+            await conn.execute(text("PRAGMA busy_timeout = 10000"))
+            await conn.execute(text("PRAGMA wal_autocheckpoint = 2000"))
 
         await conn.run_sync(Base.metadata.create_all)
 
-        # Initial checkpoint so the WAL file doesn't start large.
-        await conn.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
+        if not is_postgres_url(settings.database_url):
+            await conn.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
 
 
 async def checkpoint_database() -> None:
@@ -129,6 +143,8 @@ async def checkpoint_database() -> None:
     explicit checkpointing of critical GUI state (users, ENC, execution
     history, tokens).
     """
+    if is_postgres_url(settings.database_url):
+        return
     try:
         async with engine.begin() as conn:
             await conn.execute(text("PRAGMA wal_checkpoint(FULL)"))
@@ -149,6 +165,9 @@ def backup_database(keep: int = 5) -> Optional[str]:
         from datetime import datetime
         import tarfile
 
+        if is_postgres_url(settings.database_url):
+            logger.info("Skipping file backup — PostgreSQL backend (use pg_dump)")
+            return None
         db_path = Path(settings.database_url.replace("sqlite+aiosqlite:///", ""))
         if not db_path.exists():
             logger.warning("No DB file to backup at %s", db_path)
