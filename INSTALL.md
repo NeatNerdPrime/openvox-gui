@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.11.0-alpha.7**
+**OpenVox GUI Version 3.11.0-alpha.8**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -291,6 +291,9 @@ APP_PORT="4567"
 # Your OpenVox infrastructure
 PUPPET_SERVER_HOST="openvox.yourcompany.com"    # Change this!
 PUPPETDB_HOST="openvox.yourcompany.com"         # Usually same as OpenVox Server
+# Dedicated console (GUI not on the CA): set the CA VIP. Do NOT install
+# openvox-server / puppetserver on the console — the GUI uses the CA HTTP API.
+# PUPPET_CA_HOST="ovca.example.com"
 
 # Authentication
 AUTH_BACKEND="local"
@@ -321,7 +324,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.11.0-alpha.7"}` if everything is working.
+You should see `{"status":"ok","version":"3.11.0-alpha.8"}` if everything is working.
 
 ---
 

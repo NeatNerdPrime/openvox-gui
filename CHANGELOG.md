@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
-## [3.11.0-alpha.6] - 2026-08-06 (fix — cluster save 500)
+## [3.11.0-alpha.8] - 2026-08-10 (fix — remote CA HTTP API for dedicated consoles)
 
 ### Fixed
-- **Settings → Cluster save HTTP 500:** ENC infrastructure seed after `PUT /api/config/cluster` accessed `node.groups` without `selectinload`, causing SQLAlchemy async `MissingGreenlet` and an opaque 500. Seed path now eager-loads groups; write failures return a clear detail (e.g. data_dir permissions); ENC seed errors no longer roll back a successful config write (warning in response).
+- **Dedicated console / clustered CA:** Certificate list, sign/revoke/clean, and CA info no longer require a local `puppetserver` binary or `/etc/puppetlabs/puppet/ssl/ca/ca_crt.pem`. The GUI calls the remote CA HTTP API (`/puppet-ca/v1/certificate_statuses`, status, clean) with the console agent mTLS cert. Set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP (e.g. `ovca.corp.int-x.ai`) — not the compiler VIP. Co-located installs still fall back to `puppetserver ca` when that binary exists. A missing binary is an error (PDB fallback for live nodes), not an empty fleet.
+- **Settings `extra = "ignore"`:** Unknown `OPENVOX_GUI_*` keys in `.env` no longer prevent startup (`extra_forbidden`). Putting `PUPPET_CA_HOST` in `.env` on 3.11.0-alpha.4 (or any older build) will still crash until this version is deployed — then the key is valid.
 
 ## [3.11.0-alpha.7] - 2026-08-07 (Insights — Host Health serving estate)
 
@@ -23,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Background collector + history under `data/host_metrics/`
   - API: `GET /api/insights/host-health`, `GET .../targets`, `POST .../collect`
   - Docs: [docs/HOST_HEALTH.md](docs/HOST_HEALTH.md)
+
+## [3.11.0-alpha.6] - 2026-08-06 (fix — cluster save 500)
+
+### Fixed
+- **Settings → Cluster save HTTP 500:** ENC infrastructure seed after `PUT /api/config/cluster` accessed `node.groups` without `selectinload`, causing SQLAlchemy async `MissingGreenlet` and an opaque 500. Seed path now eager-loads groups; write failures return a clear detail (e.g. data_dir permissions); ENC seed errors no longer roll back a successful config write (warning in response).
 
 ## [3.11.0-alpha.5] - 2026-08-06 (fix — stage/activate rate-limit import)
 
