@@ -1286,7 +1286,7 @@ if [ "$CONFIGURE_BOLT" = "true" ]; then
         # NOTE: quoted delimiter — no shell expansion in this block.
         cat > "${BOLT_DIR}/bolt-project.yaml" << 'BOLTEOF'
 ---
-name: openvox-gui
+name: openvox_gui
 modulepath:
   - /etc/puppetlabs/bolt/modules
 BOLTEOF

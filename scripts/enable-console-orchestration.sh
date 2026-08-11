@@ -44,7 +44,7 @@ install -d -o root -g bolt -m 0750 "$BOLT_DIR/ssl"
 if [[ ! -f $BOLT_DIR/bolt-project.yaml ]]; then
   cat > "$BOLT_DIR/bolt-project.yaml" << 'EOF'
 ---
-name: openvox-gui
+name: openvox_gui
 modulepath:
   - /etc/puppetlabs/bolt/modules
 EOF
