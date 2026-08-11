@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.15] - 2026-08-11 (feat — trusted facts via CA HTTP PEMs)
+
+### Changed
+- **Trusted Facts** no longer `sudo find` the local cadir (empty and slow on a console). Signed certnames come from the CA list API; each PEM is `GET /puppet-ca/v1/certificate/<certname>` in parallel (12 at a time), then parsed for Puppet OIDs. Cadir scan is fallback only. Not in PuppetDB — these live on the cert as `$trusted['extensions']`. Cache TTL 120s.
+
 ## [3.11.0-alpha.14] - 2026-08-11 (fix — stop labeling the console as "server")
 
 ### Fixed

@@ -496,6 +496,8 @@ export function CertificatesPage() {
               <Text size="xs" c="dimmed">
                 Certificate extension requests baked into signed PEMs
                 (catalog: <Code>$trusted['extensions']</Code>)
+                {trustedFacts?.source === 'ca-http' ? ' · via CA HTTP API' : ''}
+                {trustedFacts?.source === 'local-cadir' ? ' · local cadir (API miss)' : ''}
               </Text>
             </div>
           </Group>

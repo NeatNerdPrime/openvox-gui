@@ -10,6 +10,7 @@ compilation exposes as ``$trusted['extensions']``.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -36,7 +37,7 @@ CUSTOM_OID_MAPPING_PATHS = (
 )
 
 _CACHE_TTL_CERTS = 30
-_CACHE_TTL_TRUSTED = 45
+_CACHE_TTL_TRUSTED = 120
 _cache_cert_list: Optional[Dict[str, Any]] = None
 _cache_cert_list_time = 0.0
 _cache_trusted_facts: Optional[Dict[str, Any]] = None
@@ -962,6 +963,55 @@ def _build_summary(nodes: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
     return ordered
 
 
+_TRUSTED_FETCH_CONCURRENCY = 12
+
+
+async def _fetch_signed_pems_via_http(certnames: List[str]) -> Dict[str, bytes]:
+    """GET /puppet-ca/v1/certificate/<cn> for each signed certname.
+
+    One shared httpx client (connection reuse). Public GET on stock
+    auth.conf. Local cadir is not required.
+    """
+    names = [c for c in certnames if c]
+    if not names:
+        return {}
+    host = resolve_ca_host()
+    port = resolve_ca_port()
+    local_ca = (getattr(settings, "puppet_ssl_ca", "") or "").strip()
+    verify: Any = local_ca if local_ca and Path(local_ca).is_file() else False
+    sem = asyncio.Semaphore(_TRUSTED_FETCH_CONCURRENCY)
+    out: Dict[str, bytes] = {}
+
+    async def _one(client: httpx.AsyncClient, cn: str) -> None:
+        url = f"https://{host}:{port}/puppet-ca/v1/certificate/{quote(cn, safe='')}"
+        async with sem:
+            try:
+                resp = await client.get(url)
+            except Exception as exc:
+                logger.debug("Trusted-facts PEM GET %s failed: %s", cn, exc)
+                return
+            text = resp.text or ""
+            if resp.status_code == 200 and "BEGIN CERTIFICATE" in text:
+                out[cn] = text.encode("utf-8")
+
+    attempts: List[Any] = [verify]
+    if verify:
+        attempts.append(False)
+    for v in attempts:
+        out.clear()
+        try:
+            async with httpx.AsyncClient(
+                verify=v, timeout=15.0, trust_env=False
+            ) as client:
+                await asyncio.gather(*[_one(client, cn) for cn in names])
+        except Exception as exc:
+            logger.warning("Trusted-facts PEM client verify=%s failed: %s", bool(v), exc)
+            continue
+        if out:
+            return out
+    return out
+
+
 async def get_trusted_facts(
     *,
     use_cache: bool = True,
@@ -972,7 +1022,14 @@ async def get_trusted_facts(
     signed_dir: Optional[Path] = None,
     oid_mapping_paths: Optional[List[Path]] = None,
 ) -> Dict[str, Any]:
-    """Scan signed CA certificates and extract Puppet trusted-fact extensions.
+    """Extract Puppet trusted-fact extensions from signed certificates.
+
+    API first: list signed certnames via the CA HTTP API, then GET each
+    PEM from ``/puppet-ca/v1/certificate/<cn>`` and parse Puppet OIDs.
+    Local cadir scan is fallback only (empty on a dedicated console).
+
+    These values are **not** in PuppetDB — they live on the cert as
+    ``$trusted['extensions']``.
 
     Parameters
     ----------
@@ -1002,17 +1059,40 @@ async def get_trusted_facts(
         base = _cache_trusted_facts
     else:
         oid_map, sources = load_oid_mapping(extra_paths=oid_mapping_paths)
-        dir_path = signed_dir or CA_SIGNED_DIR
-        pem_paths = await _list_signed_pem_paths(dir_path)
-
         nodes: List[Dict[str, Any]] = []
         errors: List[Dict[str, str]] = []
-        for pem_path in pem_paths:
-            cn = _certname_from_pem_path(pem_path)
-            pem = await _read_pem_bytes_async(pem_path)
-            if pem is None:
-                errors.append({"certname": cn, "error": "unreadable"})
-                continue
+        source = "local-cadir"
+
+        pems: Dict[str, bytes] = {}
+        if signed_dir is None:
+            listing = await list_certificates(use_cache=True)
+            signed_names = [
+                str(c.get("name") or "").strip()
+                for c in (listing.get("signed") or [])
+                if c.get("name")
+            ]
+            if signed_names:
+                pems = await _fetch_signed_pems_via_http(signed_names)
+                if pems:
+                    source = "ca-http"
+                for cn in signed_names:
+                    if cn not in pems:
+                        errors.append({"certname": cn, "error": "pem-http-miss"})
+
+        if not pems:
+            dir_path = signed_dir or CA_SIGNED_DIR
+            pem_paths = await _list_signed_pem_paths(dir_path)
+            for pem_path in pem_paths:
+                cn = _certname_from_pem_path(pem_path)
+                pem = await _read_pem_bytes_async(pem_path)
+                if pem is None:
+                    errors.append({"certname": cn, "error": "unreadable"})
+                    continue
+                pems[cn] = pem
+            if pems:
+                source = "local-cadir"
+
+        for cn, pem in pems.items():
             try:
                 exts = extract_trusted_extensions_from_pem(pem, oid_map=oid_map)
             except Exception as exc:
@@ -1037,6 +1117,7 @@ async def get_trusted_facts(
             "without_extensions": len(nodes) - len(with_ext),
             "oid_mapping_sources": sources,
             "errors": errors,
+            "source": source,
         }
         if signed_dir is None and oid_mapping_paths is None:
             _cache_trusted_facts = base
@@ -1086,6 +1167,7 @@ async def get_trusted_facts(
         "filtered_count": len(nodes_out),
         "oid_mapping_sources": base.get("oid_mapping_sources", ["builtin"]),
         "errors": base.get("errors", []),
+        "source": base.get("source", "ca-http"),
         "filters": {
             "certname": certname,
             "key": key,
