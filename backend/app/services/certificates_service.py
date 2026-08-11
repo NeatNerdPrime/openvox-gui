@@ -91,54 +91,75 @@ def invalidate_cert_list_cache() -> None:
     _cache_trusted_facts_time = 0.0
 
 
-def get_protected_certnames() -> set[str]:
-    """Return certnames that must never be revoked/cleaned via the GUI.
+# Roles for GUI badges. VIPs are not certnames and are not listed.
+_CLUSTER_ROLE_KEYS = (
+    ("consoles", "console"),
+    ("compilers", "compiler"),
+    ("ca_nodes", "ca"),
+    ("puppetdb_nodes", "puppetdb"),
+)
+_LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 
-    Protects the Puppet/OpenVox *server* agent certificate (and related
-    identities) so a certops (or even operator) account cannot brick the
-    master by accident. Includes:
 
-      - puppet.conf ``certname`` (main and server sections)
-      - ``dns_alt_names`` entries from puppet.conf
-      - basename of the configured mTLS agent cert path
-      - ``puppet_server_host`` when it is not localhost
+def _norm_certname(name: Optional[str]) -> str:
+    n = (name or "").strip().lower()
+    if not n or n in _LOOPBACK:
+        return ""
+    return n
+
+
+def get_protected_identities() -> List[Dict[str, str]]:
+    """Certnames the GUI must not revoke/clean, with a real role label.
+
+    Clustered: consoles / compilers / CA nodes / PuppetDB nodes from
+    ``cluster_config.json``. Always includes this GUI host's agent cert
+    as ``console`` (or ``this-host`` on a singleton with no cluster list).
+
+    Does **not** treat the console as a Puppet/OpenVox server. Does not
+    promote ``puppet_server_host`` / CA / PDB VIPs or puppet.conf
+    ``dns_alt_names`` into this list (those are SANs or load-balancer
+    names, not certnames).
     """
-    protected: set[str] = set()
+    by_name: Dict[str, str] = {}
 
-    def _add(name: Optional[str]) -> None:
-        if not name:
+    def _add(name: Optional[str], role: str) -> None:
+        n = _norm_certname(name)
+        if not n:
             return
-        n = name.strip().lower()
-        if not n or n in ("localhost", "127.0.0.1", "::1"):
-            return
-        protected.add(n)
+        # First assignment wins so "console" is not overwritten by a
+        # mis-filed compiler entry for the same FQDN.
+        by_name.setdefault(n, role)
 
     try:
         from ..config import settings
-        from .puppetserver import puppetserver_service
-
-        conf = puppetserver_service.read_puppet_conf()
-        for section in conf.values():
-            if not isinstance(section, dict):
-                continue
-            _add(section.get("certname"))
-            alt = section.get("dns_alt_names") or section.get("dns_alt_name") or ""
-            for part in str(alt).split(","):
-                _add(part)
+        from .cluster_config import load_cluster_config
 
         cert_path = Path(getattr(settings, "puppet_ssl_cert", "") or "")
-        if cert_path.suffix == ".pem":
-            _add(cert_path.stem)
+        this_host = _norm_certname(
+            cert_path.stem if cert_path.suffix == ".pem" else ""
+        )
 
-        _add(getattr(settings, "puppet_server_host", None))
+        cfg = load_cluster_config()
+        clustered = cfg.get("deployment_mode") == "clustered"
+        for key, role in _CLUSTER_ROLE_KEYS:
+            for fqdn in cfg.get(key) or []:
+                _add(fqdn, role)
+
+        if this_host and this_host not in by_name:
+            _add(this_host, "console" if clustered else "this-host")
     except Exception as e:
-        logger.warning("Could not resolve protected certnames: %s", e, exc_info=True)
+        logger.warning("Could not resolve protected identities: %s", e, exc_info=True)
 
-    return protected
+    return [{"name": n, "role": by_name[n]} for n in sorted(by_name)]
+
+
+def get_protected_certnames() -> set[str]:
+    """Certnames the GUI must not revoke/clean."""
+    return {i["name"] for i in get_protected_identities()}
 
 
 def is_protected_certname(certname: str) -> bool:
-    """True if *certname* is the Puppet server (or related) cert."""
+    """True if *certname* is a protected infrastructure identity."""
     if not certname:
         return False
     return certname.strip().lower() in get_protected_certnames()
@@ -497,7 +518,9 @@ async def get_ca_info() -> Dict[str, Any]:
         info["total_signed"] = 0
         info["total_pending"] = 0
 
-    info["protected_certnames"] = sorted(get_protected_certnames())
+    identities = get_protected_identities()
+    info["protected_identities"] = identities
+    info["protected_certnames"] = [i["name"] for i in identities]
     return {"ca_info": info}
 
 

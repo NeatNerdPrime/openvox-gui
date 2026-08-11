@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.14] - 2026-08-11 (fix — stop labeling the console as "server")
+
+### Fixed
+- **Certificates signed list:** `openvox.pdxc` (and other consoles) no longer get a red **server** badge. That list was the GUI host's own agent cert plus `puppet.conf` SANs, leftover from a co-located master. Protected rows are now labeled from Settings → Cluster: **console**, **compiler**, **CA**, **puppetdb**. VIPs and `dns_alt_names` are not treated as certnames.
+
 ## [3.11.0-alpha.13] - 2026-08-11 (feat — compiler and PuppetDB HTTP-first)
 
 ### Changed

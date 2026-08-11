@@ -273,11 +273,24 @@ export function CertificatesPage() {
     setDetailLoading(false);
   };
 
-  const protectedSet = useMemo(() => {
-    const list: string[] = caInfo?.protected_certnames || [];
-    return new Set(list.map((n) => n.toLowerCase()));
+  const protectedRoles = useMemo(() => {
+    const map = new Map<string, string>();
+    const identities: { name?: string; role?: string }[] = caInfo?.protected_identities || [];
+    identities.forEach((i) => {
+      if (i.name) map.set(i.name.toLowerCase(), (i.role || 'protected').toLowerCase());
+    });
+    (caInfo?.protected_certnames || []).forEach((n: string) => {
+      if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), 'protected');
+    });
+    return map;
   }, [caInfo]);
-  const isProtected = (certname: string) => protectedSet.has((certname || '').toLowerCase());
+  const isProtected = (certname: string) => protectedRoles.has((certname || '').toLowerCase());
+  const protectedLabel = (certname: string) => {
+    const role = protectedRoles.get((certname || '').toLowerCase()) || 'protected';
+    if (role === 'ca') return 'CA';
+    if (role === 'this-host') return 'this host';
+    return role;
+  };
 
   if (loading) return <LoadingState label="Loading certificates…" />;
   if (error && !data) return <ErrorState title="Failed to load certificates" message={error} onRetry={load} />;
@@ -306,8 +319,8 @@ export function CertificatesPage() {
       <Alert variant="light" color="blue">
         Manage the estate issuing CA: revoke compromised certs or clean removed
         nodes. The GUI talks to the CA VIP over HTTPS (not a local{' '}
-        <Code>puppetserver ca</Code>). The OpenVox server certificate itself
-        cannot be revoked or cleaned from the GUI.
+        <Code>puppetserver ca</Code>). Infrastructure identities (CA, compiler,
+        PuppetDB, console) cannot be revoked or cleaned from the GUI.
       </Alert>
 
       {/* CA Information Panel */}
@@ -679,7 +692,9 @@ export function CertificatesPage() {
                       <Text fw={500} c="blue" style={{ cursor: 'pointer', textDecoration: 'underline' }}
                         onClick={() => navigate(`/nodes/${cert.name}`)}>{cert.name}</Text>
                       {protectedCert && (
-                        <Badge size="xs" color="red" variant="light">server</Badge>
+                        <Badge size="xs" color="red" variant="light">
+                          {protectedLabel(cert.name)}
+                        </Badge>
                       )}
                     </Group>
                   </Table.Td>
@@ -693,7 +708,7 @@ export function CertificatesPage() {
                       </Tooltip>
                       <Tooltip label={
                         protectedCert
-                          ? 'Server certificate — cannot revoke from GUI'
+                          ? `${protectedLabel(cert.name)} certificate — cannot revoke from GUI`
                           : !canMutateCerts
                             ? 'Requires admin, operator, or certops role'
                             : 'Revoke certificate'
@@ -709,7 +724,7 @@ export function CertificatesPage() {
                       </Tooltip>
                       <Tooltip label={
                         protectedCert
-                          ? 'Server certificate — cannot clean from GUI'
+                          ? `${protectedLabel(cert.name)} certificate — cannot clean from GUI`
                           : !canMutateCerts
                             ? 'Requires admin, operator, or certops role'
                             : 'Clean certificate'
