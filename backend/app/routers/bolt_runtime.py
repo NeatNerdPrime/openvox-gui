@@ -100,9 +100,6 @@ def sanitize_bolt_inventory(path: str = "/etc/puppetlabs/bolt/inventory.yaml") -
 
 
 async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any]:
-
-
-async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any]:
     bolt = find_bolt()
     if not bolt:
         return {"returncode": -1, "stdout": "", "stderr": "OpenBolt is not installed"}
