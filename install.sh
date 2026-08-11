@@ -1288,7 +1288,7 @@ if [ "$CONFIGURE_BOLT" = "true" ]; then
         # connection is filled in by enable-console-orchestration.sh.
         cat > "${BOLT_DIR}/bolt-project.yaml" << 'BOLTEOF'
 ---
-name: openvox_gui
+name: openvox
 modulepath:
   - /etc/puppetlabs/bolt/modules
 BOLTEOF

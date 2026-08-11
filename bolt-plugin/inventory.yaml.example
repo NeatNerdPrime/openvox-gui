@@ -1,37 +1,22 @@
-# ─── OpenVox GUI / OpenBolt inventory (dedicated console or singleton) ──
+# Same layout as the working single-server install
+# (openvox.pdxc-it.twitter.biz /etc/puppetlabs/bolt/inventory.yaml).
 #
-# GUI runs: sudo -E -u bolt bolt … -i /etc/puppetlabs/bolt/inventory.yaml
-#            --project /etc/puppetlabs/bolt
-#
-# OpenVoxDB *connection* (server_urls, PEMs) lives in bolt-project.yaml,
-# not here. Inventory config: is SSH/transport only. Plugin id stays puppetdb.
-#
-# ENC groups (optional):
-#   cp -a /opt/openvox-gui/bolt-plugin/openvox_enc \
-#         /etc/puppetlabs/bolt/modules/openvox_enc
-#
-# Do NOT add a transport: local puppetserver group on a dedicated console.
-# ────────────────────────────────────────────────────────────────
+# Fleet membership for GUI "all nodes" is OpenVoxDB via the GUI API
+# (resolve_targets), not Bolt's puppetdb inventory plugin.
+# ENC groups resolve live through openvox_enc.
 
-version: 2
-
+# Bolt configuration
 config:
-  transport: ssh
   ssh:
-    host-key-check: false
     user: bolt
     private-key: /etc/puppetlabs/bolt/id_bolt
+    host-key-check: false
+    tty: true
 
+# Bolt inventory
 groups:
-  - name: puppetdb-all
-    targets:
-      - _plugin: puppetdb
-        query: "inventory[certname] {}"
-        target_mapping:
-          name: certname
-
   - name: enc
     targets:
-      - _plugin: openvox_enc
-        api_url: "https://127.0.0.1:4567"
-        token_file: /etc/puppetlabs/bolt/.bolt_token
+      _plugin: openvox_enc
+      api_url: 'https://127.0.0.1:4567'
+      token_file: /etc/puppetlabs/bolt/.bolt_token

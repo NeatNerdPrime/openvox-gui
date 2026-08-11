@@ -15,20 +15,22 @@ if [[ -f $INV ]]; then
 fi
 
 cat > "$INV" << 'EOF'
-version: 2
+---
+# Bolt configuration
 config:
-  transport: ssh
   ssh:
-    host-key-check: false
     user: bolt
     private-key: /etc/puppetlabs/bolt/id_bolt
+    host-key-check: false
+    tty: true
+
+# Bolt inventory
 groups:
-  - name: puppetdb-all
+  - name: enc
     targets:
-      - _plugin: puppetdb
-        query: "inventory[certname] {}"
-        target_mapping:
-          name: certname
+      _plugin: openvox_enc
+      api_url: 'https://127.0.0.1:4567'
+      token_file: /etc/puppetlabs/bolt/.bolt_token
 EOF
 chown root:bolt "$INV"
 chmod 640 "$INV"

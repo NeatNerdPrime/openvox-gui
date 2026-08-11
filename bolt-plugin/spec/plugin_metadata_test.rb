@@ -76,27 +76,30 @@ class PluginMetadataTests
     assert_includes text, '_plugin: openvox_enc'
     assert_includes text, 'api_url:'
     data = YAML.safe_load(text)
-    assert_equal 2, data['version']
     enc_group = data['groups'].find { |g| g['name'] == 'enc' }
     assert enc_group, 'enc group missing from inventory.yaml.example'
-    plugin = enc_group['targets'].find { |t| t.is_a?(Hash) && t['_plugin'] == 'openvox_enc' }
-    assert plugin, 'openvox_enc plugin target missing'
+    targets = enc_group['targets']
+    plugin = if targets.is_a?(Hash)
+               targets
+             else
+               Array(targets).find { |t| t.is_a?(Hash) && t['_plugin'] == 'openvox_enc' }
+             end
+    assert plugin && plugin['_plugin'] == 'openvox_enc', 'openvox_enc plugin target missing'
   end
 
   def self.test_library_and_task_files_exist
     assert File.file?(ROOT / 'openvox_enc' / 'lib' / 'openvox_enc' / 'inventory.rb')
     assert File.file?(ROOT / 'openvox_enc' / 'tasks' / 'resolve_reference.rb')
     task = File.read(ROOT / 'openvox_enc' / 'tasks' / 'resolve_reference.rb')
-    assert_includes task, "require 'openvox_enc/inventory'"
-    assert_includes task, 'OpenvoxEnc::Inventory.resolve'
+    # Working singleton uses the self-contained 3.10.6 task (no require_relative).
+    assert_includes task, 'Net::HTTP'
+    assert !task.include?('require_relative'), 'task must not require_relative (Bolt copies it to /tmp)'
   end
 
-  def self.test_task_is_thin_entrypoint
+  def self.test_task_is_self_contained
     task = File.read(ROOT / 'openvox_enc' / 'tasks' / 'resolve_reference.rb')
-    # Business logic should live in the library, not the task
-    refute_includes = ->(s) { raise "task still embeds logic: #{s}" if task.include?(s) }
-    refute_includes.call('Net::HTTP.new')
-    refute_includes.call("seen[certname]")
+    assert_includes task, 'Net::HTTP.new'
+    assert_includes task, '/api/enc/inventory/bolt'
   end
 end
 

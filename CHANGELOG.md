@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.27] - 2026-08-11 (fix — Bolt inventory matches working singleton)
+
+### Changed
+- Console Bolt layout copied from the working single-server host (`openvox.pdxc-it.twitter.biz`): `name: openvox`, `config.ssh` only, ENC plugin as a **hash** target (`openvox_enc`), self-contained `resolve_reference.rb` from 3.10.6 (no `require_relative`). OpenVoxDB feeds GUI `resolve_targets`, not Bolt's `puppetdb` inventory plugin.
+
 ## [3.11.0-alpha.26] - 2026-08-11 (fix — sanitized Bolt inventory the GUI can write)
 
 ### Fixed

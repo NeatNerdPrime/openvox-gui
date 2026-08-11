@@ -524,30 +524,40 @@ async def get_bolt_inventory(
             },
         })
 
-    # Add a PuppetDB-backed dynamic group for auto-discovery
-    bolt_groups.append({
-        "name": "puppetdb-all",
-        "targets": [{
-            "_plugin": "puppetdb",
-            "query": "inventory[certname] {}",
-            "target_mapping": {
-                "name": "certname",
-            },
-        }],
-    })
-
-    # OpenVoxDB connection belongs in bolt-project.yaml (plugin config),
-    # not inventory config: — that section is transport-only (ssh/winrm).
     inventory = {
-        "version": 2,
-        "config": {
-            "transport": "ssh",
-            "ssh": {"host-key-check": False},
-        },
         "groups": bolt_groups,
     }
 
     return inventory
+
+
+def console_disk_inventory() -> dict:
+    """On-disk inventory.yaml — same shape as the working singleton.
+
+    OpenVoxDB is used by the GUI (resolve_targets / get_fleet_nodes), not
+    via Bolt's puppetdb inventory plugin. The ENC plugin resolves groups
+    at run time from this GUI.
+    """
+    return {
+        "config": {
+            "ssh": {
+                "user": "bolt",
+                "private-key": "/etc/puppetlabs/bolt/id_bolt",
+                "host-key-check": False,
+                "tty": True,
+            },
+        },
+        "groups": [
+            {
+                "name": "enc",
+                "targets": {
+                    "_plugin": "openvox_enc",
+                    "api_url": "https://127.0.0.1:4567",
+                    "token_file": "/etc/puppetlabs/bolt/.bolt_token",
+                },
+            },
+        ],
+    }
 
 
 @router.get("/inventory/bolt/yaml", response_class=PlainTextResponse)
@@ -555,6 +565,5 @@ async def get_bolt_inventory_yaml(
     db: AsyncSession = Depends(get_db),
     _user: str = Depends(_BOLT_INVENTORY),
 ):
-    """Return the Bolt inventory as deployable YAML."""
-    inventory = await get_bolt_inventory(db, _user)
-    return yaml.dump(inventory, default_flow_style=False, sort_keys=False)
+    """YAML for /etc/puppetlabs/bolt/inventory.yaml (singleton layout)."""
+    return yaml.dump(console_disk_inventory(), default_flow_style=False, sort_keys=False)
