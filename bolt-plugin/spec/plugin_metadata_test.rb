@@ -87,7 +87,7 @@ class PluginMetadataTests
     assert File.file?(ROOT / 'openvox_enc' / 'lib' / 'openvox_enc' / 'inventory.rb')
     assert File.file?(ROOT / 'openvox_enc' / 'tasks' / 'resolve_reference.rb')
     task = File.read(ROOT / 'openvox_enc' / 'tasks' / 'resolve_reference.rb')
-    assert_includes task, "require_relative '../lib/openvox_enc/inventory'"
+    assert_includes task, "require 'openvox_enc/inventory'"
     assert_includes task, 'OpenvoxEnc::Inventory.resolve'
   end
 

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.22] - 2026-08-11 (fix — openvox_enc load path + inventory writer)
+
+### Fixed
+- **`openvox_enc` plugin:** Bolt copies `resolve_reference.rb` to `/tmp/<uuid>/`, so `require_relative ../lib` failed. The task now loads `/etc/puppetlabs/bolt/modules/openvox_enc/lib`.
+- ENC inventory JSON no longer emits `config.puppetdb` or group `description` (OpenBolt rejects both). The **running** GUI still writes the old file until `update_local.sh`. Do not use Orchestration → Sync inventory until then.
+
 ## [3.11.0-alpha.21] - 2026-08-11 (fix — Bolt must not use corp http_proxy)
 
 ### Fixed

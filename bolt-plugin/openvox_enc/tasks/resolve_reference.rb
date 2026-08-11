@@ -11,7 +11,20 @@
 ###############################################################################
 
 require 'json'
-require_relative '../lib/openvox_enc/inventory'
+
+# Bolt copies this task to /tmp/<uuid>/resolve_reference.rb, so
+# require_relative '../lib/...' looks at /tmp/lib and fails.
+_lib_candidates = [
+  File.expand_path('../../lib', __dir__),
+  '/etc/puppetlabs/bolt/modules/openvox_enc/lib',
+  '/opt/openvox-gui/bolt-plugin/openvox_enc/lib',
+]
+_lib_candidates.each do |lib|
+  next unless lib && File.directory?(lib)
+
+  $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+end
+require 'openvox_enc/inventory'
 
 params = JSON.parse($stdin.read)
 outcome = OpenvoxEnc::Inventory.resolve(params)
