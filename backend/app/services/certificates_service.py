@@ -427,36 +427,28 @@ async def _fetch_public_ca_pem(path: str, timeout: float = 15.0) -> Tuple[Option
 async def get_ca_info() -> Dict[str, Any]:
     """Issuing-CA identity for the Certificates page.
 
-    Clustered / dedicated console: fetch live PEMs from
-    ``OPENVOX_GUI_PUPPET_CA_HOST`` (VIP). Failover changes which node
-    presents Jetty, not which CA cert is the issuer.
-
-    Co-located lab (empty puppet_ca_host): prefer local agent/cadir files.
+    API first on every install (localhost or VIP — same code). Local
+    cadir/agent ``ca.pem`` is fallback only. Clustered mode only
+    *points* ``resolve_ca_host()`` at the VIP; it does not change
+    how we read the CA.
     """
     host = resolve_ca_host()
     port = resolve_ca_port()
-    ca_host_set = bool((getattr(settings, "puppet_ca_host", None) or "").strip())
     pem: Optional[bytes] = None
     source = ""
     local_path = ""
     http_err: Optional[str] = None
 
-    if ca_host_set:
-        pem, http_err = await _fetch_public_ca_pem("/puppet-ca/v1/certificate/ca")
-        if pem:
-            source = "ca-http"
+    pem, http_err = await _fetch_public_ca_pem("/puppet-ca/v1/certificate/ca")
+    if pem:
+        source = "ca-http"
 
     if pem is None:
         pem, local_path = _read_first_pem(
             _local_ca_cert_candidates(), b"BEGIN CERTIFICATE"
         )
         if pem:
-            source = "local-cache" if ca_host_set else "local-file"
-
-    if pem is None and not ca_host_set:
-        pem, http_err = await _fetch_public_ca_pem("/puppet-ca/v1/certificate/ca")
-        if pem:
-            source = "ca-http"
+            source = "local-cache"
 
     if pem is None:
         return {
@@ -685,7 +677,7 @@ def _parse_ca_list_output(raw_output: str) -> Dict[str, List[dict]]:
 async def list_certificates(use_cache: bool = True) -> Dict[str, Any]:
     """List signed + requested certificates.
 
-    Prefer the remote CA HTTP API (dedicated console / clustered CA). Fall
+    Prefer the CA HTTP API on every install (VIP or localhost). Fall
     back to ``puppetserver ca list --all`` only when that binary exists
     (co-located master). A missing binary is an error, not an empty fleet.
     """

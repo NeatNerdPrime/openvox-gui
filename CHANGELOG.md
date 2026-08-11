@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.12] - 2026-08-11 (fix — CA HTTP first on every install)
+
+### Changed
+- **API-first, always.** Clustered mode only fills hostnames (CA VIP, compiler VIP, PDB VIP). The Certificates issuing-CA panel now always `GET`s the CA HTTP API first — including single-server (`localhost` / `puppet_server_host`). Local `ca.pem` / cadir is fallback only (`source=local-cache`). Same code path whether the CA is on-box or failed-over.
+
 ## [3.11.0-alpha.11] - 2026-08-11 (feat — issuing CA via remote CA HTTP API)
 
 ### Changed
