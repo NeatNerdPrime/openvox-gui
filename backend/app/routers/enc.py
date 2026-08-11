@@ -511,8 +511,6 @@ async def get_bolt_inventory(
                 "ssh": {"host-key-check": False},
             },
         }
-        if group.description:
-            bolt_group["description"] = group.description
         bolt_groups.append(bolt_group)
 
     # Add ungrouped nodes
@@ -529,32 +527,22 @@ async def get_bolt_inventory(
     # Add a PuppetDB-backed dynamic group for auto-discovery
     bolt_groups.append({
         "name": "puppetdb-all",
-        "description": "All nodes known to OpenVoxDB (auto-discovered)",
         "targets": [{
             "_plugin": "puppetdb",
             "query": "inventory[certname] {}",
             "target_mapping": {
                 "name": "certname",
-                "config": {
-                    "ssh": {
-                        "host": "facts.networking.fqdn",
-                    },
-                },
             },
         }],
     })
 
+    # OpenVoxDB connection belongs in bolt-project.yaml (plugin config),
+    # not inventory config: — that section is transport-only (ssh/winrm).
     inventory = {
         "version": 2,
         "config": {
             "transport": "ssh",
             "ssh": {"host-key-check": False},
-            "puppetdb": {
-                "server_urls": [f"https://{settings.puppetdb_host}:{settings.puppetdb_port}"],
-                "cacert": settings.puppet_ssl_ca,
-                "cert": settings.puppet_ssl_cert,
-                "key": settings.puppet_ssl_key,
-            },
         },
         "groups": bolt_groups,
     }

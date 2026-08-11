@@ -1284,6 +1284,8 @@ if [ "$CONFIGURE_BOLT" = "true" ]; then
 
     if [ ! -f "${BOLT_DIR}/bolt-project.yaml" ]; then
         # NOTE: quoted delimiter — no shell expansion in this block.
+        # NOTE: quoted delimiter — no shell expansion. OpenVoxDB (puppetdb:)
+        # connection is filled in by enable-console-orchestration.sh.
         cat > "${BOLT_DIR}/bolt-project.yaml" << 'BOLTEOF'
 ---
 name: openvox_gui

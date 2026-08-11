@@ -3,13 +3,12 @@
 # GUI runs: sudo -E -u bolt bolt … -i /etc/puppetlabs/bolt/inventory.yaml
 #            --project /etc/puppetlabs/bolt
 #
-# OpenVoxDB plugin id stays "puppetdb" (Bolt binary name). Product name is
-# OpenVoxDB. Point server_urls / certs at THIS console's agent PEMs.
+# OpenVoxDB *connection* (server_urls, PEMs) lives in bolt-project.yaml,
+# not here. Inventory config: is SSH/transport only. Plugin id stays puppetdb.
 #
 # ENC groups (optional):
 #   cp -a /opt/openvox-gui/bolt-plugin/openvox_enc \
 #         /etc/puppetlabs/bolt/modules/openvox_enc
-#   ovox token generate --user bolt --name "Bolt inventory"
 #
 # Do NOT add a transport: local puppetserver group on a dedicated console.
 # ────────────────────────────────────────────────────────────────
@@ -22,24 +21,15 @@ config:
     host-key-check: false
     user: bolt
     private-key: /etc/puppetlabs/bolt/id_bolt
-  puppetdb:
-    server_urls:
-      - "https://ovdb.corp.int-x.ai:8081"
-    cacert: /etc/puppetlabs/puppet/ssl/certs/ca.pem
-    cert: /etc/puppetlabs/puppet/ssl/certs/openvox.pdxc-it.corp.int-x.ai.pem
-    key: /etc/puppetlabs/puppet/ssl/private_keys/openvox.pdxc-it.corp.int-x.ai.pem
 
 groups:
-  # Whole estate from OpenVoxDB (Bolt plugin id: puppetdb)
   - name: puppetdb-all
-    description: All nodes known to OpenVoxDB (auto-discovered)
     targets:
       - _plugin: puppetdb
         query: "inventory[certname] {}"
         target_mapping:
           name: certname
 
-  # ENC groups from this GUI (loopback — bypass corp proxy)
   - name: enc
     targets:
       - _plugin: openvox_enc

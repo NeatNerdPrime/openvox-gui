@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.20] - 2026-08-11 (fix — OpenVoxDB config belongs in bolt-project.yaml)
+
+### Fixed
+- OpenBolt rejects `puppetdb:` and `description` under `inventory.yaml`. Connection settings (`server_urls`, PEMs) go in **`bolt-project.yaml`**. Inventory `config:` is SSH only. ENC inventory sync and the enable script match that.
+
 ## [3.11.0-alpha.19] - 2026-08-11 (fix — Bolt project name)
 
 ### Fixed
