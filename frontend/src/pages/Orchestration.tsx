@@ -497,7 +497,7 @@ function OverviewTab() {
                 </>
               ) : (
                 <Alert color="yellow" variant="light">
-                  <Text size="sm">OpenBolt is not installed on this server.</Text>
+                  <Text size="sm">OpenBolt is not installed on this host.</Text>
                   <Text size="xs" c="dimmed" mt="xs">
                     Install with: <Code>sudo yum install openbolt</Code> or <Code>sudo apt install openbolt</Code>
                   </Text>
@@ -1203,7 +1203,7 @@ function FilesTab() {
   return (
     <Stack>
       <Alert variant="light" color="blue" mb="xs">
-        Transfer files and execute scripts on managed nodes using Puppet Bolt.
+        Transfer files and execute scripts on managed nodes using OpenBolt.
         Upload pushes files, Download retrieves files, and Run Script uploads
         and executes a script in one step.
       </Alert>

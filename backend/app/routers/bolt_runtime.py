@@ -32,7 +32,7 @@ def find_bolt() -> Optional[str]:
 async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any]:
     bolt = find_bolt()
     if not bolt:
-        return {"returncode": -1, "stdout": "", "stderr": "Puppet Bolt is not installed"}
+        return {"returncode": -1, "stdout": "", "stderr": "OpenBolt is not installed"}
 
     inventory_flag = ["-i", "/etc/puppetlabs/bolt/inventory.yaml"]
     project_flag = ["--project", "/etc/puppetlabs/bolt"]

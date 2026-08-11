@@ -87,7 +87,7 @@ groups:
   - name: enc
     targets:
       - _plugin: openvox_enc
-        api_url: 'https://your-gui:4567'
+        api_url: 'https://127.0.0.1:4567'
         token_file: /etc/puppetlabs/bolt/.bolt_token     # or pass api_token directly
 ```
 

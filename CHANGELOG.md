@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.16] - 2026-08-11 (feat — OpenBolt on dedicated consoles)
+
+### Changed
+- **Orchestration is the existing stack, re-pointed for consoles.** Installer Step 9 prefers `openbolt`, creates the `bolt` user, and writes **`/etc/puppetlabs/bolt`** (the path the GUI already uses) instead of `/opt/openvox-gui/bolt-project`. Installs `openvox_enc` and generates `id_bolt` if missing.
+- **Inventory example** is console-safe: OpenVoxDB `puppetdb` plugin + ENC plugin on `https://127.0.0.1:4567`. No `transport: local` puppetserver group.
+- Product copy: OpenBolt / OpenVoxDB (plugin id and paths stay `puppetdb` / `/etc/puppetlabs/bolt`).
+
 ## [3.11.0-alpha.15] - 2026-08-11 (feat — trusted facts via CA HTTP PEMs)
 
 ### Changed

@@ -288,6 +288,7 @@ export function CertificatesPage() {
   const protectedLabel = (certname: string) => {
     const role = protectedRoles.get((certname || '').toLowerCase()) || 'protected';
     if (role === 'ca') return 'CA';
+    if (role === 'puppetdb') return 'OpenVoxDB';
     if (role === 'this-host') return 'this host';
     return role;
   };

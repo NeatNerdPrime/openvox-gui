@@ -578,8 +578,8 @@ async def _seed_infrastructure_enc_groups(cfg: Dict[str, Any]) -> List[str]:
     seeded: List[str] = []
     env_name = "production"
     specs = [
-        ("Puppet Compiler", "Catalog compilers / OpenVox Server hosts", cfg.get("compilers") or []),
-        ("PuppetDB", "OpenVoxDB / PuppetDB application hosts", cfg.get("puppetdb_nodes") or []),
+        ("OpenVox Compiler", "Catalog compilers / OpenVox Server hosts", cfg.get("compilers") or []),
+        ("OpenVoxDB", "OpenVoxDB application hosts", cfg.get("puppetdb_nodes") or []),
     ]
     async with async_session() as db:
         # Ensure production environment row exists

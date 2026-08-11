@@ -1,14 +1,17 @@
-# ─── OpenVox GUI Dynamic Bolt Inventory ────────────────────────
+# ─── OpenVox GUI / OpenBolt inventory (dedicated console or singleton) ──
 #
-# This inventory file reads ALL targets and groups from the OpenVox
-# GUI's Node Classifier database. You never need to edit this file —
-# manage nodes and groups in the GUI, and Bolt picks them up live.
+# GUI runs: sudo -E -u bolt bolt … -i /etc/puppetlabs/bolt/inventory.yaml
+#            --project /etc/puppetlabs/bolt
 #
-# Install the openvox_enc plugin module:
-#   cp -r /opt/openvox-gui/bolt-plugin/openvox_enc \
+# OpenVoxDB plugin id stays "puppetdb" (Bolt binary name). Product name is
+# OpenVoxDB. Point server_urls / certs at THIS console's agent PEMs.
+#
+# ENC groups (optional):
+#   cp -a /opt/openvox-gui/bolt-plugin/openvox_enc \
 #         /etc/puppetlabs/bolt/modules/openvox_enc
+#   ovox token generate --user bolt --name "Bolt inventory"
 #
-# Then replace /etc/puppetlabs/bolt/inventory.yaml with this file.
+# Do NOT add a transport: local puppetserver group on a dedicated console.
 # ────────────────────────────────────────────────────────────────
 
 version: 2
@@ -19,30 +22,26 @@ config:
     host-key-check: false
     user: bolt
     private-key: /etc/puppetlabs/bolt/id_bolt
-
-    # IMPORTANT: No global run-as here.
-    # The GUI invokes the bolt CLI as the 'bolt' user (`sudo -E -u bolt bolt ...`)
-    # so that local transport (controller) and SSH targets both default to running
-    # commands as the 'bolt' user.
-    # Privilege escalation only via "Run privileged" (prefixes "sudo " in command
-    # string or --run-as) or heuristics.
-    # This makes GUI and direct CLI as bolt user produce same results (whoami=bolt).
-    #
-    # The key must be readable by bolt user (deploy sets 640 root:bolt).
-    # On targets, bolt user needs sudoers for privileged ops (see SUDOERS.md).
+  puppetdb:
+    server_urls:
+      - "https://ovdb.corp.int-x.ai:8081"
+    cacert: /etc/puppetlabs/puppet/ssl/certs/ca.pem
+    cert: /etc/puppetlabs/puppet/ssl/certs/openvox.pdxc-it.corp.int-x.ai.pem
+    key: /etc/puppetlabs/puppet/ssl/private_keys/openvox.pdxc-it.corp.int-x.ai.pem
 
 groups:
-  # Static group for the OpenVox server itself (local transport)
-  - name: puppetserver
+  # Whole estate from OpenVoxDB (Bolt plugin id: puppetdb)
+  - name: puppetdb-all
+    description: All nodes known to OpenVoxDB (auto-discovered)
     targets:
-      - uri: puppet.example.com
-        config:
-          transport: local
+      - _plugin: puppetdb
+        query: "inventory[certname] {}"
+        target_mapping:
+          name: certname
 
-  # Dynamic groups from the ENC database — resolved live on every
-  # Bolt invocation. Groups and nodes are managed in the GUI's
-  # Node Classifier. No manual maintenance needed.
+  # ENC groups from this GUI (loopback — bypass corp proxy)
   - name: enc
     targets:
       - _plugin: openvox_enc
-        api_url: 'https://localhost:4567'
+        api_url: "https://127.0.0.1:4567"
+        token_file: /etc/puppetlabs/bolt/.bolt_token

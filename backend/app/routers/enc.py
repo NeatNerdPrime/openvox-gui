@@ -473,7 +473,7 @@ async def get_bolt_inventory(
     Returns a version 2 Bolt inventory structure where:
     - Each ENC group becomes a Bolt group with its member nodes as targets
     - Ungrouped classified nodes go into an 'ungrouped' group
-    - PuppetDB plugin config is included for dynamic node discovery
+    - OpenVoxDB (Bolt puppetdb plugin) is included for dynamic node discovery
 
     Only reconciled (currently live, signed-cert) nodes are included.
     This prevents ghost nodes from appearing in Bolt targets.
@@ -529,7 +529,7 @@ async def get_bolt_inventory(
     # Add a PuppetDB-backed dynamic group for auto-discovery
     bolt_groups.append({
         "name": "puppetdb-all",
-        "description": "All nodes known to PuppetDB (auto-discovered)",
+        "description": "All nodes known to OpenVoxDB (auto-discovered)",
         "targets": [{
             "_plugin": "puppetdb",
             "query": "inventory[certname] {}",

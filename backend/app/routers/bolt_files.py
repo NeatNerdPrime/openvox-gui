@@ -31,7 +31,7 @@ async def upload_file_to_targets(
     db: AsyncSession = Depends(get_db),
     current_user: str = Depends(require_role("admin", "operator")),
 ):
-    """Upload a file to remote targets via Puppet Bolt.
+    """Upload a file to remote targets via OpenBolt.
 
     Accepts a multipart form upload from the browser, stages the file
     locally in /opt/openvox-gui/data/bolt-uploads/, resolves any ENC
