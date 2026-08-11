@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.23] - 2026-08-11 (fix — force-clean console Bolt inventory)
+
+### Fixed
+- **`scripts/fix-console-bolt-inventory.sh`**: always overwrites inventory (no ENC group, no `config.puppetdb`, no `description`) and recopies `openvox_enc`.
+- GUI Bolt runs sanitize inventory on each invocation so a stale GUI sync cannot leave invalid keys.
+
 ## [3.11.0-alpha.22] - 2026-08-11 (fix — openvox_enc load path + inventory writer)
 
 ### Fixed

@@ -29,10 +29,51 @@ def find_bolt() -> Optional[str]:
     return shutil.which("bolt")
 
 
+def sanitize_bolt_inventory(path: str = "/etc/puppetlabs/bolt/inventory.yaml") -> None:
+    """Strip keys OpenBolt rejects (legacy ENC sync / enable script)."""
+    inv = Path(path)
+    if not inv.is_file():
+        return
+    try:
+        import yaml
+    except ImportError:
+        return
+    try:
+        data = yaml.safe_load(inv.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    changed = False
+    cfg = data.get("config")
+    if isinstance(cfg, dict) and "puppetdb" in cfg:
+        cfg.pop("puppetdb", None)
+        changed = True
+    groups = data.get("groups")
+    if isinstance(groups, list):
+        for group in groups:
+            if isinstance(group, dict) and "description" in group:
+                group.pop("description", None)
+                changed = True
+    if changed:
+        inv.write_text(
+            yaml.safe_dump(data, default_flow_style=False, sort_keys=False),
+            encoding="utf-8",
+        )
+
+
+async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any]:
+
+
 async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any]:
     bolt = find_bolt()
     if not bolt:
         return {"returncode": -1, "stdout": "", "stderr": "OpenBolt is not installed"}
+
+    try:
+        sanitize_bolt_inventory()
+    except Exception:
+        pass
 
     inventory_flag = ["-i", "/etc/puppetlabs/bolt/inventory.yaml"]
     project_flag = ["--project", "/etc/puppetlabs/bolt"]
