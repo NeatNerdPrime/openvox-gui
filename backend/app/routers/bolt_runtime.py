@@ -45,6 +45,17 @@ async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any
 
     env = os.environ.copy()
     env["TERM"] = "xterm-256color"
+    # OpenVoxDB / CA / ENC are on-net. Corp Squid returns 407 for them.
+    for key in list(env):
+        if key.lower() in ("http_proxy", "https_proxy", "all_proxy", "ftp_proxy"):
+            del env[key]
+    bypass = (
+        "localhost,127.0.0.1,::1,"
+        "ovdb.corp.int-x.ai,ovca.corp.int-x.ai,"
+        "ovcompilers.pdxc-it.corp.int-x.ai,ovcompilers.atlc-it.corp.int-x.ai"
+    )
+    env["NO_PROXY"] = bypass
+    env["no_proxy"] = bypass
     result = await run_sudo(bolt_args, timeout=timeout, env=env)
     if is_rainbow and isinstance(result.get("stdout"), str):
         out = result["stdout"].replace("\r\n", "\n").replace("\r", "")

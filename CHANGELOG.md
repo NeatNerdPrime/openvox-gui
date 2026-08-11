@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.21] - 2026-08-11 (fix — Bolt must not use corp http_proxy)
+
+### Fixed
+- GUI OpenBolt invocations unset `http(s)_proxy` and set `NO_PROXY` for loopback + CA/compiler/OpenVoxDB VIPs. Corp Squid 407 was breaking the `puppetdb` inventory plugin.
+
 ## [3.11.0-alpha.20] - 2026-08-11 (fix — OpenVoxDB config belongs in bolt-project.yaml)
 
 ### Fixed
