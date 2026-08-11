@@ -321,7 +321,7 @@ export function CertificatesPage() {
         Manage the estate issuing CA: revoke compromised certs or clean removed
         nodes. The GUI talks to the CA VIP over HTTPS (not a local{' '}
         <Code>puppetserver ca</Code>). Infrastructure identities (CA, compiler,
-        PuppetDB, console) cannot be revoked or cleaned from the GUI.
+        OpenVoxDB, console) cannot be revoked or cleaned from the GUI.
       </Alert>
 
       {/* CA Information Panel */}
