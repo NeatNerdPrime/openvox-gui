@@ -23,25 +23,12 @@ require 'openssl'
 
 params = JSON.parse($stdin.read)
 
-api_url         = params['api_url'] || 'https://localhost:4567'
-group_filter    = params['group']
-transport       = params['transport'] || 'ssh'
-ssl_verify      = params.fetch('ssl_verify', false)
-api_token       = params['api_token']
-token_file      = params['token_file'] || '/etc/puppetlabs/bolt/.bolt_token'
-user            = params['user'] || 'bolt'  # SSH user for targets; defaults to 'bolt' to match inventory config and GUI expectations (whoami returns 'bolt' by default)
-
-# Run-as settings.
-# - For remote targets: default none (run as the SSH 'user' from inventory, i.e. 'bolt').
-#   Escalation only when GUI sends run_as or prefixes "sudo " in command.
-# - For the controller itself (detected via puppet certname/hostname): always use
-#   transport: local + run-as: <user> so default GUI commands run as 'bolt' user
-#   (whoami returns bolt). This matches the SSH targets and the documented
-#   Orchestration default.
-#
-# The plugin does NOT force global run-as. Escalation is per-invocation.
-run_as          = params['run_as']
-run_as_command  = params['run_as_command']
+api_url      = params['api_url'] || 'https://localhost:4567'
+group_filter = params['group']
+transport    = params['transport'] || 'ssh'
+ssl_verify   = params.fetch('ssl_verify', false)
+api_token    = params['api_token']
+token_file   = params['token_file'] || '/etc/puppetlabs/bolt/.bolt_token'
 
 # Support reading token from a file (preferred for the local bolt user)
 if (api_token.nil? || api_token.empty?) && File.exist?(token_file)
@@ -119,22 +106,6 @@ groups.each do |grp|
         'enc_groups' => [],
       },
     }
-
-    # Only inject run-as settings if the inventory _plugin stanza explicitly
-    # supplied them. By default we do *not* force escalation — the SSH user
-    # (bolt) runs commands as itself unless the operator or GUI requests sudo.
-    # This keeps direct CLI `bolt command run` / `bolt task run` (as the bolt
-    # shell user) and GUI Orchestration defaults producing identical results
-    # (e.g. whoami returns "bolt" from both when no escalation is requested).
-    if run_as && !run_as.to_s.empty?
-      target['config'][transport] ||= {}
-      target['config'][transport]['run-as'] = run_as
-    end
-
-    if run_as_command && run_as_command.is_a?(Array) && !run_as_command.empty?
-      target['config'][transport] ||= {}
-      target['config'][transport]['run-as-command'] = run_as_command
-    end
 
     # Collect all groups this node belongs to
     groups.each do |g|

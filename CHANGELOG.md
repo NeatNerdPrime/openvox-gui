@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.28] - 2026-08-11 (fix — openvox_enc task is the live singleton file)
+
+### Changed
+- `openvox_enc` `resolve_reference.rb` replaced with the exact 124-line task from `openvox.pdxc-it.twitter.biz` (self-contained, no `lib/` require).
+
 ## [3.11.0-alpha.27] - 2026-08-11 (fix — Bolt inventory matches working singleton)
 
 ### Changed
