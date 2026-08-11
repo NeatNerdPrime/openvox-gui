@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.10**
+**OpenVox GUI Version 3.11.0-alpha.11**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.10"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.11"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -237,6 +237,15 @@ To use a real certificate, see the Configuration documentation.
    uncomment. Builds from 3.11.0-alpha.8 ignore unknown keys (and
    define PUPPET_CA_HOST). On 3.11.0-alpha.4 those two lines must stay
    commented or the unit will not start.
+
+   **Certificates page: "Could not read CA certificate":**
+
+   Dedicated consoles have no cadir. The GUI must fetch the issuing CA
+   from `https://$OPENVOX_GUI_PUPPET_CA_HOST:8140/puppet-ca/v1/certificate/ca`
+   (the VIP, e.g. `ovca.corp.int-x.ai`). Confirm that host is set, the
+   console agent `ca.pem` is the **new** estate CA, and corp proxy is
+   bypassed (`no_proxy` includes the CA VIP). Failover between ovca1/ovca2
+   does not change the issuing cert — only which node presents Jetty.
 
    **Python dependency issues:**
 

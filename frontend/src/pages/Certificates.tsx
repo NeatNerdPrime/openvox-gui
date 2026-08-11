@@ -191,7 +191,10 @@ export function CertificatesPage() {
       setData(certData);
       setCaInfo(caData.ca_info || null);
       if (certData.error) setError(certData.error);
-      if (caData.error) setError(caData.error);
+      else if (caData.error) setError(caData.error);
+      else if (caData.ca_info?.source === 'local-cache') {
+        setError('CA VIP unreachable; showing the last local copy of the issuing CA.');
+      }
     } catch (e: any) {
       setError(e.message);
     }
@@ -301,9 +304,10 @@ export function CertificatesPage() {
       )}
 
       <Alert variant="light" color="blue">
-        Manage OpenVox CA certificates. Sign pending requests, revoke compromised certs,
-        or clean removed nodes. This interfaces with <Code>puppetserver ca</Code>.
-        The Puppet server certificate itself cannot be revoked or cleaned from the GUI.
+        Manage the estate issuing CA: revoke compromised certs or clean removed
+        nodes. The GUI talks to the CA VIP over HTTPS (not a local{' '}
+        <Code>puppetserver ca</Code>). The OpenVox server certificate itself
+        cannot be revoked or cleaned from the GUI.
       </Alert>
 
       {/* CA Information Panel */}
@@ -313,7 +317,18 @@ export function CertificatesPage() {
             <ThemeIcon size="lg" variant="light" color="orange">
               <IconShield size={20} />
             </ThemeIcon>
-            <Title order={3}>Certificate Authority Information</Title>
+            <div>
+              <Title order={3}>Issuing Certificate Authority</Title>
+              <Text size="sm" c="dimmed">
+                {caInfo.ca_host
+                  ? `Reached via ${caInfo.ca_host}`
+                  : 'Issuing CA'}
+                {caInfo.presented_by ? ` · presented by ${caInfo.presented_by}` : ''}
+                {caInfo.source === 'ca-http' ? ' · live API' : ''}
+                {caInfo.source === 'local-cache' ? ' · local cache (VIP unreachable)' : ''}
+                {caInfo.source === 'local-file' ? ' · local file' : ''}
+              </Text>
+            </div>
           </Group>
           
           <Grid>
@@ -325,6 +340,14 @@ export function CertificatesPage() {
                   </ThemeIcon>
                   <Text size="sm" c="dimmed">Subject:</Text>
                   <Text size="sm" fw={500}>{caInfo.subject || 'N/A'}</Text>
+                </Group>
+
+                <Group gap="xs">
+                  <ThemeIcon size="sm" variant="subtle" color="gray">
+                    <IconCertificate size={14} />
+                  </ThemeIcon>
+                  <Text size="sm" c="dimmed">Issuer:</Text>
+                  <Text size="sm">{caInfo.issuer || 'N/A'}</Text>
                 </Group>
                 
                 <Group gap="xs">

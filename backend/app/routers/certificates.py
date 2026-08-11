@@ -5,8 +5,9 @@ Provides endpoints for listing, signing, revoking, and cleaning Puppet
 certificates, as well as inspecting Certificate Authority health (expiry
 dates, CRL status, key sizes, etc.).
 
-All certificate operations are proxied through the `puppetserver ca`
-command-line tool, which enforces its own access controls.
+List and CA identity go through the remote CA HTTP API on dedicated
+consoles (``OPENVOX_GUI_PUPPET_CA_HOST``). Local ``puppetserver ca`` is
+fallback only when that binary exists (co-located lab).
 
 Security note: certname parameters are validated against a strict
 character allowlist before being used in filesystem paths or shell
@@ -344,152 +345,14 @@ async def reject_certificate_request(
 
 @router.get("/ca-info")
 async def get_ca_info():
-    """Get information about the Certificate Authority itself (cached for speed)."""
-    import re
-    import subprocess
-    from datetime import datetime, timezone
-    from pathlib import Path
-    
-    # Check cache first
+    """Issuing CA identity — remote VIP first on a dedicated console."""
     cached = _get_cached_ca_info()
     if cached is not None:
         return cached
-    
-    try:
-        # Public CA cert — agent localcacert on a console; cadir on a co-located CA.
-        # Never require /etc/puppetlabs/puppet/ssl/ca/ca_crt.pem (that is cadir).
-        from ..config import settings as _settings
-
-        candidates = [
-            getattr(_settings, "puppet_ssl_ca", "") or "",
-            "/etc/puppetlabs/puppet/ssl/certs/ca.pem",
-            "/etc/puppetlabs/puppet/ssl/ca/ca_crt.pem",
-        ]
-        ca_cert_path = next((p for p in candidates if p and Path(p).is_file()), "")
-        if not ca_cert_path:
-            return {"error": "Could not read CA certificate"}
-        ca_result = await run_sudo(
-            ["sudo", "openssl", "x509", "-in", ca_cert_path, "-text", "-noout"],
-            timeout=10,
-        )
-        if ca_result["returncode"] != 0:
-            return {"error": "Could not read CA certificate"}
-        
-        cert_text = ca_result["stdout"]
-        
-        # Parse certificate information
-        info = {}
-        
-        # Extract Subject
-        subject_match = re.search(r"Subject:\s*(.+)", cert_text)
-        if subject_match:
-            info["subject"] = subject_match.group(1).strip()
-        
-        # Extract Issuer
-        issuer_match = re.search(r"Issuer:\s*(.+)", cert_text)
-        if issuer_match:
-            info["issuer"] = issuer_match.group(1).strip()
-        
-        # Extract Serial Number
-        serial_match = re.search(r"Serial Number:\s*\n?\s*([a-f0-9:]+)", cert_text, re.IGNORECASE | re.MULTILINE)
-        if serial_match:
-            info["serial_number"] = serial_match.group(1).strip()
-        
-        # Extract Validity dates
-        not_before_match = re.search(r"Not Before:\s*(.+)", cert_text)
-        if not_before_match:
-            info["not_before"] = not_before_match.group(1).strip()
-            try:
-                nb_date = datetime.strptime(info["not_before"], "%b %d %H:%M:%S %Y %Z")
-                info["valid_from"] = nb_date.isoformat()
-            except (ValueError, TypeError):
-                # bare 'except:' would also swallow KeyboardInterrupt /
-                # asyncio.CancelledError; narrow to just the date-parse
-                # failures we actually expect (3.3.5-25 audit BUG-4).
-                info["valid_from"] = info["not_before"]
-        
-        not_after_match = re.search(r"Not After\s*:\s*(.+)", cert_text)
-        if not_after_match:
-            info["not_after"] = not_after_match.group(1).strip()
-            try:
-                na_date = datetime.strptime(info["not_after"], "%b %d %H:%M:%S %Y %Z")
-                info["valid_until"] = na_date.isoformat()
-                # Calculate days until expiration
-                days_until = (na_date - datetime.now(timezone.utc).replace(tzinfo=None)).days
-                info["days_until_expiry"] = days_until
-                info["is_expired"] = days_until < 0
-                info["expires_soon"] = 0 < days_until < 90
-            except (ValueError, TypeError):
-                # See note above re: narrowing the bare except (BUG-4).
-                info["valid_until"] = info["not_after"]
-        
-        # Extract Signature Algorithm
-        sig_algo_match = re.search(r"Signature Algorithm:\s*(.+)", cert_text)
-        if sig_algo_match:
-            info["signature_algorithm"] = sig_algo_match.group(1).strip()
-        
-        # Extract Key info
-        key_match = re.search(r"Public Key Algorithm:\s*(.+)", cert_text)
-        if key_match:
-            info["key_algorithm"] = key_match.group(1).strip()
-        
-        key_size_match = re.search(r"Public-Key:\s*\((\d+)\s*bit\)", cert_text)
-        if key_size_match:
-            info["key_size"] = int(key_size_match.group(1))
-        
-        # Extract fingerprints via PTY-enabled sudo helper
-        sha256_result = await run_sudo(
-            ["sudo", "openssl", "x509", "-in", ca_cert_path, "-fingerprint", "-sha256", "-noout"],
-            timeout=10,
-        )
-        if sha256_result["returncode"] == 0:
-            fp_match = re.search(r"Fingerprint=(.+)", sha256_result["stdout"])
-            if fp_match:
-                info["sha256_fingerprint"] = fp_match.group(1).strip()
-        
-        # Get CA CRL info if available (agent crl.pem on consoles; cadir on CA host)
-        _crl_candidates = [
-            str(Path(ca_cert_path).resolve().parent.parent / "crl.pem"),
-            "/etc/puppetlabs/puppet/ssl/crl.pem",
-            "/etc/puppetlabs/puppet/ssl/ca/ca_crl.pem",
-        ]
-        crl_path = next((p for p in _crl_candidates if Path(p).is_file()), _crl_candidates[-1])
-        crl_result = await run_sudo(
-            ["sudo", "openssl", "crl", "-in", crl_path, "-text", "-noout"],
-            timeout=10,
-        )
-        if crl_result["returncode"] == 0:
-            crl_update_match = re.search(r"Last Update:\s*(.+)", crl_result["stdout"])
-            if crl_update_match:
-                info["crl_last_update"] = crl_update_match.group(1).strip()
-            
-            next_update_match = re.search(r"Next Update:\s*(.+)", crl_result["stdout"])
-            if next_update_match:
-                info["crl_next_update"] = next_update_match.group(1).strip()
-            
-            # Count revoked certs
-            revoked_count = len(re.findall(r"Serial Number:", crl_result["stdout"])) - 1  # Subtract CRL's own serial
-            info["revoked_count"] = max(0, revoked_count)
-        
-        # Count total certificates from the list we already fetched
-        list_result = await list_certificates()
-        if list_result:
-            info["total_signed"] = len(list_result.get("signed", []))
-            info["total_pending"] = len(list_result.get("requested", []))
-        else:
-            info["total_signed"] = 0
-            info["total_pending"] = 0
-
-        # Server cert (and related identities) — GUI will not revoke/clean these
-        info["protected_certnames"] = sorted(certificates_service.get_protected_certnames())
-        
-        result = {"ca_info": info}
+    result = await certificates_service.get_ca_info()
+    if result and not result.get("error"):
         _set_cached_ca_info(result)
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error getting CA info: {str(e)}")
-        return {"error": f"Error getting CA information: {str(e)}"}
+    return result
 
 
 @router.get("/trusted-facts")

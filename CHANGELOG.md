@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.11] - 2026-08-11 (feat — issuing CA via remote CA HTTP API)
+
+### Changed
+- **Infrastructure | Certificate Authority:** the issuing-CA panel no longer requires a local cadir or `sudo openssl`. On a dedicated console it `GET`s `https://$OPENVOX_GUI_PUPPET_CA_HOST:8140/puppet-ca/v1/certificate/ca` (and the CRL) — the same public endpoints agents use. Failover between ovca1/ovca2 does not change the issuing cert; the page shows **Reached via** the CA VIP and **presented by** the current Jetty CN so you can see which node is Promoted. Local `certs/ca.pem` is fallback only (`source=local-cache`) when the VIP is unreachable. Co-located lab installs (empty `PUPPET_CA_HOST`) still read the local file first.
+- CA HTTP clients set `trust_env=False` so corp Squid cannot intercept VIP calls.
+
 ## [3.11.0-alpha.10] - 2026-08-11 (fix — health check must bypass http_proxy)
 
 ### Fixed

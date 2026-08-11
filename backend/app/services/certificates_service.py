@@ -13,8 +13,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import socket
 import ssl
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -223,7 +225,9 @@ async def _ca_http_request(
         logger.warning("CA mTLS context failed: %s", e)
         return 0, None, f"CA mTLS context failed: {e}"
     try:
-        async with httpx.AsyncClient(verify=ctx, timeout=timeout) as client:
+        async with httpx.AsyncClient(
+            verify=ctx, timeout=timeout, trust_env=False
+        ) as client:
             resp = await client.request(
                 method,
                 url,
@@ -243,6 +247,266 @@ async def _ca_http_request(
     except Exception as e:
         logger.warning("CA HTTP %s %s failed: %s", method, path, e)
         return 0, None, str(e)
+
+
+def _local_ca_cert_candidates() -> List[str]:
+    return [
+        getattr(settings, "puppet_ssl_ca", "") or "",
+        "/etc/puppetlabs/puppet/ssl/certs/ca.pem",
+        "/etc/puppetlabs/puppet/ssl/ca/ca_crt.pem",
+    ]
+
+
+def _local_crl_candidates(ca_cert_path: str = "") -> List[str]:
+    paths: List[str] = []
+    if ca_cert_path:
+        try:
+            paths.append(str(Path(ca_cert_path).resolve().parent.parent / "crl.pem"))
+        except OSError:
+            pass
+    paths.extend(
+        [
+            "/etc/puppetlabs/puppet/ssl/crl.pem",
+            "/etc/puppetlabs/puppet/ssl/ca/ca_crl.pem",
+        ]
+    )
+    return paths
+
+
+def _read_first_pem(paths: List[str], marker: bytes) -> Tuple[Optional[bytes], str]:
+    seen: set[str] = set()
+    for raw in paths:
+        path = (raw or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        p = Path(path)
+        if not p.is_file():
+            continue
+        try:
+            data = p.read_bytes()
+        except OSError as exc:
+            logger.warning("Could not read %s: %s", path, exc)
+            continue
+        if marker in data:
+            return data, path
+    return None, ""
+
+
+def _colon_fingerprint(digest: bytes) -> str:
+    return ":".join(f"{b:02X}" for b in digest)
+
+
+def parse_ca_certificate_pem(pem: bytes) -> Dict[str, Any]:
+    """Parse an issuing-CA PEM into the Certificates page shape. No openssl."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
+
+    cert = x509.load_pem_x509_certificate(pem)
+    try:
+        not_before = cert.not_valid_before_utc
+        not_after = cert.not_valid_after_utc
+    except AttributeError:
+        not_before = cert.not_valid_before
+        not_after = cert.not_valid_after
+        if not_before.tzinfo is None:
+            not_before = not_before.replace(tzinfo=timezone.utc)
+        if not_after.tzinfo is None:
+            not_after = not_after.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    days_until = (not_after - now).days
+    pubkey = cert.public_key()
+    if isinstance(pubkey, rsa.RSAPublicKey):
+        key_algorithm = "rsaEncryption"
+        key_size = pubkey.key_size
+    elif isinstance(pubkey, ec.EllipticCurvePublicKey):
+        key_algorithm = f"id-ecPublicKey ({pubkey.curve.name})"
+        key_size = pubkey.curve.key_size
+    elif isinstance(pubkey, dsa.DSAPublicKey):
+        key_algorithm = "dsaEncryption"
+        key_size = pubkey.key_size
+    else:
+        key_algorithm = type(pubkey).__name__
+        key_size = getattr(pubkey, "key_size", None)
+
+    sig = getattr(cert.signature_algorithm_oid, "_name", None) or str(
+        cert.signature_algorithm_oid.dotted_string
+    )
+    return {
+        "subject": cert.subject.rfc4514_string(),
+        "issuer": cert.issuer.rfc4514_string(),
+        "serial_number": format(cert.serial_number, "X"),
+        "not_before": not_before.strftime("%b %d %H:%M:%S %Y %Z"),
+        "not_after": not_after.strftime("%b %d %H:%M:%S %Y %Z"),
+        "valid_from": not_before.isoformat(),
+        "valid_until": not_after.isoformat(),
+        "days_until_expiry": days_until,
+        "is_expired": days_until < 0,
+        "expires_soon": 0 <= days_until < 90,
+        "signature_algorithm": sig,
+        "key_algorithm": key_algorithm,
+        "key_size": key_size,
+        "sha256_fingerprint": _colon_fingerprint(cert.fingerprint(hashes.SHA256())),
+    }
+
+
+def parse_ca_crl_pem(pem: bytes) -> Dict[str, Any]:
+    """Parse a CA CRL PEM for last/next update and revoked count."""
+    from cryptography import x509
+
+    crl = x509.load_pem_x509_crl(pem)
+    last = getattr(crl, "last_update_utc", None) or getattr(crl, "last_update", None)
+    nxt = getattr(crl, "next_update_utc", None) or getattr(crl, "next_update", None)
+    if last is not None and getattr(last, "tzinfo", None) is None:
+        last = last.replace(tzinfo=timezone.utc)
+    if nxt is not None and getattr(nxt, "tzinfo", None) is None:
+        nxt = nxt.replace(tzinfo=timezone.utc)
+    return {
+        "crl_last_update": last.strftime("%b %d %H:%M:%S %Y %Z") if last else None,
+        "crl_next_update": nxt.strftime("%b %d %H:%M:%S %Y %Z") if nxt else None,
+        "revoked_count": len(list(crl)),
+    }
+
+
+def presented_server_cn(host: str, port: int, timeout: float = 5.0) -> Optional[str]:
+    """CN of the Jetty cert currently on the VIP (which CA node is Promoted)."""
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                der = ssock.getpeercert(binary_form=True)
+        if not der:
+            return None
+        cert = x509.load_der_x509_certificate(der)
+        for attr in cert.subject:
+            if attr.oid == NameOID.COMMON_NAME:
+                return str(attr.value)
+        return cert.subject.rfc4514_string()
+    except Exception as exc:
+        logger.debug("Could not read presented CA server cert: %s", exc)
+        return None
+
+
+async def _fetch_public_ca_pem(path: str, timeout: float = 15.0) -> Tuple[Optional[bytes], Optional[str]]:
+    """GET a public CA PEM (certificate/ca or CRL). Bypass corp proxy.
+
+    Prefer TLS verify against local agent ca.pem. If that file is missing or
+    stale (post-rebuild chicken-and-egg), retry with verify disabled — the
+    same first-bootstrap pattern as ``puppet ssl bootstrap``.
+    """
+    url = f"https://{resolve_ca_host()}:{resolve_ca_port()}{path}"
+    local_ca = (getattr(settings, "puppet_ssl_ca", "") or "").strip()
+    verify: Any = local_ca if local_ca and Path(local_ca).is_file() else False
+    last_err: Optional[str] = None
+    attempts: List[Any] = [verify]
+    if verify:
+        attempts.append(False)
+    for v in attempts:
+        try:
+            async with httpx.AsyncClient(
+                verify=v, timeout=timeout, trust_env=False
+            ) as client:
+                resp = await client.get(url)
+            text = resp.text or ""
+            if resp.status_code == 200 and "BEGIN" in text:
+                return text.encode("utf-8"), None
+            last_err = f"CA HTTP {resp.status_code} for {path}"
+        except Exception as exc:
+            last_err = str(exc)
+            logger.warning("Public CA GET %s verify=%s failed: %s", path, bool(v), exc)
+    return None, last_err
+
+
+async def get_ca_info() -> Dict[str, Any]:
+    """Issuing-CA identity for the Certificates page.
+
+    Clustered / dedicated console: fetch live PEMs from
+    ``OPENVOX_GUI_PUPPET_CA_HOST`` (VIP). Failover changes which node
+    presents Jetty, not which CA cert is the issuer.
+
+    Co-located lab (empty puppet_ca_host): prefer local agent/cadir files.
+    """
+    host = resolve_ca_host()
+    port = resolve_ca_port()
+    ca_host_set = bool((getattr(settings, "puppet_ca_host", None) or "").strip())
+    pem: Optional[bytes] = None
+    source = ""
+    local_path = ""
+    http_err: Optional[str] = None
+
+    if ca_host_set:
+        pem, http_err = await _fetch_public_ca_pem("/puppet-ca/v1/certificate/ca")
+        if pem:
+            source = "ca-http"
+
+    if pem is None:
+        pem, local_path = _read_first_pem(
+            _local_ca_cert_candidates(), b"BEGIN CERTIFICATE"
+        )
+        if pem:
+            source = "local-cache" if ca_host_set else "local-file"
+
+    if pem is None and not ca_host_set:
+        pem, http_err = await _fetch_public_ca_pem("/puppet-ca/v1/certificate/ca")
+        if pem:
+            source = "ca-http"
+
+    if pem is None:
+        return {
+            "error": http_err
+            or "Could not read CA certificate. Set OPENVOX_GUI_PUPPET_CA_HOST "
+            "to the CA VIP or install the agent ca.pem.",
+        }
+
+    try:
+        info = parse_ca_certificate_pem(pem)
+    except Exception as exc:
+        logger.warning("CA PEM parse failed: %s", exc, exc_info=True)
+        return {"error": f"Could not parse CA certificate: {exc}"}
+
+    info["source"] = source
+    info["ca_host"] = f"{host}:{port}"
+    if local_path:
+        info["local_path"] = local_path
+    presented = presented_server_cn(host, port)
+    if presented:
+        info["presented_by"] = presented
+
+    crl_pem, _crl_err = await _fetch_public_ca_pem(
+        "/puppet-ca/v1/certificate_revocation_list/ca"
+    )
+    if crl_pem is None:
+        crl_pem, _ = _read_first_pem(
+            _local_crl_candidates(local_path), b"BEGIN X509 CRL"
+        )
+    if crl_pem:
+        try:
+            info.update(parse_ca_crl_pem(crl_pem))
+        except Exception as exc:
+            logger.warning("CA CRL parse failed: %s", exc)
+
+    try:
+        cert_data = await list_certificates()
+        if cert_data and not cert_data.get("error"):
+            info["total_signed"] = len(cert_data.get("signed") or [])
+            info["total_pending"] = len(cert_data.get("requested") or [])
+        else:
+            info["total_signed"] = 0
+            info["total_pending"] = 0
+    except Exception as exc:
+        logger.warning("CA info: list_certificates failed: %s", exc)
+        info["total_signed"] = 0
+        info["total_pending"] = 0
+
+    info["protected_certnames"] = sorted(get_protected_certnames())
+    return {"ca_info": info}
 
 
 async def list_certificates_via_http() -> Optional[Dict[str, Any]]:
