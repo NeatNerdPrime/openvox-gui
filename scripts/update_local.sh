@@ -842,17 +842,19 @@ sleep 2
 # Use HTTPS when SSL is enabled (uvicorn won't respond to plain HTTP)
 # Use "localhost" (not a literal IP) so the check works whether the service
 # is bound to 0.0.0.0, :: (dual-stack), or localhost-only.
+# Never send the loopback health check through http_proxy/https_proxy
+# (corp Squid will 407 CONNECT 127.0.0.1 and the updater falsely fails).
 if [ "$SSL_ENABLED" = "true" ]; then
-    HEALTH_URL="https://localhost:${APP_PORT}/health"
-    CURL_OPTS="-ksf"
+    HEALTH_URL="https://127.0.0.1:${APP_PORT}/health"
+    health_curl() { curl -ksf --noproxy '*' "$@"; }
 else
-    HEALTH_URL="http://localhost:${APP_PORT}/health"
-    CURL_OPTS="-sf"
+    HEALTH_URL="http://127.0.0.1:${APP_PORT}/health"
+    health_curl() { curl -sf --noproxy '*' "$@"; }
 fi
 
 HEALTH_OK="false"
 for i in $(seq 1 15); do
-    if curl $CURL_OPTS "${HEALTH_URL}" >/dev/null 2>&1; then
+    if health_curl "${HEALTH_URL}" >/dev/null 2>&1; then
         HEALTH_OK="true"
         break
     fi
@@ -860,7 +862,7 @@ for i in $(seq 1 15); do
 done
 
 if [ "$HEALTH_OK" = "true" ]; then
-    HEALTH_RESPONSE=$(curl $CURL_OPTS "${HEALTH_URL}" 2>/dev/null)
+    HEALTH_RESPONSE=$(health_curl "${HEALTH_URL}" 2>/dev/null)
     log_ok "Service is healthy — ${HEALTH_RESPONSE}"
 else
     log_err "Service did not become healthy. Check: journalctl -u ${SERVICE_NAME} -n 50"

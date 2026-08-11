@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.10] - 2026-08-11 (fix — health check must bypass http_proxy)
+
+### Fixed
+- **`update_local.sh` / `deploy.sh` health probe:** `curl` to `127.0.0.1:4567/health` was sent through `http_proxy`/`https_proxy`. Corp Squid returns 407 for CONNECT to loopback, so the updater reported an unhealthy service while uvicorn was fine. Probes now use `--noproxy '*'`.
+
 ## [3.11.0-alpha.9] - 2026-08-10 (feat — shared PostgreSQL ENC for clustered consoles)
 
 ### Added
