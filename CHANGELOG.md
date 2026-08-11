@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.18] - 2026-08-11 (fix — deploy enable-console-orchestration.sh)
+
+### Fixed
+- **`update_local.sh` / `deploy.sh` / `install.sh`** now copy `scripts/enable-console-orchestration.sh` into `/opt/openvox-gui/scripts/`. A git pull into `~/openvox-gui` does not update `/opt` until `update_local.sh` runs.
+
 ## [3.11.0-alpha.17] - 2026-08-11 (feat — console orchestration enable script)
 
 ### Added
