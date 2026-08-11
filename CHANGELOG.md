@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.29] - 2026-08-11 (fix — apply singleton Bolt layout)
+
+### Added
+- **`scripts/apply-singleton-bolt-layout.sh`**: overwrites project + inventory + `openvox_enc` to match `openvox.pdxc-it.twitter.biz`. Run as root from the git clone.
+
+### Changed
+- GUI Bolt always uses a generated singleton inventory (`-i` under `/opt/openvox-gui/data/`), never the dirty `/etc` file.
+
 ## [3.11.0-alpha.28] - 2026-08-11 (fix — openvox_enc task is the live singleton file)
 
 ### Changed

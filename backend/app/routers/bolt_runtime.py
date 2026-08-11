@@ -66,64 +66,37 @@ def find_bolt() -> Optional[str]:
     return shutil.which("bolt")
 
 
-def _clean_inventory_data(data: Any) -> Any:
-    """Drop keys OpenBolt 5 rejects; drop ENC plugin until its task is patched."""
-    if not isinstance(data, dict):
-        return data
-    cfg = data.get("config")
-    if isinstance(cfg, dict):
-        cfg.pop("puppetdb", None)
-        data["config"] = {
-            k: v for k, v in cfg.items() if k in ("transport", "ssh", "winrm", "docker", "local", "pcp")
-        }
-    cleaned = []
-    for group in data.get("groups") or []:
-        if not isinstance(group, dict):
-            continue
-        group.pop("description", None)
-        targets = group.get("targets") or []
-        uses_enc = any(
-            isinstance(t, dict) and t.get("_plugin") == "openvox_enc" for t in targets
-        )
-        if uses_enc:
-            continue
-        cleaned.append(group)
-    data["groups"] = cleaned
-    return data
+_SINGLETON_INVENTORY = """---
+# Same shape as openvox.pdxc-it.twitter.biz (working singleton).
+# OpenVoxDB is used by the GUI (resolve_targets), not Bolt's puppetdb plugin.
+config:
+  ssh:
+    user: bolt
+    private-key: /etc/puppetlabs/bolt/id_bolt
+    host-key-check: false
+    tty: true
+groups:
+  - name: enc
+    targets:
+      _plugin: openvox_enc
+      api_url: 'https://127.0.0.1:4567'
+      token_file: /etc/puppetlabs/bolt/.bolt_token
+"""
 
 
 def sanitize_bolt_inventory(
     src: str = "/etc/puppetlabs/bolt/inventory.yaml",
     dest: str = "/opt/openvox-gui/data/bolt-inventory.sanitized.yaml",
 ) -> str:
-    """Write a console-safe inventory the GUI user can always write.
-
-    /etc/puppetlabs/bolt/inventory.yaml is 640 root:bolt; sanitize used to
-    fail silently and Bolt kept the dirty file. Always emit a cleaned copy
-    under the GUI data dir and return that path for ``-i``.
-    """
-    try:
-        import yaml
-    except ImportError:
-        return src
-    raw = Path(src)
-    if not raw.is_file():
-        return src
-    try:
-        data = yaml.safe_load(raw.read_text(encoding="utf-8"))
-    except Exception:
-        return src
-    data = _clean_inventory_data(data)
+    """Always hand Bolt the singleton inventory. Ignore a dirty /etc file."""
+    del src  # never trust on-disk inventory from old GUI sync
     out = Path(dest)
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(
-            yaml.safe_dump(data, default_flow_style=False, sort_keys=False),
-            encoding="utf-8",
-        )
+        out.write_text(_SINGLETON_INVENTORY, encoding="utf-8")
         return str(out)
     except OSError:
-        return src
+        return "/etc/puppetlabs/bolt/inventory.yaml"
 
 
 async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any]:
