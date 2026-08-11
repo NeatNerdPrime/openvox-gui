@@ -145,6 +145,7 @@ Defaults:${SERVICE_USER} lecture=never
 # Method: wrapper script (r10k-deploy.sh) that safely invokes r10k with
 #         controlled arguments. We allow only the wrapper, not raw r10k.
 ${SERVICE_USER} ALL=(root) NOPASSWD: ${INSTALL_DIR}/scripts/r10k-deploy.sh
+${SERVICE_USER} ALL=(root) NOPASSWD: ${INSTALL_DIR}/scripts/r10k-stage-activate.sh
 
 # Reading specific PuppetDB configuration files
 # Method: sudo cat of exact files. Needed for the Config + PQL + dashboard

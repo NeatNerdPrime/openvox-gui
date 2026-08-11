@@ -75,6 +75,7 @@ config:
     private-key: /etc/puppetlabs/bolt/id_bolt
     host-key-check: false
     tty: true
+    connect-timeout: 10
 groups:
   - name: enc
     targets:

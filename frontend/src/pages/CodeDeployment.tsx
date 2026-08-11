@@ -449,7 +449,8 @@ export function CodeDeploymentPage() {
               {clustered && (
                 <Text size="xs" c="dimmed" mt="sm">
                   Stage → r10k into code-staging on each target; Activate → promote to live codedir
-                  on all targets (Bolt when available). Targets: {deployTargets.join(', ') || 'configure under Configuration tab / Settings → Cluster'}.
+                  on all targets via OpenBolt (SSH as bolt@). Compilers need r10k + bolt_user.
+                  Targets: {deployTargets.join(', ') || 'configure under Configuration tab / Settings → Cluster'}.
                 </Text>
               )}
 

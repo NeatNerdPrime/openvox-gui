@@ -1,0 +1,233 @@
+"""Clustered Code Deployment stage/activate — isolated from FastAPI/Bolt.
+
+Production uvicorn maps uncaught exceptions to a generic 500. These tests
+load ``deploy.py`` with stubs so we can prove stage/activate return a
+structured failure instead of raising.
+"""
+from __future__ import annotations
+
+import asyncio
+import sys
+import types
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+
+def _pkg(name: str) -> types.ModuleType:
+    if name in sys.modules:
+        return sys.modules[name]
+    m = types.ModuleType(name)
+    m.__path__ = []  # type: ignore[attr-defined]
+    sys.modules[name] = m
+    return m
+
+
+def _install_stubs() -> None:
+    if getattr(_install_stubs, "_done", False):
+        return
+
+    fastapi = types.ModuleType("fastapi")
+
+    class HTTPException(Exception):
+        def __init__(self, status_code, detail=None, headers=None):
+            self.status_code = status_code
+            self.detail = detail
+            self.headers = headers
+
+    class APIRouter:
+        def __init__(self, *a, **k):
+            pass
+
+        def post(self, *a, **k):
+            return lambda fn: fn
+
+        def get(self, *a, **k):
+            return lambda fn: fn
+
+    fastapi.APIRouter = APIRouter
+    fastapi.HTTPException = HTTPException
+    fastapi.Request = object
+    fastapi.Depends = lambda *a, **k: None
+    sys.modules["fastapi"] = fastapi
+
+    responses = types.ModuleType("fastapi.responses")
+    responses.PlainTextResponse = object
+    sys.modules["fastapi.responses"] = responses
+
+    pydantic = types.ModuleType("pydantic")
+
+    class BaseModel:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    pydantic.BaseModel = BaseModel
+    sys.modules["pydantic"] = pydantic
+
+    sec = types.ModuleType("app.middleware.security")
+    sec.rate_limit_heavy = lambda: (lambda fn: fn)
+    sec.concurrency_heavy = object()
+    sys.modules["app.middleware.security"] = sec
+
+    deps = types.ModuleType("app.dependencies")
+    deps.require_role = lambda *a, **k: None
+    sys.modules["app.dependencies"] = deps
+
+    sudo = types.ModuleType("app.utils.sudo")
+
+    async def _run_sudo(*a, **k):
+        return {"returncode": 0, "stdout": "", "stderr": ""}
+
+    sudo.run_sudo = _run_sudo
+    sys.modules["app.utils.sudo"] = sudo
+
+    hist = types.ModuleType("app.services.deploy_history")
+    hist.add_json_history_entry = lambda *a, **k: None
+    hist.load_json_history = lambda: []
+    sys.modules["app.services.deploy_history"] = hist
+
+    _pkg("app")
+    _pkg("app.routers")
+    _pkg("app.utils")
+    _pkg("app.middleware")
+    _pkg("app.services")
+    _install_stubs._done = True  # type: ignore[attr-defined]
+
+
+def _load_deploy():
+    _install_stubs()
+    if "app.routers.deploy" in sys.modules:
+        return sys.modules["app.routers.deploy"]
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "app" / "routers" / "deploy.py"
+    spec = importlib.util.spec_from_file_location("app.routers.deploy", path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["app.routers.deploy"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _seed_cluster_and_bolt(find_bolt, run_bolt):
+    cc = types.ModuleType("app.services.cluster_config")
+    cc.load_cluster_config = lambda: {
+        "staging_codedir": "/etc/puppetlabs/code-staging",
+        "live_codedir": "/etc/puppetlabs/code",
+        "deployment_mode": "clustered",
+    }
+    cc.is_clustered = lambda: True
+    cc.deploy_targets = lambda: ["ovcompiler1.example.com"]
+    sys.modules["app.services.cluster_config"] = cc
+
+    br = types.ModuleType("app.routers.bolt_runtime")
+    br.find_bolt = find_bolt
+    br.run_bolt_command = run_bolt
+    sys.modules["app.routers.bolt_runtime"] = br
+
+    audit = types.ModuleType("app.utils.audit")
+    audit.audit_event = lambda *a, **k: None
+    sys.modules["app.utils.audit"] = audit
+
+
+def test_cluster_env_args_all_environments():
+    d = _load_deploy()
+    assert d._cluster_env_args("stage", None) == ["stage"]
+    assert d._cluster_env_args("stage", "") == ["stage"]
+    assert d._cluster_env_args("stage", "all") == ["stage"]
+    assert d._cluster_env_args("stage", "production") == ["stage", "production"]
+
+
+def test_cluster_env_args_rejects_injection():
+    d = _load_deploy()
+    try:
+        d._cluster_env_args("stage", "prod; rm -rf /")
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "Invalid environment" in str(e)
+
+
+def test_run_on_targets_missing_script(tmp_path: Path):
+    d = _load_deploy()
+    d.STAGE_ACTIVATE_SCRIPT = str(tmp_path / "missing.sh")
+    _seed_cluster_and_bolt(lambda: "/opt/puppetlabs/bin/bolt", AsyncMock())
+    result = asyncio.run(
+        d._run_on_targets("stage", None, ["ovcompiler1.example.com"])
+    )
+    assert result["success"] is False
+    assert result["exit_code"] == 127
+    assert any("Missing" in line for line in result["output"])
+
+
+def test_run_on_targets_no_bolt_remote_is_error(tmp_path: Path):
+    d = _load_deploy()
+    script = tmp_path / "r10k-stage-activate.sh"
+    script.write_text("#!/bin/bash\n")
+    d.STAGE_ACTIVATE_SCRIPT = str(script)
+    _seed_cluster_and_bolt(lambda: None, AsyncMock())
+    result = asyncio.run(
+        d._run_on_targets("stage", None, ["ovcompiler1.example.com"])
+    )
+    assert result["success"] is False
+    assert any("OpenBolt is not installed" in line for line in result["output"])
+    assert result["hosts"][0]["via"] == "no-bolt"
+
+
+def test_run_on_targets_probe_auth_error_is_not_exception(tmp_path: Path):
+    d = _load_deploy()
+    script = tmp_path / "r10k-stage-activate.sh"
+    script.write_text("#!/bin/bash\n")
+    d.STAGE_ACTIVATE_SCRIPT = str(script)
+    probe = AsyncMock(
+        return_value={"returncode": 1, "stdout": "", "stderr": "AUTH_ERROR: publickey"}
+    )
+    _seed_cluster_and_bolt(lambda: "/opt/puppetlabs/bin/bolt", probe)
+    result = asyncio.run(
+        d._run_on_targets(
+            "stage", None, ["ovcompiler1.example.com", "ovcompiler2.example.com"]
+        )
+    )
+    assert result["success"] is False
+    assert any("AUTH_ERROR" in line for line in result["output"])
+    assert any("bolt_user" in line for line in result["output"])
+    assert probe.call_count == 1
+
+
+def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
+    d = _load_deploy()
+    script = tmp_path / "r10k-stage-activate.sh"
+    script.write_text("#!/bin/bash\n")
+    d.STAGE_ACTIVATE_SCRIPT = str(script)
+
+    async def fake_bolt(args, timeout=120):
+        if args and args[0] == "command":
+            return {"returncode": 0, "stdout": "true", "stderr": ""}
+        return {"returncode": 0, "stdout": "stage complete", "stderr": ""}
+
+    run = AsyncMock(side_effect=fake_bolt)
+    _seed_cluster_and_bolt(lambda: "/opt/puppetlabs/bin/bolt", run)
+    result = asyncio.run(
+        d._run_on_targets("stage", None, ["ovcompiler1.example.com"])
+    )
+    assert result["success"] is True
+    assert result["exit_code"] == 0
+    assert run.call_count == 2
+    script_argv = run.call_args_list[1].args[0]
+    assert script_argv[:2] == ["script", "run"]
+    assert "stage" in script_argv
+
+
+def test_cluster_deploy_swallows_unexpected_exception():
+    d = _load_deploy()
+    _seed_cluster_and_bolt(lambda: "/opt/puppetlabs/bin/bolt", AsyncMock())
+
+    async def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    d._run_on_targets = boom
+    req = d.ClusterDeployRequest(environment=None)
+    result = asyncio.run(
+        d._cluster_deploy("stage", req, "admin")
+    )
+    assert result["success"] is False
+    assert any("boom" in line for line in result["output"])

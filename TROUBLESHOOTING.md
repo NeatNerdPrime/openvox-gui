@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.29**
+**OpenVox GUI Version 3.11.0-alpha.30**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.29"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.30"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -663,6 +663,39 @@ To use a real certificate, see the Configuration documentation.
    # or:
    sudo r10k deploy environment -pv
    ```
+
+### Problem: Clustered Stage / Activate shows `API Error 500: Internal Server Error`
+
+The Stage banner is drawn **before** the POST. A generic 500 means uvicorn
+hid an uncaught exception (production FastAPI does not send the traceback
+to the browser).
+
+**Solutions:**
+
+1. **Read the real error on the console** (this host runs uvicorn only):
+
+   ```bash
+   journalctl -u openvox-gui -n 120 --no-pager
+   ```
+
+2. **After 3.11.0-alpha.30** the endpoint returns `200` with `success: false`
+   and the OpenBolt output in the log pane instead of a bare 500. Update the
+   console (`git pull` + `sudo ./scripts/update_local.sh`) and Stage again.
+
+3. **Compilers need `bolt@` SSH** from the console. Stage uses OpenBolt
+   (`sudo -u bolt bolt script run … --run-as root`). If compilers do not
+   have `profiles::base::bolt_user` + this console's `id_bolt.pub`, you
+   will see `AUTH_ERROR` / publickey — that is the real failure, not a 500.
+
+   ```bash
+   sudo -u bolt bolt command run 'true' \
+     --targets ovcompiler1.pdxc-it.corp.int-x.ai \
+     --project /etc/puppetlabs/bolt
+   ```
+
+4. **r10k lives on the compilers**, not on the GUI host. `bolt script run`
+   uploads `r10k-stage-activate.sh`. Each compiler still needs r10k +
+   `/etc/puppetlabs/r10k/r10k.yaml`.
 
 ### Problem: Orchestration (OpenBolt) Not Working
 

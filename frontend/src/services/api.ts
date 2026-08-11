@@ -56,7 +56,18 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   }
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`API Error ${response.status}: ${error}`);
+    let detail = error;
+    try {
+      const parsed = JSON.parse(error);
+      if (typeof parsed?.detail === 'string') {
+        detail = parsed.detail;
+      } else if (parsed?.detail != null) {
+        detail = JSON.stringify(parsed.detail);
+      }
+    } catch {
+      // Apache/plain-text bodies stay as-is
+    }
+    throw new Error(`API Error ${response.status}: ${detail}`);
   }
   // HTTP 204 No Content has no response body — return an empty object
   // rather than trying to parse undefined JSON.

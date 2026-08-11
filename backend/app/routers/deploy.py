@@ -1,13 +1,15 @@
 """
 Code Deployment API - Interface with r10k for Puppet code deployment.
 """
-import subprocess
 import logging
+import re
+import socket
+import subprocess
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from ..middleware.security import rate_limit_heavy, concurrency_heavy
 from ..dependencies import require_role
@@ -422,11 +424,59 @@ async def run_deployment(
 
 
 STAGE_ACTIVATE_SCRIPT = "/opt/openvox-gui/scripts/r10k-stage-activate.sh"
+# SSH probe must fail fast. A password prompt on compilers without bolt@
+# used to hang the uvicorn worker until R10K_DEPLOY_TIMEOUT (or kill it).
+_CLUSTER_SSH_PROBE_TIMEOUT = 25
+_ENV_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 
 class ClusterDeployRequest(BaseModel):
     environment: Optional[str] = None
     targets: Optional[List[str]] = None  # override configured deploy targets
+
+
+def _cluster_env_args(mode: str, environment: Optional[str]) -> List[str]:
+    """Build [mode] or [mode, env]. Treat All Environments as no env name."""
+    args = [mode]
+    env = (environment or "").strip()
+    if env and env.lower() not in ("all", "none", "*"):
+        if not _ENV_NAME_RE.match(env):
+            raise ValueError(f"Invalid environment name: {environment!r}")
+        args.append(env)
+    return args
+
+
+def _local_hostnames() -> set:
+    """Local short + FQDN names. Avoid socket.getfqdn() — it can hang on DNS."""
+    names: set = set()
+    try:
+        n = socket.gethostname()
+    except OSError:
+        n = ""
+    if n:
+        names.add(n.lower())
+        names.add(n.split(".")[0].lower())
+    return names
+
+
+def _cluster_result(
+    mode: str,
+    environment: Optional[str],
+    targets: List[str],
+    success: bool,
+    exit_code: int,
+    output: List[str],
+    hosts: List[dict],
+) -> Dict[str, Any]:
+    return {
+        "success": success,
+        "exit_code": exit_code,
+        "hosts": hosts,
+        "output": output,
+        "mode": mode,
+        "environment": environment or "all",
+        "targets": targets,
+    }
 
 
 async def _run_on_targets(
@@ -435,83 +485,169 @@ async def _run_on_targets(
     targets: List[str],
     timeout: int = R10K_DEPLOY_TIMEOUT,
 ) -> dict:
-    """Run stage/activate on each target via bolt when available, else local only."""
+    """Stage/activate via OpenBolt on every code-deploy target.
+
+    Compilers do not have ``/opt/openvox-gui``. ``bolt script run`` uploads
+    ``r10k-stage-activate.sh`` and executes it as root on each target.
+
+    This path must never raise into FastAPI — production uvicorn maps
+    uncaught exceptions to a generic ``500 Internal Server Error`` with
+    no detail (that is what the Code Deployment pane showed).
+    """
+    from ..routers.bolt_runtime import find_bolt, run_bolt_command
     from ..services.cluster_config import load_cluster_config
-    from ..utils.sudo import run_sudo
-    import shutil
+
+    try:
+        env_args = _cluster_env_args(mode, environment)
+    except ValueError as e:
+        return _cluster_result(mode, environment, targets, False, 64, [str(e)], [])
 
     cfg = load_cluster_config()
-    staging = cfg.get("staging_codedir", "/etc/puppetlabs/code-staging")
-    live = cfg.get("live_codedir", "/etc/puppetlabs/code")
-    env_args: List[str] = [mode]
-    if environment:
-        env_args.append(environment)
-
-    per_host: List[dict] = []
-    all_ok = True
-    combined_out: List[str] = []
-
-    import asyncio
-
-    bolt = shutil.which("bolt")
-    if bolt and targets:
-        remote_cmd = (
-            f"OPENVOX_STAGING_CODEDIR={staging} OPENVOX_LIVE_CODEDIR={live} "
-            f"sudo {STAGE_ACTIVATE_SCRIPT} {' '.join(env_args)}"
+    script = Path(STAGE_ACTIVATE_SCRIPT)
+    if not script.is_file():
+        msg = (
+            f"Missing {STAGE_ACTIVATE_SCRIPT}. Run update_local.sh so the "
+            "clustered stage/activate helper is installed on this console."
         )
-        bolt_cmd = [
-            bolt,
-            "command",
-            "run",
-            remote_cmd,
-            "--targets",
-            ",".join(targets),
+        return _cluster_result(
+            mode, environment, targets, False, 127, [msg],
+            [{"host": t, "success": False, "via": "missing-script", "exit_code": 127} for t in targets],
+        )
+
+    bolt = find_bolt()
+    local_names = _local_hostnames()
+    targets_are_local = bool(targets) and all(t.lower() in local_names for t in targets)
+
+    # Dedicated consoles are not compilers. Never silently r10k *this* host
+    # when the targets are remote FQDNs and OpenBolt is missing from PATH.
+    if not bolt and not targets_are_local:
+        msg = (
+            "OpenBolt is not installed (or not on PATH) on this console. "
+            "Clustered Stage/Activate needs `bolt` plus SSH as bolt@ to each "
+            "code-deploy target. Install OpenBolt and classify compilers with "
+            "profiles::base::bolt_user."
+        )
+        return _cluster_result(
+            mode, environment, targets, False, 127, [msg],
+            [{"host": t, "success": False, "via": "no-bolt", "exit_code": 127} for t in targets],
+        )
+
+    if bolt and targets and not targets_are_local:
+        probe_args = [
+            "command", "run", "true",
+            "--targets", ",".join(targets),
+            "--connect-timeout", "8",
             "--no-host-key-check",
         ]
-        inv = Path("/etc/puppetlabs/bolt/inventory.yaml")
-        if inv.exists():
-            bolt_cmd.extend(["-i", str(inv)])
-        proc = await asyncio.create_subprocess_exec(
-            *bolt_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            rc = proc.returncode or 0
-        except asyncio.TimeoutError:
-            proc.kill()
-            stdout_b, stderr_b = b"", b"bolt timed out"
-            rc = -1
-        out = stdout_b.decode("utf-8", errors="replace") + stderr_b.decode("utf-8", errors="replace")
-        combined_out.append(out)
-        all_ok = rc == 0
-        for t in targets:
-            per_host.append({"host": t, "success": all_ok, "via": "bolt", "exit_code": rc})
-    else:
-        # No bolt: run stage/activate on this host (GUI singleton path)
-        env_prefix = f"OPENVOX_STAGING_CODEDIR={staging} OPENVOX_LIVE_CODEDIR={live} "
-        script_args = " ".join(env_args)
-        result = await run_sudo(
-            ["sudo", "bash", "-c", f"{env_prefix}{STAGE_ACTIVATE_SCRIPT} {script_args}"],
-            timeout=timeout,
-        )
-        rc = int(result.get("returncode") or -1)
-        out = (result.get("stdout") or "") + "\n" + (result.get("stderr") or "")
-        combined_out.append(out)
-        host_label = targets[0] if targets else "local"
-        per_host.append({"host": host_label, "success": rc == 0, "via": "local", "exit_code": rc})
-        all_ok = rc == 0
+            probe = await run_bolt_command(probe_args, timeout=_CLUSTER_SSH_PROBE_TIMEOUT)
+        except Exception as e:
+            logger.error("cluster %s SSH probe raised: %s", mode, e, exc_info=True)
+            return _cluster_result(
+                mode, environment, targets, False, 1,
+                [
+                    f"OpenBolt SSH probe raised: {e}",
+                    "Check journalctl -u openvox-gui and that bolt@ can SSH to each compiler.",
+                ],
+                [{"host": t, "success": False, "via": "bolt-probe", "exit_code": -1} for t in targets],
+            )
+        probe_rc = probe.get("returncode")
+        probe_rc = -1 if probe_rc is None else int(probe_rc)
+        probe_out = ((probe.get("stdout") or "") + "\n" + (probe.get("stderr") or "")).splitlines()
+        if probe_rc != 0:
+            hint = (
+                "OpenBolt cannot SSH to the code-deploy targets as bolt@. "
+                "Classify those hosts with profiles::base::bolt_user (same "
+                "id_bolt.pub as this console) and retry Stage."
+            )
+            return _cluster_result(
+                mode, environment, targets, False, probe_rc or 1,
+                [hint, ""] + [ln for ln in probe_out if ln],
+                [{"host": t, "success": False, "via": "bolt-probe", "exit_code": probe_rc} for t in targets],
+            )
 
-    return {
-        "success": all_ok,
-        "exit_code": 0 if all_ok else 1,
-        "hosts": per_host,
-        "output": "\n".join(combined_out).splitlines(),
-        "mode": mode,
-        "environment": environment or "all",
-        "targets": targets,
-    }
+        # script run uploads the helper (compilers do not have /opt/openvox-gui).
+        # --run-as root uses bolt@ passwordless sudo once bolt_user is applied.
+        # run_bolt_command appends -i / --project after these args.
+        script_args = [
+            "script", "run", str(script),
+            *env_args,
+            "--targets", ",".join(targets),
+            "--run-as", "root",
+            "--connect-timeout", "15",
+            "--no-host-key-check",
+        ]
+        try:
+            result = await run_bolt_command(script_args, timeout=timeout)
+        except Exception as e:
+            logger.error("cluster %s bolt script run raised: %s", mode, e, exc_info=True)
+            return _cluster_result(
+                mode, environment, targets, False, 1,
+                [f"OpenBolt {mode} raised: {e}"],
+                [{"host": t, "success": False, "via": "bolt", "exit_code": -1} for t in targets],
+            )
+        rc = result.get("returncode")
+        rc = -1 if rc is None else int(rc)
+        out = ((result.get("stdout") or "") + "\n" + (result.get("stderr") or "")).splitlines()
+        return _cluster_result(
+            mode, environment, targets, rc == 0, 0 if rc == 0 else 1,
+            [ln for ln in out if ln is not None],
+            [{"host": t, "success": rc == 0, "via": "bolt", "exit_code": rc} for t in targets],
+        )
+
+    # Local-only target (console is also the compiler): run the helper here.
+    staging = cfg.get("staging_codedir", "/etc/puppetlabs/code-staging")
+    live = cfg.get("live_codedir", "/etc/puppetlabs/code")
+    env_prefix = f"OPENVOX_STAGING_CODEDIR={staging} OPENVOX_LIVE_CODEDIR={live} "
+    result = await run_sudo(
+        ["sudo", "bash", "-c", f"{env_prefix}{script} {' '.join(env_args)}"],
+        timeout=timeout,
+    )
+    rc = result.get("returncode")
+    rc = -1 if rc is None else int(rc)
+    out = ((result.get("stdout") or "") + "\n" + (result.get("stderr") or "")).splitlines()
+    host_label = targets[0] if targets else "local"
+    return _cluster_result(
+        mode, environment, targets, rc == 0, 0 if rc == 0 else 1,
+        [ln for ln in out if ln is not None],
+        [{"host": host_label, "success": rc == 0, "via": "local", "exit_code": rc}],
+    )
+
+
+async def _cluster_deploy(kind: str, deploy: ClusterDeployRequest, current_user: str) -> dict:
+    """Shared stage/activate entry: validate, run, audit, never leak 500."""
+    from ..services.cluster_config import is_clustered, deploy_targets
+    from ..utils.audit import audit_event
+
+    if not is_clustered():
+        raise HTTPException(
+            status_code=400,
+            detail="Clustered deployment mode is not enabled. Enable it under Settings → Application → Cluster.",
+        )
+    targets = deploy.targets or deploy_targets()
+    if not targets:
+        raise HTTPException(status_code=400, detail="No code_deploy_targets configured")
+    try:
+        result = await _run_on_targets(kind, deploy.environment, targets)
+    except Exception as e:
+        logger.error("cluster %s failed: %s", kind, e, exc_info=True)
+        result = _cluster_result(
+            kind, deploy.environment, targets, False, 1,
+            [
+                f"Cluster {kind} failed: {e}",
+                "See journalctl -u openvox-gui for the traceback.",
+            ],
+            [{"host": t, "success": False, "via": "error", "exit_code": -1} for t in targets],
+        )
+    audit_event(
+        f"deploy_{kind}",
+        user=current_user,
+        targets=",".join(targets),
+        detail=deploy.environment or "all",
+        rc=result["exit_code"],
+        success=result["success"],
+    )
+    return result
 
 
 @router.post("/stage")
@@ -523,27 +659,7 @@ async def stage_deployment(
     _=Depends(concurrency_heavy),
 ):
     """Stage r10k deploy to staging codedir on all cluster deploy targets."""
-    from ..services.cluster_config import is_clustered, deploy_targets, load_cluster_config
-    from ..utils.audit import audit_event
-
-    if not is_clustered():
-        raise HTTPException(
-            status_code=400,
-            detail="Clustered deployment mode is not enabled. Enable it under Settings → Application → Cluster.",
-        )
-    targets = deploy.targets or deploy_targets()
-    if not targets:
-        raise HTTPException(status_code=400, detail="No code_deploy_targets configured")
-    result = await _run_on_targets("stage", deploy.environment, targets)
-    audit_event(
-        "deploy_stage",
-        user=current_user,
-        targets=",".join(targets),
-        detail=deploy.environment or "all",
-        rc=result["exit_code"],
-        success=result["success"],
-    )
-    return result
+    return await _cluster_deploy("stage", deploy, current_user)
 
 
 @router.post("/activate")
@@ -555,27 +671,7 @@ async def activate_deployment(
     _=Depends(concurrency_heavy),
 ):
     """Promote staged code to live codedir on all cluster deploy targets."""
-    from ..services.cluster_config import is_clustered, deploy_targets
-    from ..utils.audit import audit_event
-
-    if not is_clustered():
-        raise HTTPException(
-            status_code=400,
-            detail="Clustered deployment mode is not enabled.",
-        )
-    targets = deploy.targets or deploy_targets()
-    if not targets:
-        raise HTTPException(status_code=400, detail="No code_deploy_targets configured")
-    result = await _run_on_targets("activate", deploy.environment, targets)
-    audit_event(
-        "deploy_activate",
-        user=current_user,
-        targets=",".join(targets),
-        detail=deploy.environment or "all",
-        rc=result["exit_code"],
-        success=result["success"],
-    )
-    return result
+    return await _cluster_deploy("activate", deploy, current_user)
 
 
 # ─── Deploy History (JSON via services.deploy_history; srdev2 A6) ──

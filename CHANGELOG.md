@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.30] - 2026-08-11 (fix — clustered Stage 500)
+
+### Fixed
+- **Code Deployment → Stage / Activate** no longer returns a generic uvicorn
+  `500 Internal Server Error`. The old path ran `bolt` as the `puppet` service
+  user via raw `create_subprocess_exec` (no `--project`, no `sudo -u bolt`)
+  and had no `try/except` — production FastAPI hides that traceback.
+- Stage now uses `run_bolt_command` (same as Orchestration): `sudo -u bolt`,
+  sanitized inventory, `--project /etc/puppetlabs/bolt`.
+- SSH is probed (`bolt command run true`, 25s) before r10k so a password
+  prompt on compilers without `bolt@` cannot wedge a uvicorn worker.
+- `bolt script run` uploads `r10k-stage-activate.sh` (compilers do not have
+  `/opt/openvox-gui`). Missing OpenBolt or failed SSH returns `success: false`
+  plus the real output in the log pane.
+- `r10k-stage-activate.sh` is copied by `update_local.sh` / `deploy.sh` /
+  `install.sh` and allowed in sudoers for the local-only fallback.
+
 ## [3.11.0-alpha.29] - 2026-08-11 (fix — apply singleton Bolt layout)
 
 ### Added

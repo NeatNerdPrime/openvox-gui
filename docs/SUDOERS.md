@@ -86,6 +86,7 @@ Defaults:puppet lecture=never
 
 # r10k code deployment
 puppet ALL=(root) NOPASSWD: /opt/openvox-gui/scripts/r10k-deploy.sh
+puppet ALL=(root) NOPASSWD: /opt/openvox-gui/scripts/r10k-stage-activate.sh
 
 # Reading specific PuppetDB configuration files
 puppet ALL=(root) NOPASSWD: /usr/bin/cat /etc/puppetlabs/puppetdb/conf.d/database.ini
