@@ -184,12 +184,13 @@ async def get_service_status():
     very old clients/scripts.
     """
     from ..services.puppetserver import puppetserver_service
-    services = ["puppetserver", "puppetdb", "puppet", "openvox-gui"]
-    result = []
-    for svc in services:
-        status = puppetserver_service.get_service_status(svc)
-        result.append(status)
-    return result
+    from ..services.puppetdb import puppetdb_service
+    return [
+        await puppetserver_service.get_remote_health(),
+        await puppetdb_service.get_remote_health(),
+        puppetserver_service.get_service_status("puppet"),
+        puppetserver_service.get_service_status("openvox-gui"),
+    ]
 
 
 @router.get("/active-sessions")

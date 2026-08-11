@@ -369,13 +369,15 @@ async def deactivate_node(
 
     results = {}
     results["puppetdb"] = await puppetdb_service.deactivate_node(certname)
-    cli_ok, cli_err = await _sudo_ok(
-        ["sudo", "/opt/puppetlabs/bin/puppet", "node", "deactivate", certname],
-        timeout=30,
-    )
-    results["puppet_node_deactivate_cli"] = cli_ok
-    if not cli_ok and cli_err:
-        logger.warning("puppet node deactivate: %s", cli_err)
+    results["puppet_node_deactivate_cli"] = False
+    if not results["puppetdb"]:
+        cli_ok, cli_err = await _sudo_ok(
+            ["sudo", "/opt/puppetlabs/bin/puppet", "node", "deactivate", certname],
+            timeout=30,
+        )
+        results["puppet_node_deactivate_cli"] = cli_ok
+        if not cli_ok and cli_err:
+            logger.warning("puppet node deactivate: %s", cli_err)
     results["enc"] = await _remove_from_enc(certname, db)
 
     if not results["puppetdb"] and not results["puppet_node_deactivate_cli"]:
@@ -410,18 +412,20 @@ async def purge_node(
     results: dict = {}
     errors: dict = {}
 
-    # 1a. PuppetDB command API
+    # 1a. PuppetDB command API (preferred — works on a dedicated console)
     results["puppetdb_api_deactivate"] = await puppetdb_service.deactivate_node(certname)
 
-    # 1b. CLI deactivate (requires sudoers: puppet node deactivate *)
-    ok, err = await _sudo_ok(
-        ["sudo", "/opt/puppetlabs/bin/puppet", "node", "deactivate", certname],
-        timeout=45,
-    )
-    results["puppet_node_deactivate"] = ok
-    if not ok:
-        errors["puppet_node_deactivate"] = err or "failed"
-        logger.warning("puppet node deactivate '%s': %s", certname, err)
+    # 1b. CLI only if the API failed (co-located lab fallback)
+    results["puppet_node_deactivate"] = False
+    if not results["puppetdb_api_deactivate"]:
+        ok, err = await _sudo_ok(
+            ["sudo", "/opt/puppetlabs/bin/puppet", "node", "deactivate", certname],
+            timeout=45,
+        )
+        results["puppet_node_deactivate"] = ok
+        if not ok:
+            errors["puppet_node_deactivate"] = err or "failed"
+            logger.warning("puppet node deactivate '%s': %s", certname, err)
 
     # 2. Verify no longer active (filters Node Health / get_nodes)
     verified = await puppetdb_service.wait_until_not_active(certname, timeout_s=20.0)

@@ -53,11 +53,11 @@ async def get_puppet_config():
     """Get current puppet.conf settings."""
     try:
         conf = puppetserver_service.read_puppet_conf()
-        version = puppetserver_service.get_version()
+        version = await puppetserver_service.fetch_version()
         return {
             "puppet_conf": conf,
             "server_version": version,
-            "environments": puppetserver_service.list_environments(),
+            "environments": await puppetserver_service.fetch_environments(),
         }
     except Exception as e:
         logger.error("config endpoint error: %s", e, exc_info=True)
@@ -281,14 +281,14 @@ async def delete_hiera_data_file(
 
 @router.get("/environments")
 async def list_environments():
-    """List Puppet environments."""
-    return {"environments": puppetserver_service.list_environments()}
+    """List Puppet environments (compiler HTTP, then local codedir)."""
+    return {"environments": await puppetserver_service.fetch_environments()}
 
 
 @router.get("/environments/{environment}/modules")
 async def list_environment_modules(environment: str):
-    """List modules in an environment."""
-    modules = puppetserver_service.list_modules(environment)
+    """List modules in an environment (compiler HTTP, then local codedir)."""
+    modules = await puppetserver_service.fetch_environment_modules(environment)
     return {"environment": environment, "modules": modules}
 
 
@@ -298,13 +298,22 @@ async def list_environment_modules(environment: str):
 async def get_services_status():
     """Get status of all core Puppet/OpenVox services.
 
-    Local systemd status for puppetserver, puppetdb, puppet, openvox-gui.
-    When deployment_mode is clustered, also returns ``cluster_members`` with
-    HTTP health probes against each configured compiler (8140) and PuppetDB
-    node (8081) by **FQDN** (not VIP).
+    Compiler and PuppetDB status come from their HTTP status APIs
+    (localhost or VIP). Local systemd is only used for openvox-gui,
+    this host's puppet agent, and as fallback if HTTP fails.
+    When deployment_mode is clustered, also returns ``cluster_members``
+    with HTTP health probes against each configured FQDN.
     """
-    services = ["puppetserver", "puppetdb", "puppet", "openvox-gui"]
-    local = [puppetserver_service.get_service_status(s) for s in services]
+    from ..services.puppetdb import puppetdb_service
+
+    compiler = await puppetserver_service.get_remote_health()
+    pdb = await puppetdb_service.get_remote_health()
+    local = [
+        compiler,
+        pdb,
+        puppetserver_service.get_service_status("puppet"),
+        puppetserver_service.get_service_status("openvox-gui"),
+    ]
 
     from ..services.cluster_config import load_cluster_config, is_clustered
     from ..services.cluster_health import probe_cluster_members

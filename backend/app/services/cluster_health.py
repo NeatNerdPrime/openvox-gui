@@ -471,7 +471,9 @@ async def probe_cluster_full(cfg: Dict[str, Any]) -> Dict[str, Any]:
     # verify=False fallback only if CA file missing — still try mTLS context
     timeout = httpx.Timeout(8.0, connect=4.0)
 
-    async with httpx.AsyncClient(verify=verify, timeout=timeout) as client:
+    async with httpx.AsyncClient(
+        verify=verify, timeout=timeout, trust_env=False
+    ) as client:
         c_tasks = [probe_compiler(client, f) for f in compilers]
         p_tasks = [probe_puppetdb(client, f) for f in pdb_nodes]
         ca_tasks = [probe_ca(client, f) for f in ca_nodes]

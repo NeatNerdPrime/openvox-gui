@@ -19,6 +19,62 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
+def parse_environments_payload(data: Any) -> List[str]:
+    """Turn GET /puppet/v3/environments JSON into environment names."""
+    if not isinstance(data, dict):
+        return []
+    envs = data.get("environments")
+    if isinstance(envs, dict):
+        return sorted(str(k) for k in envs.keys())
+    if isinstance(envs, list):
+        return sorted(str(x) for x in envs if x)
+    return []
+
+
+def parse_environment_classes_payload(data: Any) -> List[str]:
+    """Turn GET /puppet/v3/environment_classes JSON into class names."""
+    names: List[str] = []
+    if not isinstance(data, dict):
+        return names
+    for entry in data.get("files") or []:
+        if not isinstance(entry, dict):
+            continue
+        for cls in entry.get("classes") or []:
+            if isinstance(cls, dict) and cls.get("name"):
+                names.append(str(cls["name"]))
+            elif isinstance(cls, str) and cls:
+                names.append(cls)
+    return sorted(set(names))
+
+
+def parse_environment_modules_payload(data: Any) -> List[Dict[str, str]]:
+    """Turn GET /puppet/v3/environment_modules JSON into module dicts."""
+    result: List[Dict[str, str]] = []
+    if not isinstance(data, dict):
+        return result
+    modules = data.get("modules")
+    if isinstance(modules, dict):
+        for name, meta in sorted(modules.items()):
+            info: Dict[str, str] = {"name": str(name)}
+            if isinstance(meta, dict):
+                if meta.get("version"):
+                    info["version"] = str(meta["version"])
+                if meta.get("author"):
+                    info["author"] = str(meta["author"])
+            result.append(info)
+        return result
+    if isinstance(modules, list):
+        for item in modules:
+            if isinstance(item, dict) and item.get("name"):
+                result.append({
+                    "name": str(item["name"]),
+                    "version": str(item.get("version") or ""),
+                })
+            elif isinstance(item, str):
+                result.append({"name": item})
+    return result
+
+
 class PuppetServerService:
     """Service for managing PuppetServer configuration."""
 
@@ -44,6 +100,7 @@ class PuppetServerService:
                 base_url=self.ps_base_url,
                 verify=self._create_ps_ssl_context(),
                 timeout=30.0,
+                trust_env=False,
             )
         return self._ps_client
 
@@ -79,14 +136,119 @@ class PuppetServerService:
             logger.error(f"Permission denied writing to {conf_path}")
             return False
 
-    # ─── Environments ───────────────────────────────────────
+    # ─── Environments (compiler HTTP first, local codedir fallback) ──
 
-    def list_environments(self) -> List[str]:
-        """List available Puppet environments."""
+    def list_environments_local(self) -> List[str]:
+        """Walk this host's codedir. Fallback only — empty on a console."""
         env_path = self.codedir / "environments"
         if not env_path.exists():
             return []
         return [d.name for d in env_path.iterdir() if d.is_dir()]
+
+    def list_environments(self) -> List[str]:
+        """Sync disk walk. Prefer ``fetch_environments`` (HTTP) from async callers."""
+        return self.list_environments_local()
+
+    async def fetch_environments(self) -> List[str]:
+        """GET /puppet/v3/environments on the compiler (VIP or localhost)."""
+        try:
+            client = await self._get_ps_client()
+            resp = await client.get(
+                "/puppet/v3/environments",
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                names = parse_environments_payload(resp.json())
+                if names:
+                    return names
+            logger.warning(
+                "Compiler environments HTTP %s; falling back to local codedir",
+                resp.status_code,
+            )
+        except Exception as e:
+            logger.warning("Compiler environments HTTP failed: %s", e)
+        return self.list_environments_local()
+
+    async def fetch_environment_modules(self, environment: str = "production") -> List[Dict[str, str]]:
+        """GET /puppet/v3/environment_modules, then local codedir."""
+        try:
+            client = await self._get_ps_client()
+            resp = await client.get(
+                "/puppet/v3/environment_modules",
+                params={"environment": environment},
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                mods = parse_environment_modules_payload(resp.json())
+                if mods:
+                    return mods
+        except Exception as e:
+            logger.warning("Compiler environment_modules HTTP failed: %s", e)
+        return self.list_modules(environment)
+
+    async def fetch_environment_classes(self, environment: str = "production") -> List[str]:
+        """GET /puppet/v3/environment_classes on the compiler."""
+        try:
+            client = await self._get_ps_client()
+            resp = await client.get(
+                "/puppet/v3/environment_classes",
+                params={"environment": environment},
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                names = parse_environment_classes_payload(resp.json())
+                if names:
+                    return names
+        except Exception as e:
+            logger.warning("Compiler environment_classes HTTP failed: %s", e)
+        return [c["name"] for c in self.list_available_classes(environment)]
+
+    async def get_remote_health(self) -> Dict[str, Any]:
+        """Compiler health via /status/v1/simple (localhost or VIP)."""
+        host = settings.puppet_server_host
+        try:
+            client = await self._get_ps_client()
+            resp = await client.get("/status/v1/simple")
+            text = (resp.text or "").strip().strip('"')
+            if resp.status_code == 200 and text:
+                return {
+                    "service": "puppetserver",
+                    "status": "active" if text.lower() == "running" else text,
+                    "source": "http",
+                    "host": host,
+                    "simple": text,
+                }
+            err = f"HTTP {resp.status_code}: {text[:200]}"
+        except Exception as e:
+            err = str(e)
+            logger.warning("Compiler status HTTP failed: %s", e)
+        local = self.get_service_status("puppetserver")
+        local["source"] = "local-systemd"
+        local["host"] = host
+        local["error"] = err
+        return local
+
+    async def fetch_version(self) -> Optional[str]:
+        """Prefer /status/v1/services version, then local puppetserver --version."""
+        try:
+            client = await self._get_ps_client()
+            resp = await client.get("/status/v1/services")
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict):
+                    for key in ("master", "puppet-server", "jruby-puppet"):
+                        block = data.get(key)
+                        if isinstance(block, dict):
+                            ver = (
+                                block.get("service_version")
+                                or (block.get("status") or {}).get("version")
+                                or block.get("version")
+                            )
+                            if ver:
+                                return str(ver)
+        except Exception as e:
+            logger.debug("Compiler version HTTP failed: %s", e)
+        return self.get_version()
 
     def list_modules(self, environment: str = "production") -> List[Dict[str, str]]:
         """List modules in an environment."""

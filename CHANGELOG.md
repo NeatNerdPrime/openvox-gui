@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.13] - 2026-08-11 (feat — compiler and PuppetDB HTTP-first)
+
+### Changed
+- **API-first for compiler and OpenVoxDB**, same rule as the CA. Clustered mode only supplies hostnames.
+  - Environments, modules, and ENC class picker use `/puppet/v3/environments`, `environment_modules`, and `environment_classes` on the compiler VIP (or localhost). Local codedir is fallback.
+  - Settings / Dashboard service tiles probe `/status/v1/simple` (compiler :8140, PDB :8081) instead of this host's `systemctl`. Local systemd remains for `openvox-gui`, the console agent, and HTTP failure.
+  - Compiler version from `/status/v1/services`; PDB version from `/pdb/meta/v1/version`.
+  - Node deactivate uses the PuppetDB command API first; `puppet node deactivate` CLI only if the API fails.
+  - Compiler and PDB HTTP clients set `trust_env=False` (no corp proxy).
+
 ## [3.11.0-alpha.12] - 2026-08-11 (fix — CA HTTP first on every install)
 
 ### Changed

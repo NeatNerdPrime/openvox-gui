@@ -172,42 +172,42 @@ async def get_hierarchy(db: AsyncSession = Depends(get_db)):
 @router.get("/available-classes")
 async def get_available_classes(environment: str = "production"):
     """
-    Discover available Puppet classes from the environment's modules.
+    Discover available Puppet classes from the compiler HTTP API
+    (``/puppet/v3/environment_classes``), then local codedir.
     Returns categorized classes: roles, profiles, and module classes.
     """
     from pathlib import Path
-    codedir = Path("/etc/puppetlabs/code/environments") / environment
+    from ..services.puppetserver import puppetserver_service
 
-    def discover_classes(modules_dir: Path) -> list:
-        """Walk module manifests to build class names."""
-        classes = []
-        if not modules_dir.exists():
+    all_classes = await puppetserver_service.fetch_environment_classes(environment)
+    if not all_classes:
+        codedir = Path("/etc/puppetlabs/code/environments") / environment
+
+        def discover_classes(modules_dir: Path) -> list:
+            """Walk module manifests to build class names."""
+            classes = []
+            if not modules_dir.exists():
+                return classes
+            for module_dir in sorted(modules_dir.iterdir()):
+                if not module_dir.is_dir():
+                    continue
+                manifests = module_dir / "manifests"
+                if not manifests.exists():
+                    continue
+                module_name = module_dir.name
+                for pp_file in sorted(manifests.rglob("*.pp")):
+                    rel = pp_file.relative_to(manifests)
+                    parts = list(rel.parts)
+                    parts[-1] = parts[-1].rsplit(".", 1)[0]
+                    if parts == ["init"]:
+                        classes.append(module_name)
+                    else:
+                        classes.append(f"{module_name}::{('::'.join(parts))}")
             return classes
-        for module_dir in sorted(modules_dir.iterdir()):
-            if not module_dir.is_dir():
-                continue
-            manifests = module_dir / "manifests"
-            if not manifests.exists():
-                continue
-            module_name = module_dir.name
-            for pp_file in sorted(manifests.rglob("*.pp")):
-                rel = pp_file.relative_to(manifests)
-                parts = list(rel.parts)
-                # Remove .pp extension from last part
-                parts[-1] = parts[-1].rsplit(".", 1)[0]
-                if parts == ["init"]:
-                    classes.append(module_name)
-                else:
-                    classes.append(f"{module_name}::{('::'.join(parts))}")
-        return classes
 
-    all_classes = []
-    # modules/ directory (r10k deployed)
-    all_classes.extend(discover_classes(codedir / "modules"))
-    # site-modules/ directory (site-specific)
-    all_classes.extend(discover_classes(codedir / "site-modules"))
-    # site/ directory (alternative layout)
-    all_classes.extend(discover_classes(codedir / "site"))
+        all_classes.extend(discover_classes(codedir / "modules"))
+        all_classes.extend(discover_classes(codedir / "site-modules"))
+        all_classes.extend(discover_classes(codedir / "site"))
 
     # Categorize
     roles = sorted([c for c in all_classes if c.startswith("roles::")])

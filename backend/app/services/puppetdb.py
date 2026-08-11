@@ -74,6 +74,7 @@ class PuppetDBService:
                     max_keepalive_connections=20,
                     keepalive_expiry=30.0,
                 ),
+                trust_env=False,
             )
         return self._client
 
@@ -629,6 +630,54 @@ class PuppetDBService:
         except Exception as e:
             logger.warning(f"Failed to get PuppetDB status: {e}", exc_info=True)
             return {}
+
+    async def get_remote_health(self) -> Dict[str, Any]:
+        """PDB health via /status/v1/simple (VIP or localhost)."""
+        host = settings.puppetdb_host
+        try:
+            client = await self._get_client()
+            resp = await client.get("/status/v1/simple")
+            text = (resp.text or "").strip().strip('"')
+            if resp.status_code == 200 and text:
+                out: Dict[str, Any] = {
+                    "service": "puppetdb",
+                    "status": "active" if text.lower() == "running" else text,
+                    "source": "http",
+                    "host": host,
+                    "simple": text,
+                }
+                try:
+                    ver = await client.get("/pdb/meta/v1/version")
+                    if ver.status_code == 200:
+                        body = ver.json()
+                        if isinstance(body, dict) and body.get("version"):
+                            out["version"] = str(body["version"])
+                except Exception:
+                    pass
+                return out
+            err = f"HTTP {resp.status_code}: {text[:200]}"
+        except Exception as e:
+            err = str(e)
+            logger.warning("PuppetDB status HTTP failed: %s", e)
+        return {
+            "service": "puppetdb",
+            "status": "unknown",
+            "source": "http",
+            "host": host,
+            "error": err,
+        }
+
+    async def fetch_version(self) -> Optional[str]:
+        try:
+            client = await self._get_client()
+            resp = await client.get("/pdb/meta/v1/version")
+            if resp.status_code == 200:
+                body = resp.json()
+                if isinstance(body, dict) and body.get("version"):
+                    return str(body["version"])
+        except Exception as e:
+            logger.debug("PuppetDB version HTTP failed: %s", e)
+        return None
 
     async def get_pdb_metrics(self, metric_name: str) -> Dict:
         """Query PuppetDB's JMX metrics endpoint."""

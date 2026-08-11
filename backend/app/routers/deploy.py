@@ -95,7 +95,7 @@ async def _run_r10k_deploy(environment: Optional[str] = None, timeout: int = R10
 async def list_deployable_environments():
     """List available environments for deployment."""
     from ..services.puppetserver import puppetserver_service
-    envs = puppetserver_service.list_environments()
+    envs = await puppetserver_service.fetch_environments()
     return {"environments": envs}
 
 
