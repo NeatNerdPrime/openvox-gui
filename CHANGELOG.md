@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.26] - 2026-08-11 (fix — sanitized Bolt inventory the GUI can write)
+
+### Fixed
+- GUI Bolt no longer uses `/etc/puppetlabs/bolt/inventory.yaml` as-is (640 root:bolt, sanitize could not write). It writes a cleaned copy to `/opt/openvox-gui/data/bolt-inventory.sanitized.yaml` (no `config.puppetdb`, no `description`, no `openvox_enc` group) and passes `-i` that file.
+
 ## [3.11.0-alpha.24] - 2026-08-11 (fix — Bolt uses /etc/profile.d/noproxy.sh)
 
 ### Changed
