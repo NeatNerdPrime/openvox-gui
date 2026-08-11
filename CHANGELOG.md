@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.24] - 2026-08-11 (fix — Bolt uses /etc/profile.d/noproxy.sh)
+
+### Changed
+- GUI OpenBolt runs keep `http(s)_proxy` and set `no_proxy`/`NO_PROXY` from **`/etc/profile.d/noproxy.sh`** (`profiles::base::nixenv`), merged with `OPENVOX_GUI_NO_PROXY`. Estate VIPs belong in that profile file, not a second list in Python.
+
 ## [3.11.0-alpha.23] - 2026-08-11 (fix — force-clean console Bolt inventory)
 
 ### Fixed

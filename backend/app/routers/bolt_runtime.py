@@ -22,6 +22,43 @@ async def resolve_targets(targets: str, db: AsyncSession) -> str:
     return await execution_resolve_targets(targets, db)
 
 
+_NOPROXY_PROFILE = Path("/etc/profile.d/noproxy.sh")
+
+
+def _estate_no_proxy(env: Dict[str, str]) -> str:
+    """Build no_proxy from profile.d (Puppet) plus process / GUI settings."""
+    parts: list[str] = []
+
+    def _add(blob: Optional[str]) -> None:
+        if not blob:
+            return
+        for item in blob.split(","):
+            host = item.strip().strip('"').strip("'")
+            if host.startswith("export "):
+                continue
+            if "=" in host and host.split("=", 1)[0].lower() in ("no_proxy", "no_proxy"):
+                host = host.split("=", 1)[-1].strip().strip('"').strip("'")
+            if host and host not in parts:
+                parts.append(host)
+
+    if _NOPROXY_PROFILE.is_file():
+        try:
+            for line in _NOPROXY_PROFILE.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if "no_proxy=" in line.lower():
+                    _add(line.split("=", 1)[-1])
+        except OSError:
+            pass
+    _add(env.get("NO_PROXY") or env.get("no_proxy"))
+    try:
+        from ..config import settings
+
+        _add(getattr(settings, "no_proxy", None))
+    except Exception:
+        pass
+    return ",".join(parts)
+
+
 def find_bolt() -> Optional[str]:
     for p in BOLT_PATHS:
         if Path(p).exists():
@@ -86,15 +123,9 @@ async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any
 
     env = os.environ.copy()
     env["TERM"] = "xterm-256color"
-    # OpenVoxDB / CA / ENC are on-net. Corp Squid returns 407 for them.
-    for key in list(env):
-        if key.lower() in ("http_proxy", "https_proxy", "all_proxy", "ftp_proxy"):
-            del env[key]
-    bypass = (
-        "localhost,127.0.0.1,::1,"
-        "ovdb.corp.int-x.ai,ovca.corp.int-x.ai,"
-        "ovcompilers.pdxc-it.corp.int-x.ai,ovcompilers.atlc-it.corp.int-x.ai"
-    )
+    # Same bypass list as /etc/profile.d/noproxy.sh (profiles::base::nixenv).
+    # sudo -u bolt is non-login, so we inject it here. Leave http(s)_proxy set.
+    bypass = _estate_no_proxy(env)
     env["NO_PROXY"] = bypass
     env["no_proxy"] = bypass
     result = await run_sudo(bolt_args, timeout=timeout, env=env)
