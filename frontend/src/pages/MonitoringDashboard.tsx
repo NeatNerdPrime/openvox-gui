@@ -26,6 +26,12 @@ import {
 import { MetricsPerformancePage } from './MetricsPerformance';
 import { MetricsPuppetServerHealthPage } from './MetricsPuppetServerHealth';
 import { MetricsPuppetDBHealthPage } from './MetricsPuppetDBHealth';
+import {
+  FleetScopeSelect,
+  loadStoredScope,
+  storeScope,
+  type ScopeSelection,
+} from '../components/FleetScopeSelect';
 
 const SECTIONS_KEY = 'openvox-gui-monitor-sections-v3';
 const WINDOW_KEY = 'openvox-gui-monitor-window-hours-v2';
@@ -113,6 +119,7 @@ export function MonitoringDashboardPage() {
   const [sectionIds, setSectionIds] = useState<SectionId[]>(loadSectionIds);
   const [configureOpen, setConfigureOpen] = useState(false);
   const [windowHours, setWindowHours] = useState<number>(loadWindowHours);
+  const [scope, setScope] = useState<ScopeSelection>(loadStoredScope);
 
   useEffect(() => {
     try {
@@ -148,12 +155,31 @@ export function MonitoringDashboardPage() {
     setWindowHours(clampWindowHours(n));
   };
 
+  const onScopeChange = (s: ScopeSelection) => {
+    setScope(s);
+    storeScope(s);
+  };
+
   const renderSection = (id: SectionId) => {
     switch (id) {
       case 'compliance':
-        return <MetricsCompliancePage embedded windowHours={windowHours} />;
+        return (
+          <MetricsCompliancePage
+            embedded
+            windowHours={windowHours}
+            scope={scope}
+            onScopeChange={onScopeChange}
+          />
+        );
       case 'performance':
-        return <MetricsPerformancePage embedded windowHours={windowHours} />;
+        return (
+          <MetricsPerformancePage
+            embedded
+            windowHours={windowHours}
+            scope={scope}
+            onScopeChange={onScopeChange}
+          />
+        );
       case 'server':
         return <MetricsPuppetServerHealthPage embedded />;
       case 'pdb':
@@ -174,12 +200,13 @@ export function MonitoringDashboardPage() {
             <Title order={2}>Monitoring</Title>
             <Text size="sm" c="dimmed">
               NOC wallboard — same charts as Fleet Compliance, Run Performance, OpenVox Server Health,
-              and OpenVoxDB Health (not a separate graph implementation).
+              and OpenVoxDB Health. Host scope (location / REGEX packs) applies to fleet charts only.
             </Text>
           </div>
           <Badge variant="light" color="blue">Live</Badge>
         </Group>
-        <Group gap="xs" align="flex-end">
+        <Group gap="md" align="flex-end" wrap="wrap">
+          <FleetScopeSelect size="xs" value={scope} onChange={onScopeChange} />
           <Select
             size="xs"
             label="Window"

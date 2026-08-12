@@ -52,19 +52,62 @@ def _set_cached(key: str, value: Any):
 
 # ─── 1. Fleet Compliance & Drift ──────────────────────────
 
+@router.get("/scopes")
+async def get_metric_scopes(_user: str = Depends(_AUTH)):
+    """List metric scopes: all live fleet, REGEX packs, and location facts."""
+    from ..services.fleet_scope import list_scopes
+
+    return await list_scopes()
+
+
 @router.get("/compliance")
 async def get_compliance(
     hours: float = Query(24, ge=0.25, le=168, description="Lookback window in hours (fractional OK, e.g. 6.5)"),
+    scope: Optional[str] = Query(
+        "all",
+        description="Scope id: all | location:ATLC | pack:compilers | custom",
+    ),
+    location: Optional[str] = Query(None, description="Filter by location fact"),
+    certname_re: Optional[str] = Query(None, description="Certname REGEX filter"),
+    certnames: Optional[str] = Query(
+        None, description="Comma-separated certnames (for scope=custom)"
+    ),
     _user: str = Depends(_AUTH),
 ):
-    """Fleet-wide compliance summary: compliant vs drifted vs failed nodes."""
-    # Normalize cache key so 6.5 and 6.50 share a slot
+    """Fleet compliance for a host scope (live fleet + location / REGEX)."""
+    from ..services.fleet_insights import compute_trends
+    from ..services.fleet_scope import (
+        filter_nodes_by_scope,
+        filter_reports_by_scope,
+        resolve_scope,
+    )
+
     hours_key = round(float(hours), 4)
-    cached = _get_cached(f"compliance_{hours_key}")
+    cn_list = [c.strip() for c in (certnames or "").split(",") if c.strip()]
+    cache_key = (
+        f"compliance_{hours_key}_{scope or 'all'}_"
+        f"{location or ''}_{certname_re or ''}_{','.join(sorted(cn_list))}"
+    )
+    cached = _get_cached(cache_key)
     if cached is not None:
         return cached
 
-    nodes = await puppetdb_service.get_nodes()
+    try:
+        scope_result = await resolve_scope(
+            scope=scope,
+            location=location,
+            certname_re=certname_re,
+            certnames=cn_list or None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Prefer live fleet membership, then restrict to scope
+    try:
+        all_nodes = await puppetdb_service.get_live_nodes()
+    except Exception:
+        all_nodes = await puppetdb_service.get_nodes()
+    nodes = filter_nodes_by_scope(all_nodes, scope_result)
 
     compliant = []
     drifted = []
@@ -95,26 +138,40 @@ async def get_compliance(
         else:
             unreported.append(entry)
 
-    # Trend: get recent reports bucketed by hour
+    # Rolling census trend for this scope (sum of series ≈ scoped fleet size)
     since = (datetime.now(timezone.utc) - timedelta(hours=float(hours))).isoformat()
     try:
         reports = await puppetdb_service.get_reports(
             query=f'[">" , "receive_time" , "{since}"]',
-            limit=5000,
+            limit=10000,
         )
-        hourly: Dict[str, Dict[str, int]] = {}
+        reports = filter_reports_by_scope(reports, scope_result)
+        # compute_trends expects ascending apply order via bucket sort
+        trend_raw = compute_trends(nodes, reports)
+        # Map node-status keys to compliance chart keys for the area chart
+        trend = []
+        for row in trend_raw:
+            trend.append({
+                "timestamp": row.get("timestamp") or row.get("hour"),
+                "compliant": (row.get("unchanged") or 0) + (row.get("changed") or 0),
+                "drifted": 0,  # corrective not in report stream; keep key for chart
+                "failed": row.get("failed") or 0,
+                "noop": row.get("noop") or 0,
+                "unreported": row.get("unreported") or 0,
+            })
+        # Overlay corrective "drifted" from report stream when present
+        hourly_drift: Dict[str, int] = {}
         for r in reports:
-            ts = r.get("receive_time", r.get("start_time", ""))[:13]
-            if ts not in hourly:
-                hourly[ts] = {"compliant": 0, "drifted": 0, "failed": 0}
-            if r.get("status") == "failed":
-                hourly[ts]["failed"] += 1
-            elif r.get("corrective_change"):
-                hourly[ts]["drifted"] += 1
-            else:
-                hourly[ts]["compliant"] += 1
-        trend = [{"timestamp": k, **v} for k, v in sorted(hourly.items())]
-    except Exception:
+            if r.get("corrective_change"):
+                ts = (r.get("receive_time") or "")[:13]
+                if ts:
+                    hourly_drift[ts] = hourly_drift.get(ts, 0) + 1
+        for row in trend:
+            ts = (row.get("timestamp") or "")[:13]
+            if ts in hourly_drift:
+                row["drifted"] = hourly_drift[ts]
+    except Exception as e:
+        logger.warning("compliance trend failed: %s", e)
         trend = []
 
     result = {
@@ -132,8 +189,12 @@ async def get_compliance(
             "unreported": unreported,
         },
         "trend": trend,
+        "scope": scope_result.as_dict(),
     }
-    _set_cached(f"compliance_{hours_key}", result)
+    # Drop full certnames list from cache payload size for large fleets
+    if result["scope"].get("total", 0) > 200:
+        result["scope"]["certnames"] = []
+    _set_cached(cache_key, result)
     return result
 
 

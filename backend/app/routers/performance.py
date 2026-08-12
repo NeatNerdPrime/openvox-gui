@@ -113,33 +113,65 @@ def _extract_metrics(report: Dict) -> Dict[str, Any]:
 async def performance_overview(
     hours: float = Query(48, ge=0.25, le=168, description="Hours of history to include (fractional OK)"),
     limit: int = Query(500, le=2000),
+    scope: Optional[str] = Query(
+        "all",
+        description="Scope id: all | location:ATLC | pack:compilers | custom",
+    ),
+    location: Optional[str] = Query(None, description="Filter by location fact"),
+    certname_re: Optional[str] = Query(None, description="Certname REGEX filter"),
+    certnames: Optional[str] = Query(
+        None, description="Comma-separated certnames (for scope=custom)"
+    ),
 ):
     """
-    Comprehensive performance overview.
-    Returns aggregated performance data suitable for all dashboard charts.
-    Cached for 30 seconds to reduce PuppetDB load.
+    Comprehensive performance overview for a host scope.
+    Cached briefly to reduce PuppetDB load.
     """
-    cache_key = f"perf_overview_{hours}_{limit}"
+    from ..services.fleet_scope import filter_reports_by_scope, resolve_scope
+
+    cn_list = [c.strip() for c in (certnames or "").split(",") if c.strip()]
+    cache_key = (
+        f"perf_overview_{hours}_{limit}_{scope or 'all'}_"
+        f"{location or ''}_{certname_re or ''}_{','.join(sorted(cn_list))}"
+    )
     cached = _get_cached(cache_key)
     if cached is not None:
         return cached
 
     try:
+        try:
+            scope_result = await resolve_scope(
+                scope=scope,
+                location=location,
+                certname_re=certname_re,
+                certnames=cn_list or None,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        # Pull a wider report sample when scoped so small sets still get data
+        fetch_limit = limit if scope_result.scope_id == "all" else min(2000, max(limit, 800))
         reports = await puppetdb_service.get_reports(
-            limit=limit,
+            limit=fetch_limit,
             order_by="receive_time",
             order_dir="desc",
         )
+        reports = filter_reports_by_scope(reports, scope_result)
 
         if not reports:
-            return {
+            empty = {
                 "run_time_trends": [],
                 "node_comparison": [],
                 "timing_breakdown": [],
                 "resource_summary": [],
                 "recent_runs": [],
                 "stats": {},
+                "scope": scope_result.as_dict(),
             }
+            if empty["scope"].get("total", 0) > 200:
+                empty["scope"]["certnames"] = []
+            _set_cached(cache_key, empty)
+            return empty
 
         # Process all reports
         processed = [_extract_metrics(r) for r in reports]
@@ -258,6 +290,9 @@ async def performance_overview(
             "noop_runs": sum(1 for p in processed if p["noop"]),
         }
 
+        scope_dict = scope_result.as_dict()
+        if scope_dict.get("total", 0) > 200:
+            scope_dict["certnames"] = []
         result = {
             "run_time_trends": run_time_trends,
             "node_comparison": node_comparison,
@@ -265,6 +300,7 @@ async def performance_overview(
             "resource_summary": resource_summary,
             "recent_runs": recent_runs,
             "stats": stats,
+            "scope": scope_dict,
         }
         _set_cached(cache_key, result)
         return result

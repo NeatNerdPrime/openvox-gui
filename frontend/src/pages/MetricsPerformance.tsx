@@ -18,6 +18,12 @@ import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, Ico
 import { downsampleSeries } from '../utils/chartDefaults';
 import { useApi } from '../hooks/useApi';
 import { performance as perfApi, metrics } from '../services/api';
+import {
+  FleetScopeSelect,
+  loadStoredScope,
+  scopeQuery,
+  type ScopeSelection,
+} from '../components/FleetScopeSelect';
 
 const COLORS = ['#0D6EFD', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#3498db', '#e91e63', '#95a5a6'];
 
@@ -138,12 +144,23 @@ const REFRESH_OPTIONS = [
 export function MetricsPerformancePage({
   embedded = false,
   windowHours,
-}: { embedded?: boolean; windowHours?: number } = {}) {
+  scope: scopeProp,
+  onScopeChange,
+}: {
+  embedded?: boolean;
+  windowHours?: number;
+  scope?: ScopeSelection;
+  onScopeChange?: (s: ScopeSelection) => void;
+} = {}) {
   const [serverHistory, setServerHistory] = useState<any[]>(loadServerHistory);
   const [expanded, setExpanded] = useState<string | null>(null);
   // 30s default — charts re-render is expensive; cache on API is ~30s anyway
   const [refreshRate, setRefreshRate] = useState<string>('30');
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [scopeLocal, setScopeLocal] = useState<ScopeSelection>(loadStoredScope);
+  const scope = scopeProp ?? scopeLocal;
+  const setScope = onScopeChange ?? setScopeLocal;
+  const sq = scopeQuery(scope);
   const hoursNum =
     windowHours != null && Number.isFinite(windowHours)
       ? Math.min(168, Math.max(0.25, Number(windowHours)))
@@ -151,17 +168,17 @@ export function MetricsPerformancePage({
 
   const fetchBundle = useCallback(async () => {
     const [perf, server] = await Promise.all([
-      perfApi.getOverview(hoursNum),
+      perfApi.getOverview(hoursNum, sq),
       metrics.puppetdbPerformance().catch(() => null),
     ]);
     return { perf, server };
-  }, [hoursNum]);
+  }, [hoursNum, sq]);
 
   const { data: bundle, loading, refreshing, error, refetch } = useApi(
     fetchBundle,
-    [hoursNum],
+    [hoursNum, sq],
     {
-      cacheKey: `openvox_metrics_performance_v1_${hoursNum}`,
+      cacheKey: `openvox_metrics_performance_v2_${hoursNum}_${sq}`,
       cacheValidate: (d) => d != null && (d as any).perf != null,
     },
   );
@@ -480,14 +497,28 @@ function MetricsPerformanceContent({ embedded = false, perfData, serverData, ser
 
   return (
     <Stack gap={embedded ? 'sm' : 'md'}>
-      <Group justify="space-between">
+      <Group justify="space-between" align="flex-end" wrap="wrap">
         <Group gap="sm">
           <IconChartLine size={embedded ? 22 : 28} />
-          <Title order={embedded ? 3 : 2}>Run Performance</Title>
+          <div>
+            <Title order={embedded ? 3 : 2}>Run Performance</Title>
+            {perfData?.scope?.label && (
+              <Text size="xs" c="dimmed">
+                Scope: {perfData.scope.label}
+                {perfData.scope.total != null ? ` · ${perfData.scope.total} hosts` : ''}
+              </Text>
+            )}
+          </div>
           <Badge variant="light" color="blue" size="lg">{stats.total_runs || 0} runs / {stats.total_nodes || 0} nodes</Badge>
           {refreshing && <Badge variant="outline" color="gray" size="sm">Refreshing…</Badge>}
         </Group>
-        <Group gap="xs">
+        <Group gap="md" align="flex-end" wrap="wrap">
+          <FleetScopeSelect
+            size={embedded ? 'xs' : 'sm'}
+            value={scope}
+            onChange={setScope}
+          />
+          <Group gap="xs">
           <Select size="xs" data={REFRESH_OPTIONS} value={refreshRate}
             onChange={(v) => setRefreshRate(v || '15')} style={{ width: 120 }} />
           <Button size="xs" variant="light" leftSection={<IconRefresh size={14} />}
@@ -497,6 +528,7 @@ function MetricsPerformanceContent({ embedded = false, perfData, serverData, ser
             Clear History
           </Button>
           <Text size="xs" c="dimmed">{lastRefresh.toLocaleTimeString()}</Text>
+          </Group>
         </Group>
       </Group>
 

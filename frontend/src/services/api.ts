@@ -577,16 +577,31 @@ export const ssl = {
 // ─── Performance Metrics ────────────────────────────────────
 
 export const performance = {
-  getOverview: (hours: number = 48) =>
-    fetchJSON<any>(`/performance/overview?hours=${encodeURIComponent(String(hours))}`),
+  getOverview: (hours: number = 48, scopeQs?: string) => {
+    const qs = new URLSearchParams();
+    qs.set('hours', String(hours));
+    if (scopeQs) {
+      const extra = new URLSearchParams(scopeQs);
+      extra.forEach((v, k) => qs.set(k, v));
+    }
+    return fetchJSON<any>(`/performance/overview?${qs.toString()}`);
+  },
   getNode: (certname: string) => fetchJSON<any>(`/performance/node/${certname}`),
 };
 
 // ─── Metrics / Visualization ────────────────────────────────
 
 export const metrics = {
-  compliance: (hours: number = 24) =>
-    fetchJSON<any>(`/insights/compliance?hours=${encodeURIComponent(String(hours))}`),
+  scopes: () => fetchJSON<any>('/insights/scopes'),
+  compliance: (hours: number = 24, scopeQs?: string) => {
+    const qs = new URLSearchParams();
+    qs.set('hours', String(hours));
+    if (scopeQs) {
+      const extra = new URLSearchParams(scopeQs);
+      extra.forEach((v, k) => qs.set(k, v));
+    }
+    return fetchJSON<any>(`/insights/compliance?${qs.toString()}`);
+  },
   events: (params?: { limit?: number; status?: string }) => {
     const qs = new URLSearchParams();
     if (params?.limit) qs.set('limit', params.limit.toString());

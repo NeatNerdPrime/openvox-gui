@@ -20,6 +20,12 @@ import {
 } from 'recharts';
 import { metrics } from '../services/api';
 import { useApi } from '../hooks/useApi';
+import {
+  FleetScopeSelect,
+  loadStoredScope,
+  scopeQuery,
+  type ScopeSelection,
+} from '../components/FleetScopeSelect';
 
 const COLORS = ['#0D6EFD', '#28a745', '#dc3545', '#ffc107', '#6c757d', '#17a2b8', '#fd7e14', '#6f42c1'];
 
@@ -119,17 +125,31 @@ function NodeList({ title, nodes, color }: { title: string; nodes: any[]; color:
 export function MetricsCompliancePage({
   embedded = false,
   windowHours,
-}: { embedded?: boolean; windowHours?: number } = {}) {
+  scope: scopeProp,
+  onScopeChange,
+}: {
+  embedded?: boolean;
+  windowHours?: number;
+  scope?: ScopeSelection;
+  onScopeChange?: (s: ScopeSelection) => void;
+} = {}) {
   const [hoursLocal, setHoursLocal] = useState(24);
+  const [scopeLocal, setScopeLocal] = useState<ScopeSelection>(loadStoredScope);
+  const scope = scopeProp ?? scopeLocal;
+  const setScope = onScopeChange ?? setScopeLocal;
   const controlled = windowHours != null && Number.isFinite(windowHours);
   const hoursNum = clampWindowHours(controlled ? Number(windowHours) : hoursLocal);
+  const sq = scopeQuery(scope);
 
-  const fetchCompliance = useCallback(() => metrics.compliance(hoursNum), [hoursNum]);
+  const fetchCompliance = useCallback(
+    () => metrics.compliance(hoursNum, sq),
+    [hoursNum, sq],
+  );
   const { data, loading, refreshing, error, refetch } = useApi(
     fetchCompliance,
-    [hoursNum],
+    [hoursNum, sq],
     {
-      cacheKey: `openvox_metrics_compliance_v1_${hoursNum}`,
+      cacheKey: `openvox_metrics_compliance_v2_${hoursNum}_${sq}`,
       cacheValidate: (d) => d != null && typeof d === 'object' && 'total' in (d as object),
     },
   );
@@ -164,12 +184,26 @@ export function MetricsCompliancePage({
 
   return (
     <Stack gap={embedded ? 'sm' : 'md'}>
-      <Group justify="space-between">
+      <Group justify="space-between" align="flex-end" wrap="wrap">
         <Group gap="sm">
           <IconShieldCheck size={embedded ? 22 : 28} />
-          <Title order={embedded ? 3 : 2}>Fleet Compliance &amp; Drift</Title>
+          <div>
+            <Title order={embedded ? 3 : 2}>Fleet Compliance &amp; Drift</Title>
+            {data.scope?.label && (
+              <Text size="xs" c="dimmed">
+                Scope: {data.scope.label}
+                {data.scope.total != null ? ` · ${data.scope.total} hosts` : ''}
+              </Text>
+            )}
+          </div>
           {refreshing && <Badge variant="outline" color="gray" size="sm">Refreshing…</Badge>}
         </Group>
+        <Group gap="md" align="flex-end" wrap="wrap">
+          <FleetScopeSelect
+            size={embedded ? 'xs' : 'sm'}
+            value={scope}
+            onChange={setScope}
+          />
         {!controlled && (
           <Group gap="xs" align="flex-end">
             <Select
@@ -201,6 +235,7 @@ export function MetricsCompliancePage({
             />
           </Group>
         )}
+        </Group>
       </Group>
 
       {/* Stat cards */}

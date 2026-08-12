@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.1] - 2026-08-12 (feat — metric host scopes)
+
+### Added
+- **Host scopes** for Insights fleet charts (Monitoring, Fleet Compliance,
+  Run Performance):
+  - **All live fleet** (active PuppetDB ∩ signed CA)
+  - **Location** scopes from the `location` fact (ATLC, PDXC, …)
+  - **REGEX packs**: control plane, compilers, CA, OpenVoxDB, consoles, agents
+  - **Custom** multi-select certnames
+- `GET /api/insights/scopes` — catalog for the UI
+- Compliance/performance accept `scope`, `location`, `certname_re`, `certnames`
+- Shared `FleetScopeSelect` control; selection persisted in localStorage
+- Compliance trends use rolling census for the scoped set (series sum ≈ host count)
+
+### Notes
+- OpenVox Server / OpenVoxDB health panels are infrastructure metrics and
+  do not use host scope.
+- New minor train **3.11.1** for visualization scope work.
+
 ## [3.11.0-alpha.56] - 2026-08-12 (fix — Hiera Lookup on a compiler)
 
 ### Fixed
