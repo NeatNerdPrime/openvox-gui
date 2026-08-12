@@ -913,35 +913,14 @@ sync_apt() {
 #   downloads.voxpupuli.org/windows/openvox{N}/openvox-agent-{ver}-x64.msi
 #   downloads.voxpupuli.org/windows/openvox{N}/unsigned/...
 #
-# rsync: rsync://RSYNC_HOST/RSYNC_MODULE/downloads/windows/...
+# HTTPS only: https://downloads.voxpupuli.org/windows/openvox{N}/
+# Do not rsync via apt.voxpupuli.org/packages/downloads/windows/.
 #
 # install.ps1 needs a stable URL, so after mirroring we copy the
 # highest-version MSI to "openvox-agent-x64.msi" (a real copy, not a
 # symlink, because the puppetserver static-content mount does not
 # follow symlinks -- verified empirically).
 #
-
-rsync_sync_windows() {
-    local rsync_base="rsync://${RSYNC_HOST}/${RSYNC_MODULE}"
-    local v
-
-    # Quick connectivity probe (skip in DRY_RUN)
-    if [ "$DRY_RUN" != "true" ]; then
-        if ! rsync -4 --timeout=10 --contimeout=5 --list-only \
-                "${rsync_base}/downloads/windows/" >/dev/null 2>&1; then
-            warn "Cannot reach rsync server at ${RSYNC_HOST} for windows"
-            return 1
-        fi
-    fi
-
-    for v in $(echo "$VERSIONS" | tr ',' ' '); do
-        info "  -> windows/openvox${v}"
-        if ! rsync_tree "${rsync_base}/downloads/windows/openvox${v}/" \
-                "${PKG_REPO_DIR}/windows/openvox${v}/"; then
-            SYNC_FAILURES=$((SYNC_FAILURES + 1))
-        fi
-    done
-}
 
 curl_sync_windows() {
     local v
@@ -958,17 +937,8 @@ curl_sync_windows() {
 }
 
 sync_windows() {
-    info "Syncing windows packages -> ${PKG_REPO_DIR}/windows/"
-    if [ "$HAVE_RSYNC" = "true" ]; then
-        if rsync_sync_windows; then
-            : # rsync succeeded
-        else
-            warn "rsync failed for windows; falling back to curl"
-            curl_sync_windows
-        fi
-    else
-        curl_sync_windows
-    fi
+    info "Syncing windows packages -> ${PKG_REPO_DIR}/windows/ (HTTPS ${DOWNLOADS_BASE}/windows/)"
+    curl_sync_windows
 
     # Post-sync: pick the newest stable (non-rc) MSI per version and
     # copy it to the predictable path install.ps1 fetches.
@@ -1004,32 +974,11 @@ sync_windows() {
 #   downloads.voxpupuli.org/mac/openvox{N}/{macos-major}/{arch}/...    (per-major
 #                                                                       subtrees)
 #
-# rsync: rsync://RSYNC_HOST/RSYNC_MODULE/downloads/mac/...
+# HTTPS only: https://downloads.voxpupuli.org/mac/openvox{N}/
+# Do not rsync via apt.voxpupuli.org/packages/downloads/mac/.
 #
 # Same "latest copy" trick as windows for the per-arch DMGs.
 #
-
-rsync_sync_mac() {
-    local rsync_base="rsync://${RSYNC_HOST}/${RSYNC_MODULE}"
-    local v
-
-    # Quick connectivity probe (skip in DRY_RUN)
-    if [ "$DRY_RUN" != "true" ]; then
-        if ! rsync -4 --timeout=10 --contimeout=5 --list-only \
-                "${rsync_base}/downloads/mac/" >/dev/null 2>&1; then
-            warn "Cannot reach rsync server at ${RSYNC_HOST} for mac"
-            return 1
-        fi
-    fi
-
-    for v in $(echo "$VERSIONS" | tr ',' ' '); do
-        info "  -> mac/openvox${v}"
-        if ! rsync_tree "${rsync_base}/downloads/mac/openvox${v}/" \
-                "${PKG_REPO_DIR}/mac/openvox${v}/"; then
-            SYNC_FAILURES=$((SYNC_FAILURES + 1))
-        fi
-    done
-}
 
 curl_sync_mac() {
     local v
@@ -1046,17 +995,8 @@ curl_sync_mac() {
 }
 
 sync_mac() {
-    info "Syncing mac packages -> ${PKG_REPO_DIR}/mac/"
-    if [ "$HAVE_RSYNC" = "true" ]; then
-        if rsync_sync_mac; then
-            : # rsync succeeded
-        else
-            warn "rsync failed for mac; falling back to curl"
-            curl_sync_mac
-        fi
-    else
-        curl_sync_mac
-    fi
+    info "Syncing mac packages -> ${PKG_REPO_DIR}/mac/ (HTTPS ${DOWNLOADS_BASE}/mac/)"
+    curl_sync_mac
 
     # Post-sync: pick the newest DMG per arch and copy to a stable name
     if [ "$DRY_RUN" != "true" ]; then

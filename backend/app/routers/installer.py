@@ -1158,12 +1158,15 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
                 )
 
         elif family in ("windows", "mac"):
-            src = f"{rsync_base}/downloads/{family}/openvox{ver}/"
+            # HTTPS only. These trees are on downloads.voxpupuli.org, not
+            # rsync://apt.voxpupuli.org/packages/downloads/{windows,mac}/.
             dest = PKG_REPO_DIR / family / f"openvox{ver}"
             dest.mkdir(parents=True, exist_ok=True)
             ok = await _rsync_or_curl(
-                src, str(dest) + "/",
+                "",
+                str(dest) + "/",
                 f"{DOWNLOADS_BASE}/{family}/openvox{ver}/",
+                use_rsync=False,
             )
             if not ok:
                 success = False
@@ -1185,8 +1188,14 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
     return success
 
 
-async def _rsync_or_curl(rsync_src: str, local_dest: str, curl_url: str) -> bool:
-    """Try rsync first, fall back to curl-based download."""
+async def _rsync_or_curl(
+    rsync_src: str,
+    local_dest: str,
+    curl_url: str,
+    *,
+    use_rsync: bool = True,
+) -> bool:
+    """Try rsync first (yum/apt), fall back to HTTPS directory scrape."""
     loop = asyncio.get_event_loop()
 
     def _try_rsync():
@@ -1210,10 +1219,12 @@ async def _rsync_or_curl(rsync_src: str, local_dest: str, curl_url: str) -> bool
             logger.warning("rsync timed out for %s", rsync_src)
             return False
 
-    if await loop.run_in_executor(None, _try_rsync):
-        return True
-
-    logger.info("rsync failed for %s, falling back to curl", rsync_src)
+    if use_rsync and rsync_src:
+        if await loop.run_in_executor(None, _try_rsync):
+            return True
+        logger.info("rsync failed for %s, falling back to HTTPS %s", rsync_src, curl_url)
+    else:
+        logger.info("Mirroring via HTTPS %s", curl_url)
     # Curl-based mirror: scrape the dir listing and download files
     links = await _scrape_links(curl_url)
     if not links:
