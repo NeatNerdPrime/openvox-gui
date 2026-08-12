@@ -19,8 +19,9 @@ from ..utils.sudo import run_sudo
 router = APIRouter(prefix="/api/deploy", tags=["deploy"])
 logger = logging.getLogger(__name__)
 
-# r10k can take several minutes on large Puppetfiles; keep this aligned with the UI.
-R10K_DEPLOY_TIMEOUT = 300
+# First clustered Stage of a large Puppetfile through a corp proxy is slow
+# (4 compilers × ~80 Forge modules). 5 minutes was killing the job mid-sync.
+R10K_DEPLOY_TIMEOUT = 900
 R10K_DEPLOY_SCRIPT = "/opt/openvox-gui/scripts/r10k-deploy.sh"
 
 

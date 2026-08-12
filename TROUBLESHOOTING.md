@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.52**
+**OpenVox GUI Version 3.11.0-alpha.53**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.52"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.53"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -762,7 +762,16 @@ to the browser).
    Hiera/eyaml. Keep profile.d as a one-liner `. /etc/puppetlabs/r10k/environment`
    so interactive root matches Bolt.
 
-8. **Stage reaches r10k then dies on github.com:443 or forgeapi.puppet.com:443.**
+8. **Stage is painfully slow.** Four compilers each sync ~80 Forge
+   modules through one ATLC proxy, and Bolt waits for the slowest.
+   ovcompiler1.pdxc with `proxy=none` added ~135s of `github.com:443`
+   hang. After 3.11.0-alpha.53: shared r10k cache, `forge.proxy`,
+   `--incremental`, 20s git stall timeout, 15-minute Bolt cap.
+   First Stage after an empty cache is still minutes. Warm cache +
+   proxy on **every** compiler should be tens of seconds. Do not
+   Stage **All Environments** unless you mean it.
+
+9. **Stage reaches r10k then dies on github.com:443 or forgeapi.puppet.com:443.**
    Same corp proxy gap, two clients:
    - **git** (control repo) reads root `git config http.proxy`
    - **Forge** (Puppetfile modules) reads only `HTTPS_PROXY` / `https_proxy`

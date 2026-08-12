@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.53] - 2026-08-12 (fix — faster clustered Stage)
+
+### Changed
+- Stage r10k is `-p --incremental` (not `-pv`). Shared
+  `cachedir: /opt/puppetlabs/puppet/cache/r10k` so staging reuses the
+  live Forge/git cache. Temp config sets `forge.proxy` from `HTTPS_PROXY`.
+- Git dead-path timeout 20s (`GIT_HTTP_LOW_SPEED_*`) instead of ~135s
+  per compiler. Clustered Stage Bolt timeout 15 minutes (was 5).
+
 ## [3.11.0-alpha.52] - 2026-08-12 (fix — source R10K_TOKEN for Bolt run-as)
 
 ### Fixed

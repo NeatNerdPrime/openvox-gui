@@ -43,8 +43,12 @@ _redact_proxy() {
 }
 
 # Never prompt; a missing GitHub token must fail fast, not hang Stage.
+# Direct github.com:443 with no proxy sat for ~135s per host and Bolt waits
+# for every compiler. Fail a dead path in 20s.
 export GIT_TERMINAL_PROMPT=0
 export GIT_ASKPASS=/bin/true
+export GIT_HTTP_LOW_SPEED_LIMIT=1024
+export GIT_HTTP_LOW_SPEED_TIME=20
 
 _px="${HTTPS_PROXY:-${https_proxy:-none}}"
 _log "start uid=$(id -u) user=$(id -un) host=$(hostname -f 2>/dev/null || hostname) args=$* proxy=$(_redact_proxy "$_px")"
@@ -108,7 +112,9 @@ case "$MODE" in
     fi
     EXTRA=("$@")
     if [ ${#EXTRA[@]} -eq 0 ]; then
-      EXTRA=(-pv)
+      # -p = Puppetfile. --incremental = only modules whose pin changed
+      # (or are missing). Do not use -v — 80+ modules × 4 hosts floods the pane.
+      EXTRA=(-p --incremental)
     fi
 
     mkdir -p "$STAGING/environments"
@@ -145,12 +151,25 @@ sources.each_value do |srcdef|
     srcdef['basedir'] = basedir
   end
 end
+# Staging basedir must NOT get its own cache. Share the live r10k cache
+# so Forge/git hits are local after the first compiler warms them.
+cache = cfg['cachedir'] || cfg[:cachedir] || '/opt/puppetlabs/puppet/cache/r10k'
+cfg.delete(:cachedir)
+cfg['cachedir'] = cache
+proxy = ENV['HTTPS_PROXY'] || ENV['https_proxy'] || ENV['HTTP_PROXY'] || ENV['http_proxy']
+if proxy && !proxy.empty?
+  forge = cfg['forge'] || cfg[:forge] || {}
+  forge = forge.each_with_object({}) { |(k, v), h| h[k.to_s] = v }
+  forge['proxy'] ||= proxy
+  cfg.delete(:forge)
+  cfg['forge'] = forge
+end
 File.write(dst, YAML.dump(cfg))
-warn "r10k-stage-activate.sh: wrote staging config basedir=#{basedir}"
+warn "r10k-stage-activate.sh: wrote staging config basedir=#{basedir} cachedir=#{cache} forge_proxy=#{proxy && !proxy.empty?}"
 RB
     else
       python3 - "$R10K_YAML" "$TMP_CFG" "$STAGING/environments" <<'PY'
-import sys, yaml
+import os, sys, yaml
 src, dst, basedir = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(src) as f:
     cfg = yaml.safe_load(f) or {}
@@ -160,9 +179,19 @@ if not sources:
 for name, srcdef in sources.items():
     if isinstance(srcdef, dict):
         srcdef["basedir"] = basedir
+cache = cfg.get("cachedir") or cfg.get(":cachedir") or "/opt/puppetlabs/puppet/cache/r10k"
+cfg.pop(":cachedir", None)
+cfg["cachedir"] = cache
+proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or os.environ.get("HTTP_PROXY") or ""
+if proxy:
+    forge = cfg.get("forge") or cfg.get(":forge") or {}
+    if isinstance(forge, dict) and "proxy" not in forge:
+        forge["proxy"] = proxy
+    cfg.pop(":forge", None)
+    cfg["forge"] = forge
 with open(dst, "w") as f:
     yaml.safe_dump(cfg, f, default_flow_style=False)
-print(f"r10k-stage-activate.sh: wrote staging config basedir={basedir}", file=sys.stderr)
+print(f"r10k-stage-activate.sh: wrote staging config basedir={basedir} cachedir={cache}", file=sys.stderr)
 PY
     fi
 
