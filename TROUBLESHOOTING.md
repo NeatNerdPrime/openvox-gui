@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.51**
+**OpenVox GUI Version 3.11.0-alpha.52**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.51"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.52"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -743,7 +743,26 @@ to the browser).
      /etc/puppetlabs/r10k/r10k.yaml
    ```
 
-7. **Stage reaches r10k then dies on github.com:443 or forgeapi.puppet.com:443.**
+7. **`R10K_TOKEN` in `/etc/profile.d/r10k.sh` works in my shell but Stage
+   clones `https://@github.com/…`.** `/etc/profile.d` is only read by
+   **login** shells (`ssh`, `sudo -i`, `bash -l`). Stage is:
+
+   `bolt@` SSH → `sudo` to root → uploaded script.
+
+   That is non-login. `bolt` never needs the token. Root running the
+   helper does. After 3.11.0-alpha.52 the helper explicitly sources, in
+   order:
+
+   1. `/etc/puppetlabs/r10k/environment` (preferred, `0600`)
+   2. `/etc/sysconfig/r10k`
+   3. `/etc/profile.d/r10k.sh` (your file — now read on purpose)
+   4. token scraped from the control-repo URL in `r10k.yaml`
+
+   Long-term (Puppet): manage `/etc/puppetlabs/r10k/environment` from
+   Hiera/eyaml. Keep profile.d as a one-liner `. /etc/puppetlabs/r10k/environment`
+   so interactive root matches Bolt.
+
+8. **Stage reaches r10k then dies on github.com:443 or forgeapi.puppet.com:443.**
    Same corp proxy gap, two clients:
    - **git** (control repo) reads root `git config http.proxy`
    - **Forge** (Puppetfile modules) reads only `HTTPS_PROXY` / `https_proxy`

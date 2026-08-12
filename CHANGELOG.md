@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.52] - 2026-08-12 (fix — source R10K_TOKEN for Bolt run-as)
+
+### Fixed
+- `/etc/profile.d/r10k.sh` is login-shell only. Bolt `--run-as root` never
+  saw `R10K_TOKEN`. The Stage helper now sources
+  `/etc/puppetlabs/r10k/environment`, `/etc/sysconfig/r10k`, and
+  `/etc/profile.d/r10k.sh` itself (then falls back to the yaml URL).
+  Logs only whether the token is set, never the value.
+
 ## [3.11.0-alpha.51] - 2026-08-12 (fix — do not log proxy passwords; R10K_TOKEN)
 
 ### Fixed

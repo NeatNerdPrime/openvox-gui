@@ -57,11 +57,25 @@ LIVE="${OPENVOX_LIVE_CODEDIR:-/etc/puppetlabs/code}"
 R10K_YAML="${OPENVOX_R10K_YAML:-/etc/puppetlabs/r10k/r10k.yaml}"
 R10K_BIN="${OPENVOX_R10K_BIN:-}"
 
-# Puppetfile uses https://#{ENV['R10K_TOKEN']}@github.com/…  An empty token
-# becomes https://@github.com/… and git tries to prompt (hangs Stage).
+# Puppetfile uses https://#{ENV['R10K_TOKEN']}@github.com/…
+# /etc/profile.d/*.sh is NOT read by Bolt --run-as root (non-login sudo).
+# Source the known env files ourselves. bolt@ does not need this variable.
+for f in /etc/puppetlabs/r10k/environment /etc/sysconfig/r10k /etc/profile.d/r10k.sh; do
+  if [ -r "$f" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$f"
+    set +a
+  fi
+done
 if [ -z "${R10K_TOKEN:-}" ] && [ -f "$R10K_YAML" ]; then
   R10K_TOKEN=$(sed -n 's#.*https://\([^:/@]*\)@github.com.*#\1#p' "$R10K_YAML" | head -1)
   export R10K_TOKEN
+fi
+if [ -n "${R10K_TOKEN:-}" ]; then
+  _log "R10K_TOKEN is set"
+else
+  _log "R10K_TOKEN is empty — git modules will be https://@github.com/…"
 fi
 
 if [ -z "$R10K_BIN" ]; then

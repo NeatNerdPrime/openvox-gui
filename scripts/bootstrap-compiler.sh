@@ -105,4 +105,14 @@ else
   echo "bootstrap-compiler.sh: bolt user not present yet — skip tmpdir (classify bolt_user)"
 fi
 
+# Token for Puppetfile git modules (ENV['R10K_TOKEN']). profile.d alone is
+# not enough — Bolt run-as root never reads it. Prefer the r10k env file;
+# the Stage helper sources these paths explicitly.
+if [ ! -f /etc/puppetlabs/r10k/environment ] && [ -n "${R10K_TOKEN:-}" ]; then
+  umask 077
+  printf 'R10K_TOKEN=%s\n' "$R10K_TOKEN" > /etc/puppetlabs/r10k/environment
+  chmod 0600 /etc/puppetlabs/r10k/environment
+  echo "bootstrap-compiler.sh: wrote /etc/puppetlabs/r10k/environment (0600)"
+fi
+
 echo "bootstrap-compiler.sh: done on $(hostname -f 2>/dev/null || hostname)"
