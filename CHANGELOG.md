@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.41] - 2026-08-12 (fix — always use .env proxy for mirror)
+
+### Fixed
+- Mirror HTTPS always uses the proxy from `.env` under any of
+  `OPENVOX_GUI_HTTPS_PROXY`, `HTTPS_PROXY`, `https_proxy` (and HTTP
+  variants). curl gets `-x` and `--noproxy ''` so a broad `NO_PROXY`
+  cannot skip yum/apt/downloads.voxpupuli.org.
+
 ## [3.11.0-alpha.40] - 2026-08-12 (fix — mirror curl uses GUI proxy; CSRs on CA)
 
 ### Fixed

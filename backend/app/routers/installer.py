@@ -549,18 +549,17 @@ async def trigger_sync(
     logger.info("User %s triggered repo sync: %s", user, " ".join(cmd))
 
     child_env = os.environ.copy()
-    if settings.https_proxy:
-        child_env["OPENVOX_GUI_HTTPS_PROXY"] = settings.https_proxy
-        child_env["HTTPS_PROXY"] = settings.https_proxy
-        child_env["https_proxy"] = settings.https_proxy
-    if settings.http_proxy:
-        child_env["OPENVOX_GUI_HTTP_PROXY"] = settings.http_proxy
-        child_env["HTTP_PROXY"] = settings.http_proxy
-        child_env["http_proxy"] = settings.http_proxy
-    if settings.no_proxy:
-        child_env["OPENVOX_GUI_NO_PROXY"] = settings.no_proxy
-        child_env["NO_PROXY"] = settings.no_proxy
-        child_env["no_proxy"] = settings.no_proxy
+    proxy = _outbound_proxy()
+    if proxy:
+        child_env["OPENVOX_GUI_HTTPS_PROXY"] = proxy
+        child_env["OPENVOX_GUI_HTTP_PROXY"] = proxy
+        child_env["HTTPS_PROXY"] = proxy
+        child_env["HTTP_PROXY"] = proxy
+        child_env["https_proxy"] = proxy
+        child_env["http_proxy"] = proxy
+        logger.info("Repo sync will use proxy from settings/.env")
+    else:
+        logger.warning("Repo sync: no HTTP proxy found in settings or .env")
 
     loop = asyncio.get_event_loop()
     def _run() -> tuple[int, str, str]:
@@ -815,10 +814,61 @@ class SelectionUpdateResult(BaseModel):
     message: str
 
 
+def _proxy_from_dotenv() -> Optional[str]:
+    """Read proxy from .env under any name operators actually use."""
+    env_path = Path("/opt/openvox-gui/config/.env")
+    if not env_path.is_file():
+        return None
+    wanted = (
+        "OPENVOX_GUI_HTTPS_PROXY",
+        "OPENVOX_GUI_HTTP_PROXY",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "https_proxy",
+        "http_proxy",
+    )
+    try:
+        found: dict[str, str] = {}
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            val = val.strip().strip('"').strip("'")
+            if key in wanted and val:
+                found[key] = val
+        for key in wanted:
+            if found.get(key):
+                return found[key]
+    except OSError:
+        return None
+    return None
+
+
+def _outbound_proxy() -> Optional[str]:
+    """Proxy for all upstream mirror HTTP. .env always wins if set."""
+    for candidate in (
+        settings.https_proxy,
+        settings.http_proxy,
+        os.environ.get("OPENVOX_GUI_HTTPS_PROXY"),
+        os.environ.get("OPENVOX_GUI_HTTP_PROXY"),
+        os.environ.get("HTTPS_PROXY"),
+        os.environ.get("https_proxy"),
+        os.environ.get("HTTP_PROXY"),
+        os.environ.get("http_proxy"),
+        _proxy_from_dotenv(),
+    ):
+        if candidate and str(candidate).strip():
+            return str(candidate).strip()
+    return None
+
+
 def _proxy_kwargs() -> dict:
-    """Build httpx proxy kwargs from the app's configured proxy settings."""
-    url = settings.https_proxy or settings.http_proxy
-    return {"proxy": url} if url else {}
+    """Force httpx through the configured proxy; do not honor NO_PROXY."""
+    url = _outbound_proxy()
+    if not url:
+        return {"trust_env": False}
+    return {"proxy": url, "trust_env": False}
 
 
 async def _scrape_links(url: str) -> list[str]:

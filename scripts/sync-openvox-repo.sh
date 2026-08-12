@@ -118,18 +118,31 @@ _redact_proxy_url() {
     printf '%s' "$1" | sed -E 's#(://)[^/@:]+:[^/@]+@#\1***:***@#'
 }
 
+_first_env_file_value() {
+    local key v
+    for key in "$@"; do
+        v=$(_env_file_value "$key")
+        if [ -n "$v" ]; then
+            printf '%s' "$v"
+            return 0
+        fi
+    done
+    return 0
+}
+
 _load_proxy_from_gui_env() {
     local v
+    # Prefer GUI keys, then the names operators actually put in .env.
     if [ -z "${OPENVOX_GUI_HTTPS_PROXY:-}" ]; then
-        v=$(_env_file_value OPENVOX_GUI_HTTPS_PROXY)
+        v=$(_first_env_file_value OPENVOX_GUI_HTTPS_PROXY HTTPS_PROXY https_proxy)
         [ -n "$v" ] && OPENVOX_GUI_HTTPS_PROXY="$v"
     fi
     if [ -z "${OPENVOX_GUI_HTTP_PROXY:-}" ]; then
-        v=$(_env_file_value OPENVOX_GUI_HTTP_PROXY)
+        v=$(_first_env_file_value OPENVOX_GUI_HTTP_PROXY HTTP_PROXY http_proxy)
         [ -n "$v" ] && OPENVOX_GUI_HTTP_PROXY="$v"
     fi
     if [ -z "${OPENVOX_GUI_NO_PROXY:-}" ]; then
-        v=$(_env_file_value OPENVOX_GUI_NO_PROXY)
+        v=$(_first_env_file_value OPENVOX_GUI_NO_PROXY NO_PROXY no_proxy)
         [ -n "$v" ] && OPENVOX_GUI_NO_PROXY="$v"
     fi
 }
@@ -149,9 +162,10 @@ if [ -n "${OPENVOX_GUI_NO_PROXY:-}" ]; then
     export NO_PROXY="$OPENVOX_GUI_NO_PROXY"
 fi
 
+# Always force -x. --noproxy '' so a broad NO_PROXY cannot skip voxpupuli.org.
 _CURL_PROXY="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}"
 if [ -n "$_CURL_PROXY" ]; then
-    CURL_PROXY_ARGS=(-x "$_CURL_PROXY")
+    CURL_PROXY_ARGS=(-x "$_CURL_PROXY" --noproxy "")
 fi
 
 # Defaults reflect "latest two only" as chosen at design time. Override
