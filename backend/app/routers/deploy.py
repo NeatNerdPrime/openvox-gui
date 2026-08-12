@@ -535,6 +535,11 @@ def _host_headline(target: str, ok: bool, exit_code: Any, body: str) -> str:
         "could not connect" in low or "unable to access" in low or "failed to connect" in low
     ):
         reason = " — github.com:443 (git fetch; root needs https.proxy)"
+    if "407" in low or "proxy authentication" in low:
+        reason = (
+            " — proxy 407 (git http.proxy likely has no user:pass; "
+            "env HTTPS_PROXY does)"
+        )
     elif "forgeapi.puppet.com" in low:
         reason = (
             " — forgeapi.puppet.com:443 (Puppetfile; r10k uses HTTPS_PROXY, "

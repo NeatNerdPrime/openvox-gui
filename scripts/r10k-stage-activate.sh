@@ -31,6 +31,21 @@ if [ -z "${HTTPS_PROXY:-${https_proxy:-}}" ]; then
     export HTTP_PROXY="$_gp" HTTPS_PROXY="$_gp" http_proxy="$_gp" https_proxy="$_gp"
   fi
 fi
+# Git prefers http.proxy from gitconfig over HTTPS_PROXY. An unauthenticated
+# global proxy + an authenticated env var = Squid CONNECT 407. Force git to
+# the same URL we export (Git 2.31+ GIT_CONFIG_*; Alma 10 has this).
+if [ -n "${HTTPS_PROXY:-${https_proxy:-}}" ]; then
+  _gp="${HTTPS_PROXY:-$https_proxy}"
+  export HTTP_PROXY="${HTTP_PROXY:-$_gp}"
+  export HTTPS_PROXY="$_gp"
+  export http_proxy="${http_proxy:-$_gp}"
+  export https_proxy="${https_proxy:-$_gp}"
+  export GIT_CONFIG_COUNT=2
+  export GIT_CONFIG_KEY_0=http.proxy
+  export GIT_CONFIG_VALUE_0="$_gp"
+  export GIT_CONFIG_KEY_1=https.proxy
+  export GIT_CONFIG_VALUE_1="$_gp"
+fi
 
 LOG="${OPENVOX_STAGE_LOG:-/var/tmp/r10k-stage-activate.log}"
 _log() {

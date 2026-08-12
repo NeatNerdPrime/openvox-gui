@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.54] - 2026-08-12 (fix — git proxy 407)
+
+### Fixed
+- Stage on a host with authenticated `HTTPS_PROXY` still got Squid
+  **CONNECT 407** when `git config http.proxy` had the proxy **without**
+  user:pass (git prefers gitconfig). Helper now sets
+  `GIT_CONFIG_KEY_*=http.proxy` to the same authenticated URL.
+
 ## [3.11.0-alpha.53] - 2026-08-12 (fix — faster clustered Stage)
 
 ### Changed
