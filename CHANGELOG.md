@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.37] - 2026-08-12 (fix — installer Server is this console)
+
+### Changed
+- Agent Installer **Server:** field is this host’s FQDN and GUI port
+  (where `/packages` is served), not the compiler VIP. One-liners
+  download from the console and pass `--server` / `-Server` as the
+  compiler VIP so `puppet.conf` still points at `ovcompilers.*`.
+
 ## [3.11.0-alpha.36] - 2026-08-12 (fix — rsync trees, no packages module)
 
 ### Fixed

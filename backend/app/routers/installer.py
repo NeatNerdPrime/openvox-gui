@@ -47,6 +47,7 @@ import logging
 import os
 import re
 import shutil
+import socket
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,31 +94,45 @@ SUPPORTED_OPENVOX_MAJORS = ("8", "9")
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 
+def _local_fqdn() -> str:
+    """FQDN of this GUI host (where /packages is actually served)."""
+    try:
+        n = socket.gethostname()
+        if n and "." in n:
+            return n.lower()
+        if n:
+            return n.lower()
+    except OSError:
+        pass
+    return "localhost"
+
+
+def _console_port() -> int:
+    return int(getattr(settings, "app_port", None) or 4567)
+
+
 def _pkg_repo_url() -> str:
-    """Compute the URL that agents should use to reach the local mirror.
+    """URL agents use to fetch install.bash / packages from *this* console.
 
     Resolution order:
 
     1. ``OPENVOX_GUI_PKG_REPO_URL`` env var (most explicit).
-    2. ``https://<puppet_server_host>:8140/packages`` -- the canonical
-       puppetserver static-content mount, which is what install.sh
-       sets up by default.
-
-    The trailing slash is stripped because the install scripts append
-    their own path segments.
+    2. ``https://<this-host-fqdn>:<GUI-port>/packages`` — the GUI static
+       mount. Do not use the compiler VIP here; the mirror lives on the
+       console.
     """
     explicit = os.environ.get("OPENVOX_GUI_PKG_REPO_URL")
     if explicit:
         return explicit.rstrip("/")
-    host = settings.puppet_server_host or "localhost"
-    port = DEFAULT_PUPPETSERVER_PORT
-    return f"https://{host}:{port}/packages"
+    return f"https://{_local_fqdn()}:{_console_port()}/packages"
 
 
 def _puppet_server_fqdn() -> str:
-    """The FQDN agents should be configured to talk to (puppet.conf
-    server= setting).  Defaults to settings.puppet_server_host."""
-    return settings.puppet_server_host or "localhost"
+    """FQDN agents put in puppet.conf server= (compiler VIP on a cluster)."""
+    host = (settings.puppet_server_host or "").strip()
+    if not host or host.lower() in ("localhost", "127.0.0.1", "::1"):
+        return _local_fqdn()
+    return host
 
 
 def _read_status_file() -> dict:
@@ -284,7 +299,8 @@ async def get_installer_info() -> InstallerInfo:
     can see installer info; only operator/admin can trigger a sync.
     """
     repo_url      = _pkg_repo_url()
-    server        = _puppet_server_fqdn()
+    console       = _local_fqdn()
+    compile_srv   = _puppet_server_fqdn()
     install_url_l = f"{repo_url}/install.bash"
     install_url_w = f"{repo_url}/install.ps1"
 
@@ -302,7 +318,10 @@ async def get_installer_info() -> InstallerInfo:
     # failed, response 407" before install.bash even runs. install.bash
     # itself sets no_proxy for apt/yum after it starts (3.3.5-17), but
     # this curl runs before that.
-    linux_cmd = f"curl -k --noproxy {server} {install_url_l} | sudo bash"
+    linux_cmd = (
+        f"curl -k --noproxy {console} {install_url_l} "
+        f"| sudo bash -s -- --server {compile_srv}"
+    )
 
     # Windows one-liner. Same shape as PE's, but pointed at our mirror
     # and using the same -Server-from-URL trick the Linux one-liner
@@ -324,14 +343,14 @@ async def get_installer_info() -> InstallerInfo:
         "$wc = New-Object System.Net.WebClient; "
         "$wc.Proxy = $null; "
         "$wc.DownloadFile($url, 'install.ps1'); "
-        ".\\install.ps1 -Server ([System.Uri]$url).Host -v"
+        f".\\install.ps1 -Server '{compile_srv}' -v"
     )
 
     status = _read_status_file()
     return InstallerInfo(
         pkg_repo_url      = repo_url,
-        puppet_server     = server,
-        puppet_port       = DEFAULT_PUPPETSERVER_PORT,
+        puppet_server     = console,
+        puppet_port       = _console_port(),
         pkg_repo_dir      = str(PKG_REPO_DIR),
         default_version   = DEFAULT_OPENVOX_VERSION,
         install_url_linux = install_url_l,
