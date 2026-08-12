@@ -443,6 +443,21 @@ _NOEXEC_HINT = (
     "On a compiler: findmnt -no OPTIONS /tmp"
 )
 
+_TMPDIR_HINT = (
+    "OpenBolt could not create ssh.tmpdir (/home/bolt/.bolt/tmp). "
+    "It uses mkdir -m 700 $tmpdir/<uuid> with no -p, so the parents "
+    "must already exist and be writable by bolt. Stage now runs "
+    "`install -d -o bolt -g bolt -m 700 /home/bolt /home/bolt/.bolt "
+    "/home/bolt/.bolt/tmp` as root first — update_local to alpha.47+. "
+    "On a compiler: getent passwd bolt; ls -ld /home/bolt /home/bolt/.bolt"
+)
+
+# OpenBolt `mkdir -m 700 $tmpdir/<uuid>` (no -p). Created as root before script run.
+_PREP_BOLT_TMPDIR = (
+    "install -d -o bolt -g bolt -m 700 "
+    "/home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp"
+)
+
 
 def _flatten_bolt_json(
     result: Dict[str, Any],
@@ -478,6 +493,7 @@ def _flatten_bolt_json(
 
     items = data.get("items") or []
     saw_noexec = False
+    saw_tmpdir = False
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -509,20 +525,26 @@ def _flatten_bolt_json(
         msg = (err.get("msg") or "").strip()
         if msg and msg not in se:
             lines.append(f"[{target}] {msg}")
-        combined = f"{so}\n{se}\n{msg}".lower()
+        issue = str(err.get("issue_code") or "")
+        kind = str(err.get("kind") or "")
+        combined = f"{so}\n{se}\n{msg}\n{issue}\n{kind}".lower()
         if (
             "permission denied" in combined
             or "noexec" in combined
             or exit_code in (126, 13)
         ):
             saw_noexec = True
+        if "tmpdir" in combined or issue == "TMPDIR_ERROR":
+            saw_tmpdir = True
 
     if not hosts:
         hosts = [
             {"host": t, "success": rc == 0, "via": via, "exit_code": rc}
             for t in targets
         ]
-    if saw_noexec:
+    if saw_tmpdir:
+        lines.append(_TMPDIR_HINT)
+    elif saw_noexec:
         lines.append(_NOEXEC_HINT)
     return rc, lines, hosts
 
@@ -625,9 +647,14 @@ async def _run_on_targets(
         )
 
     if bolt and targets and not targets_are_local:
+        # SSH probe + create Bolt tmpdir. OpenBolt script run does
+        # `mkdir -m 700 $tmpdir/<uuid>` (no -p). /tmp is CIS noexec, so
+        # inventory tmpdir is /home/bolt/.bolt/tmp — which does not exist
+        # until bolt_user (or this install) creates it.
         probe_args = [
-            "command", "run", "true",
+            "command", "run", _PREP_BOLT_TMPDIR,
             "--targets", ",".join(targets),
+            "--run-as", "root",
             "--connect-timeout", "8",
             "--no-host-key-check",
         ]

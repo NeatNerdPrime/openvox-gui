@@ -435,6 +435,7 @@ config:
     host-key-check: false
     user: bolt
     private-key: /etc/puppetlabs/bolt/id_bolt
+    tmpdir: /home/bolt/.bolt/tmp
     # No global run-as here. Escalation is requested per-invocation by the
     # GUI (checkbox + heuristic for ad-hoc commands, --run-as for tasks) or
     # by the operator typing `sudo ...` in the command string from the shell.

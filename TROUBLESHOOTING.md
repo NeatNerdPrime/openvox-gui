@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.46**
+**OpenVox GUI Version 3.11.0-alpha.47**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.46"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.47"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -712,9 +712,22 @@ to the browser).
    After 3.11.0-alpha.46 the GUI inventory sets
    `ssh.tmpdir: /home/bolt/.bolt/tmp` (home is executable) and Stage uses
    `--format json` so the log pane shows the script's real stderr instead of
-   only `The command failed with exit code 1`. The inventory warning about
-   `host-key-check` / `run-as` / `connect-timeout` is Bolt noise — those CLI
-   flags overlap inventory keys; it does **not** mean a different SSH user.
+   only `The command failed with exit code 1`.
+
+   **`TMPDIR_ERROR` / `Could not make tmpdir:`** means that path did not
+   exist. OpenBolt runs `mkdir -m 700 $tmpdir/<uuid>` with **no** `-p`.
+   `install.sh`, `update_local.sh`, and `enable-console-orchestration.sh`
+   create it on the console. On every compiler (or classify
+   `profiles::base::bolt_user`):
+
+   ```bash
+   install -d -o bolt -g bolt -m 700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
+   ```
+
+   After 3.11.0-alpha.47 Stage also runs that `install -d` as root via Bolt
+   before `script run`. The inventory warning about `host-key-check` /
+   `run-as` / `connect-timeout` is Bolt noise — those CLI flags overlap
+   inventory keys; it does **not** mean a different SSH user.
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 

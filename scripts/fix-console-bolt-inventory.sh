@@ -7,6 +7,9 @@ set -euo pipefail
 
 INV=/etc/puppetlabs/bolt/inventory.yaml
 install -d -o root -g bolt -m 0750 /etc/puppetlabs/bolt
+if id bolt &>/dev/null; then
+  install -d -o bolt -g bolt -m 0700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
+fi
 
 if [[ -f $INV ]]; then
   echo "===== BEFORE ($INV) ====="
@@ -23,6 +26,7 @@ config:
     private-key: /etc/puppetlabs/bolt/id_bolt
     host-key-check: false
     tty: true
+    tmpdir: /home/bolt/.bolt/tmp
 
 # Bolt inventory
 groups:

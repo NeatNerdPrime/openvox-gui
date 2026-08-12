@@ -10,6 +10,9 @@ PLUGIN_SRC="${HERE}/bolt-plugin/openvox_enc"
 FQDN=$(hostname -f)
 
 install -d -o root -g bolt -m 0750 "$BOLT" "$BOLT/modules"
+if id bolt &>/dev/null; then
+  install -d -o bolt -g bolt -m 0700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
+fi
 
 cat > "$BOLT/bolt-project.yaml" << 'EOF'
 ---

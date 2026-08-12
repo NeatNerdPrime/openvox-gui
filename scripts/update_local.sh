@@ -432,6 +432,12 @@ fi
 # The GUI service (puppet user) accesses the directory via scoped sudo rules
 # (cat for reads, bolt subcommands for execution and writes).
 mkdir -p /etc/puppetlabs/bolt
+# CIS /tmp is noexec. OpenBolt script run needs an executable tmpdir that
+# already exists (`mkdir -m 700 $tmpdir/<uuid>` has no -p).
+if id bolt &>/dev/null; then
+    install -d -o bolt -g bolt -m 0700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
+    log_ok "Ensured /home/bolt/.bolt/tmp (OpenBolt ssh.tmpdir)"
+fi
 
 sed "s|INSTALL_DIR|${INSTALL_DIR}|g" "${REPO_DIR}/config/openvox-gui.service" \
     | sed "s|User=puppet|User=${SERVICE_USER}|" \

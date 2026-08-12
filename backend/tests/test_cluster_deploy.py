@@ -213,6 +213,11 @@ def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
     assert result["success"] is True
     assert result["exit_code"] == 0
     assert run.call_count == 2
+    probe_argv = run.call_args_list[0].args[0]
+    assert probe_argv[:2] == ["command", "run"]
+    assert "install -d" in probe_argv[2]
+    assert "/home/bolt/.bolt/tmp" in probe_argv[2]
+    assert "--run-as" in probe_argv
     script_argv = run.call_args_list[1].args[0]
     assert script_argv[:2] == ["script", "run"]
     assert "stage" in script_argv
@@ -245,6 +250,35 @@ def test_flatten_bolt_json_surfaces_script_stderr():
     assert hosts[0]["success"] is False
     assert any("Permission denied" in ln for ln in lines)
     assert any("noexec" in ln.lower() for ln in lines)
+
+
+def test_flatten_bolt_json_surfaces_tmpdir_error():
+    d = _load_deploy()
+    payload = {
+        "items": [
+            {
+                "target": "ovcompiler1.pdxc-it.corp.int-x.ai",
+                "action": "script",
+                "status": "failure",
+                "value": {
+                    "_error": {
+                        "kind": "puppetlabs.tasks/task_file_error",
+                        "msg": "Could not make tmpdir: ",
+                        "issue_code": "TMPDIR_ERROR",
+                        "details": {},
+                    }
+                },
+            }
+        ]
+    }
+    result = {"returncode": 2, "stdout": json.dumps(payload), "stderr": ""}
+    rc, lines, hosts = d._flatten_bolt_json(
+        result, ["ovcompiler1.pdxc-it.corp.int-x.ai"]
+    )
+    assert rc == 2
+    assert hosts[0]["success"] is False
+    assert any("Could not make tmpdir" in ln for ln in lines)
+    assert any("mkdir -m 700" in ln for ln in lines)
 
 
 def test_cluster_deploy_swallows_unexpected_exception():

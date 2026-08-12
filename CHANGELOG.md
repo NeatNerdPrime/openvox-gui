@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.47] - 2026-08-12 (fix — Bolt tmpdir at install time)
+
+### Fixed
+- Clustered Stage `TMPDIR_ERROR` / `Could not make tmpdir:` — alpha.46 pointed
+  inventory at `/home/bolt/.bolt/tmp` (CIS `/tmp` is `noexec`) but OpenBolt
+  runs `mkdir -m 700 $tmpdir/<uuid>` with **no** `-p`, so the empty tree
+  failed on every compiler.
+- **Install-time:** `install.sh`, `update_local.sh`,
+  `enable-console-orchestration.sh`, `apply-singleton-bolt-layout.sh`, and
+  `fix-console-bolt-inventory.sh` now create `/home/bolt/.bolt/tmp`
+  (`700` `bolt:bolt`) and write `ssh.tmpdir` into inventory.
+- **Run-time:** Stage/Activate `install -d` that path as root before
+  `script run`, and the log pane explains `TMPDIR_ERROR`.
+
 ## [3.11.0-alpha.46] - 2026-08-12 (fix — clustered Stage /tmp noexec)
 
 ### Fixed

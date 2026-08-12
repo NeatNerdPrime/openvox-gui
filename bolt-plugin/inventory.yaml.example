@@ -12,6 +12,9 @@ config:
     private-key: /etc/puppetlabs/bolt/id_bolt
     host-key-check: false
     tty: true
+    # CIS /tmp is noexec. Create this dir 700 bolt:bolt on every target
+    # (install.sh / profiles::base::bolt_user). OpenBolt mkdir has no -p.
+    tmpdir: /home/bolt/.bolt/tmp
 
 # Bolt inventory
 groups:

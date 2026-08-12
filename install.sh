@@ -1277,6 +1277,12 @@ if [ "$CONFIGURE_BOLT" = "true" ]; then
         useradd -r -m -s /bin/bash bolt
         log_ok "Created bolt service user"
     fi
+    # OpenBolt script/task upload does `mkdir -m 700 $tmpdir/<uuid>` (no -p).
+    # CIS mounts /tmp noexec, so inventory tmpdir cannot be /tmp. Create the
+    # executable home tmpdir at install time so Stage/Orchestration do not
+    # fail with TMPDIR_ERROR on first use.
+    install -d -o bolt -g bolt -m 0700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
+    log_ok "Created /home/bolt/.bolt/tmp (OpenBolt ssh.tmpdir)"
 
     BOLT_DIR="/etc/puppetlabs/bolt"
     install -d -o root -g bolt -m 0750 "$BOLT_DIR"

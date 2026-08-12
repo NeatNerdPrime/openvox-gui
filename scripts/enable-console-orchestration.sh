@@ -36,6 +36,9 @@ if ! id bolt &>/dev/null; then
   useradd -r -m -s /bin/bash bolt
   echo "Created user bolt"
 fi
+# OpenBolt `mkdir -m 700 $tmpdir/<uuid>` has no -p. CIS /tmp is noexec.
+install -d -o bolt -g bolt -m 0700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
+echo "Created /home/bolt/.bolt/tmp (OpenBolt ssh.tmpdir)"
 
 install -d -o root -g bolt -m 0750 "$BOLT_DIR"
 install -d -o root -g bolt -m 0750 "$BOLT_DIR/modules"
@@ -117,6 +120,7 @@ config:
     private-key: ${BOLT_DIR}/id_bolt
     host-key-check: false
     tty: true
+    tmpdir: /home/bolt/.bolt/tmp
 
 # Bolt inventory
 groups:
@@ -146,4 +150,6 @@ echo "  sudo -E -u bolt $BOLT_BIN inventory show --project $BOLT_DIR"
 echo "  sudo -u bolt $BOLT_BIN command run uptime -t enc --project $BOLT_DIR"
 echo
 echo "Then put $BOLT_DIR/id_bolt.pub in authorized_keys for user bolt on every estate host."
+echo "Every target also needs /home/bolt/.bolt/tmp (700 bolt:bolt) — classify"
+echo "profiles::base::bolt_user, or: install -d -o bolt -g bolt -m 700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp"
 echo "If you have two consoles, copy the same id_bolt private key to both."

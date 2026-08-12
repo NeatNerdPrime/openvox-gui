@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.11.0-alpha.46**
+**OpenVox GUI Version 3.11.0-alpha.47**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -324,7 +324,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.11.0-alpha.46"}` if everything is working.
+You should see `{"status":"ok","version":"3.11.0-alpha.47"}` if everything is working.
 
 ---
 
@@ -729,7 +729,7 @@ When **Settings → Cluster** is set to **clustered**, OpenVox GUI can:
 
 3. **Code deployment for many servers**  
    - Configure multiple deploy targets (usually compilers).  
-   - **Stage** code into a staging codedir on all targets (OpenBolt uploads `r10k-stage-activate.sh` into `/home/bolt/.bolt/tmp` — not `/tmp`, which CIS mounts `noexec` — and runs it as root on each FQDN).  
+   - **Stage** code into a staging codedir on all targets (OpenBolt uploads `r10k-stage-activate.sh` into `/home/bolt/.bolt/tmp` — not `/tmp`, which CIS mounts `noexec` — and runs it as root on each FQDN). `install.sh` and `enable-console-orchestration.sh` create that directory on the console; compilers need the same path via `profiles::base::bolt_user` (or the one-shot `install -d` in TROUBLESHOOTING).  
    - **Activate** staged code to the live codedir so cutover is coordinated across the set.  
    - Compilers need r10k + `r10k.yaml` and SSH as `bolt@` (`profiles::base::bolt_user`). The console is not a compiler — Stage will not silently r10k the GUI host.  
    - Single-host “Deploy Now” remains for classic r10k on the local box.

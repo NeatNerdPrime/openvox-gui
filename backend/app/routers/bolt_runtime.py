@@ -66,7 +66,12 @@ def find_bolt() -> Optional[str]:
     return shutil.which("bolt")
 
 
-_SINGLETON_INVENTORY = """---
+# Must exist on every target before `bolt script run`. OpenBolt uses
+# `mkdir -m 700 $tmpdir/<uuid>` (no -p). CIS /tmp is noexec so this cannot
+# be /tmp. Stage/Activate pre-creates this path as root.
+BOLT_REMOTE_TMPDIR = "/home/bolt/.bolt/tmp"
+
+_SINGLETON_INVENTORY = f"""---
 # Same shape as openvox.pdxc-it.twitter.biz (working singleton).
 # OpenVoxDB is used by the GUI (resolve_targets), not Bolt's puppetdb plugin.
 # tmpdir is NOT /tmp: CIS mounts /tmp (and often /var/tmp) noexec, which
@@ -78,7 +83,7 @@ config:
     host-key-check: false
     tty: true
     connect-timeout: 10
-    tmpdir: /home/bolt/.bolt/tmp
+    tmpdir: {BOLT_REMOTE_TMPDIR}
 groups:
   - name: enc
     targets:
