@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import re
 import socket
 """
 Configuration API - Manage PuppetServer, PuppetDB, Hiera, and application settings.
@@ -1058,21 +1059,102 @@ class PuppetLookupRequest(BaseModel):
     environment: Optional[str] = None
 
 
+_LOOKUP_KEY_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_:.-]*$")
+_LOOKUP_NODE_RE = re.compile(
+    r"^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+)
+_LOOKUP_ENV_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+
+
+def _validate_lookup_request(request: PuppetLookupRequest) -> None:
+    key = (request.key or "").strip()
+    if not _LOOKUP_KEY_RE.match(key):
+        raise HTTPException(status_code=400, detail=f"Invalid Hiera key: {request.key!r}")
+    if request.node and request.node.strip():
+        if not _LOOKUP_NODE_RE.match(request.node.strip()):
+            raise HTTPException(status_code=400, detail=f"Invalid node: {request.node!r}")
+    if request.environment and request.environment.strip():
+        if not _LOOKUP_ENV_RE.match(request.environment.strip()):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid environment: {request.environment!r}"
+            )
+
+
+def _lookup_argv(request: PuppetLookupRequest) -> List[str]:
+    cmd = ["/opt/puppetlabs/bin/puppet", "lookup", "--explain", request.key.strip()]
+    if request.node and request.node.strip():
+        cmd.extend(["--node", request.node.strip()])
+    if request.environment and request.environment.strip():
+        cmd.extend(["--environment", request.environment.strip()])
+    return cmd
+
+
 @router.post("/lookup")
 async def puppet_lookup(
     request: PuppetLookupRequest,
     _user: str = Depends(_ADMIN_ONLY),
 ):
-    """Run puppet lookup --explain and return the trace output."""
-    import subprocess, shlex
+    """Run puppet lookup --explain.
+
+    Clustered consoles have no control-repo tree. Run the same command
+    on the first code-deploy target via Bolt so the explain matches
+    ``puppet lookup`` on a compiler.
+    """
+    import shlex
+    import subprocess
+
+    _validate_lookup_request(request)
+    argv = _lookup_argv(request)
+
+    from ..services.cluster_config import deploy_targets, is_clustered
+
+    if is_clustered():
+        targets = deploy_targets()
+        if not targets:
+            raise HTTPException(
+                status_code=400,
+                detail="Clustered mode has no code_deploy_targets for lookup.",
+            )
+        host = targets[0]
+        remote = " ".join(shlex.quote(p) for p in argv)
+        from .bolt_runtime import run_bolt_command
+        from .deploy import _extract_bolt_json, _script_body
+
+        bolt = await run_bolt_command(
+            [
+                "command", "run", remote,
+                "--targets", host,
+                "--run-as", "root",
+                "--no-tty",
+                "--format", "json",
+            ],
+            timeout=45,
+        )
+        data = _extract_bolt_json(bolt.get("stdout") or "")
+        item = {}
+        if isinstance(data, dict) and data.get("items"):
+            item = data["items"][0] if isinstance(data["items"][0], dict) else {}
+        value = item.get("value") if isinstance(item.get("value"), dict) else {}
+        body = _script_body(value)
+        err = value.get("_error") if isinstance(value.get("_error"), dict) else {}
+        rc = value.get("exit_code")
+        if rc is None:
+            rc = bolt.get("returncode")
+        header = f"# puppet lookup on {host} (live codedir)\n# {' '.join(argv)}\n\n"
+        return {
+            "key": request.key,
+            "node": request.node,
+            "environment": request.environment,
+            "host": host,
+            "source": "compiler",
+            "output": header + (body or ""),
+            "stderr": (err.get("msg") or "") if not body else "",
+            "exit_code": int(rc) if rc is not None else -1,
+        }
+
     puppet_bin = "/opt/puppetlabs/bin/puppet"
-
-    cmd = ["sudo", puppet_bin, "lookup", "--explain", request.key]
-    if request.node:
-        cmd.extend(["--node", request.node])
-    if request.environment:
-        cmd.extend(["--environment", request.environment])
-
+    cmd = ["sudo"] + argv
     try:
         result = subprocess.run(
             cmd,
@@ -1084,6 +1166,8 @@ async def puppet_lookup(
             "key": request.key,
             "node": request.node,
             "environment": request.environment,
+            "host": socket.gethostname(),
+            "source": "local",
             "output": result.stdout,
             "stderr": result.stderr,
             "exit_code": result.returncode,

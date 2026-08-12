@@ -558,6 +558,12 @@ export function LookupTrace() {
         <Grid.Col span={{ base: 12, md: isRobots ? 7 : 12 }}>
       <Card withBorder shadow="sm" padding="md" h="100%">
         <Title order={4} mb="md">Hiera Lookup</Title>
+        <Text size="xs" c="dimmed" mb="sm">
+          Clustered consoles run <Code>puppet lookup --explain</Code> on a
+          compiler (live codedir), not on this GUI host. Optional Node
+          interpolates the hierarchy; leave it empty to match
+          <Code>puppet lookup message</Code> on the compiler.
+        </Text>
         <Group align="end" grow>
           <TextInput
             label="Hiera Key"

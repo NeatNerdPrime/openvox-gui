@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.56] - 2026-08-12 (fix — Hiera Lookup on a compiler)
+
+### Fixed
+- **Data | Hiera Lookup** ran `puppet lookup` on the console, so
+  `data/common.yaml` was "Path not found" even when compilers had the
+  key. Clustered mode now Bolt-runs the same command on the first
+  code-deploy target (`--environment`, optional `--node`).
+
 ## [3.11.0-alpha.55] - 2026-08-12 (fix — Hiera Data Files from compiler)
 
 ### Changed
