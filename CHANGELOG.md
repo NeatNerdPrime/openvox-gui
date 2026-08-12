@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.51] - 2026-08-12 (fix — do not log proxy passwords; R10K_TOKEN)
+
+### Fixed
+- Stage start line logged the full `HTTPS_PROXY` including the Squid
+  password. Logs now redact `user:***@host`. Rotate that proxy credential.
+- Puppetfile `mod 'cisecurity', :git => "https://#{ENV['R10K_TOKEN']}@…"`
+  becomes `https://@github.com/…` when Bolt's non-login sudo has no token.
+  Helper now exports `R10K_TOKEN` from the control-repo URL in `r10k.yaml`
+  and sets `GIT_TERMINAL_PROMPT=0` so git fails fast instead of hanging.
+
 ## [3.11.0-alpha.50] - 2026-08-12 (fix — readable Stage log + Forge proxy)
 
 ### Fixed

@@ -468,6 +468,7 @@ _PREP_BOLT_TMPDIR = (
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]|\x1b\][^\x07]*\x07|\x00")
+_CREDS_RE = re.compile(r"(https?://)([^/@\s]+):([^/@\s]+)@", re.I)
 _CLI_OVERRIDE_RE = re.compile(r"CLI arguments .* might be overridden", re.I)
 _SKIP_BODY = (
     "error during concurrent deploy of a module",
@@ -476,7 +477,8 @@ _SKIP_BODY = (
 
 
 def _strip_ctrl(text: str) -> str:
-    return _ANSI_RE.sub("", text or "").replace("\x00", "")
+    cleaned = _ANSI_RE.sub("", text or "").replace("\x00", "")
+    return _CREDS_RE.sub(r"\1\2:***@", cleaned)
 
 
 def _extract_bolt_json(blob: str) -> Optional[dict]:
@@ -539,6 +541,8 @@ def _host_headline(target: str, ok: bool, exit_code: Any, body: str) -> str:
         )
     elif "missing_r10k_yaml" in low:
         reason = " — missing /etc/puppetlabs/r10k/r10k.yaml"
+    elif "could not read password for" in low or "https://@github.com" in low:
+        reason = " — git module URL missing R10K_TOKEN (https://@github.com/…)"
     elif "missing_r10k" in low:
         reason = " — r10k not installed"
     return f"── {target}  {mark}  exit {exit_code}{reason}"

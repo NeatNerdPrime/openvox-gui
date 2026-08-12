@@ -285,6 +285,32 @@ def test_flatten_bolt_json_surfaces_script_stderr():
     assert any("noexec" in ln.lower() for ln in lines)
 
 
+def test_flatten_redacts_proxy_password():
+    d = _load_deploy()
+    payload = {
+        "items": [
+            {
+                "target": "ovcompiler1.example.com",
+                "status": "failure",
+                "value": {
+                    "exit_code": 1,
+                    "merged_output": (
+                        "r10k-stage-activate.sh: start "
+                        "proxy=http://user:s3cret@httpproxy.example.com:3128\n"
+                    ),
+                },
+            }
+        ]
+    }
+    _, lines, _ = d._flatten_bolt_json(
+        {"returncode": 1, "stdout": json.dumps(payload), "stderr": ""},
+        ["ovcompiler1.example.com"],
+    )
+    blob = "\n".join(lines)
+    assert "s3cret" not in blob
+    assert "user:***@" in blob
+
+
 def test_flatten_bolt_json_strips_ansi_and_raw_blob():
     d = _load_deploy()
     payload = {

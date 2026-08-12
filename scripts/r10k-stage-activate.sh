@@ -38,7 +38,16 @@ _log() {
   printf 'r10k-stage-activate.sh: %s\n' "$*" | tee -a "$LOG" >&2
 }
 
-_log "start uid=$(id -u) user=$(id -un) host=$(hostname -f 2>/dev/null || hostname) args=$* proxy=${HTTPS_PROXY:-${https_proxy:-none}}"
+_redact_proxy() {
+  printf '%s' "$1" | sed -E 's#(https?://)[^/@:]+:[^/@]+@#\1***:***@#'
+}
+
+# Never prompt; a missing GitHub token must fail fast, not hang Stage.
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/true
+
+_px="${HTTPS_PROXY:-${https_proxy:-none}}"
+_log "start uid=$(id -u) user=$(id -un) host=$(hostname -f 2>/dev/null || hostname) args=$* proxy=$(_redact_proxy "$_px")"
 
 MODE="${1:-}"
 shift || true
@@ -47,6 +56,13 @@ STAGING="${OPENVOX_STAGING_CODEDIR:-/etc/puppetlabs/code-staging}"
 LIVE="${OPENVOX_LIVE_CODEDIR:-/etc/puppetlabs/code}"
 R10K_YAML="${OPENVOX_R10K_YAML:-/etc/puppetlabs/r10k/r10k.yaml}"
 R10K_BIN="${OPENVOX_R10K_BIN:-}"
+
+# Puppetfile uses https://#{ENV['R10K_TOKEN']}@github.com/…  An empty token
+# becomes https://@github.com/… and git tries to prompt (hangs Stage).
+if [ -z "${R10K_TOKEN:-}" ] && [ -f "$R10K_YAML" ]; then
+  R10K_TOKEN=$(sed -n 's#.*https://\([^:/@]*\)@github.com.*#\1#p' "$R10K_YAML" | head -1)
+  export R10K_TOKEN
+fi
 
 if [ -z "$R10K_BIN" ]; then
   if command -v r10k >/dev/null 2>&1; then
