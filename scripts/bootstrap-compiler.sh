@@ -10,10 +10,14 @@
 #   - r10k via AIO Ruby gem (/opt/puppetlabs/puppet/bin/r10k)
 #   - /etc/puppetlabs/r10k/ (does NOT invent a control-repo URL)
 #   - /home/bolt/.bolt/tmp (CIS /tmp is noexec; OpenBolt script run)
+#   - optional ENC: enc.py + OPENVOX_GUI_API_BASE + puppetserver drop-in
+#     (via bootstrap-compiler-enc.sh when --enc-api-base is set)
 #
 # Usage (on the compiler):
 #   sudo ./scripts/bootstrap-compiler.sh
 #   sudo ./scripts/bootstrap-compiler.sh --yaml /path/to/r10k.yaml
+#   sudo ./scripts/bootstrap-compiler.sh \
+#     --enc-api-base 'https://gui1:4567,https://gui2:4567'
 #
 # Usage (from a console, after bolt@ works):
 #   sudo -u bolt bolt script run /opt/openvox-gui/scripts/bootstrap-compiler.sh \
@@ -31,6 +35,8 @@ for f in /etc/profile.d/*proxy*.sh /etc/profile.d/noproxy.sh; do
 done
 
 YAML_SRC=""
+ENC_API_BASE=""
+ENC_SRC=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --yaml)
@@ -39,6 +45,22 @@ while [ $# -gt 0 ]; do
       ;;
     --yaml=*)
       YAML_SRC="${1#--yaml=}"
+      shift
+      ;;
+    --enc-api-base)
+      ENC_API_BASE="${2:-}"
+      shift 2 || true
+      ;;
+    --enc-api-base=*)
+      ENC_API_BASE="${1#--enc-api-base=}"
+      shift
+      ;;
+    --enc-src)
+      ENC_SRC="${2:-}"
+      shift 2 || true
+      ;;
+    --enc-src=*)
+      ENC_SRC="${1#--enc-src=}"
       shift
       ;;
     *)
@@ -113,6 +135,32 @@ if [ ! -f /etc/puppetlabs/r10k/environment ] && [ -n "${R10K_TOKEN:-}" ]; then
   printf 'R10K_TOKEN=%s\n' "$R10K_TOKEN" > /etc/puppetlabs/r10k/environment
   chmod 0600 /etc/puppetlabs/r10k/environment
   echo "bootstrap-compiler.sh: wrote /etc/puppetlabs/r10k/environment (0600)"
+fi
+
+# ENC (external_nodes) — only when operator passed console URL(s). Compilers
+# need this; consoles do not (unless they also compile catalogs).
+if [ -n "$ENC_API_BASE" ]; then
+  HERE="$(cd "$(dirname "$0")" && pwd)"
+  ENC_BOOT="${HERE}/bootstrap-compiler-enc.sh"
+  if [ ! -x "$ENC_BOOT" ] && [ -f /opt/openvox-gui/scripts/bootstrap-compiler-enc.sh ]; then
+    ENC_BOOT=/opt/openvox-gui/scripts/bootstrap-compiler-enc.sh
+  fi
+  if [ -f "$ENC_BOOT" ]; then
+    ENC_ARGS=(--api-base "$ENC_API_BASE")
+    if [ -n "$ENC_SRC" ]; then
+      ENC_ARGS+=(--enc-src "$ENC_SRC")
+    elif [ -f "${HERE}/enc.py" ]; then
+      ENC_ARGS+=(--enc-src "${HERE}/enc.py")
+    elif [ -f /opt/openvox-gui/scripts/enc.py ]; then
+      ENC_ARGS+=(--enc-src /opt/openvox-gui/scripts/enc.py)
+    fi
+    echo "bootstrap-compiler.sh: wiring ENC (bootstrap-compiler-enc.sh)"
+    bash "$ENC_BOOT" "${ENC_ARGS[@]}"
+  else
+    echo "bootstrap-compiler.sh: WARNING: bootstrap-compiler-enc.sh not found; ENC not wired" >&2
+  fi
+else
+  echo "bootstrap-compiler.sh: ENC skipped (pass --enc-api-base 'https://gui1:4567,https://gui2:4567')"
 fi
 
 echo "bootstrap-compiler.sh: done on $(hostname -f 2>/dev/null || hostname)"

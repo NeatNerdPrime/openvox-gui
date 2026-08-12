@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.1-alpha.2**
+**OpenVox GUI Version 3.11.1-alpha.3**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.1-alpha.2"}
+   # Should return: {"status":"ok","version":"3.11.1-alpha.3"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1200,6 +1200,40 @@ These commands run privileged operations (reading configs, restarting services).
 - Check on the server: `sudo journalctl -u puppet -n 50 --output short-iso` and `sudo journalctl -t puppet-agent -n 50 --output short-iso`.
 
 ## Live fleet / ENC / Inventory membership
+
+### Problem: Classification | Common Classes dropdown is empty
+- Discovery is **not** from the ENC SQLite/Postgres DB — it is API-first from compilers:
+  1. `GET /puppet/v3/environment_classes` on `OPENVOX_GUI_PUPPET_SERVER_HOST` (compiler VIP) and configured compiler FQDNs
+  2. Bolt `list-classes-remote.py` on a code-deploy target if HTTP fails
+  3. Local codedir only as last resort (dedicated consoles have none)
+- **Install/update must ship** `scripts/list-classes-remote.py` (install.sh / update_local.sh / deploy.sh). If missing under `/opt/openvox-gui/scripts/`, re-run update — do not ad-hoc scp forever.
+- Set **`OPENVOX_GUI_PUPPET_SERVER_HOST`** to the **compiler VIP**, not the console hostname.
+- Stage/Activate at least once so compilers have modules under `/etc/puppetlabs/code/environments/<env>/`.
+- Manual workaround in UI: “Add class by name” (3.11.1-alpha.2+).
+
+### Problem: Compilers ignore ENC classes (node_terminus not wired)
+- **enc.py runs only on compilers** at catalog compile. Consoles store classification; they do not need `external_nodes` unless they also compile.
+- Install-time (3.11.1-alpha.3+):
+  - Co-located / single-server: `install.sh` with `CONFIGURE_ENC=auto` runs `bootstrap-compiler-enc.sh`.
+  - Multi-compiler: from a console after `bolt@` works:
+    ```bash
+    sudo -u bolt bolt script run /opt/openvox-gui/scripts/bootstrap-compiler-enc.sh \
+      --targets ovcompiler1.example.com,ovcompiler2.example.com \
+      --run-as root --no-tty --project /etc/puppetlabs/bolt -- \
+      --api-base 'https://openvox.site1.example.com:4567,https://openvox.site2.example.com:4567' \
+      --enc-src /opt/openvox-gui/scripts/enc.py
+    ```
+  - Or fold into first-install: `bootstrap-compiler.sh --enc-api-base 'https://…'`.
+- Verify on a compiler:
+  ```bash
+  # shellcheck: source sysconfig then smoke
+  set -a; . /etc/sysconfig/openvox-enc; set +a
+  /usr/local/sbin/enc.py someagent.example.com
+  grep -E 'node_terminus|external_nodes' /etc/puppetlabs/puppet/puppet.conf
+  systemctl cat puppetserver | grep -i EnvironmentFile
+  ```
+- Restart **puppetserver** (not the whole host) after changing ENC env or drop-in.
+- Multi-console: shared Postgres for `OPENVOX_GUI_DATABASE_URL` so both GUIs classify the same data; comma-separated `OPENVOX_GUI_API_BASE` is failover only, not split-brain.
 
 ### Problem: ENC Unclassified or Inventory still lists hosts after `ca clean`
 - **3.10.4** defines the live fleet as **active PuppetDB ∩ signed CA** (`get_live_nodes`). CA-cleaned hosts must not appear on Nodes, Inventory, ENC Unclassified, Dashboard, or Node Health. Open **Classification (ENC)** once after upgrade so SQLite reconciliation prunes stale ENC rows.

@@ -48,12 +48,21 @@ APP_DEBUG="false"
 
 PUPPET_SERVER_HOST="$(hostname -f)"
 PUPPET_SERVER_PORT="8140"
+# Clustered / dedicated console: CA VIP (not the compiler LB). Empty = same as server host.
+PUPPET_CA_HOST=""
+PUPPET_CA_PORT="8140"
 PUPPETDB_HOST="$(hostname -f)"
 PUPPETDB_PORT="8081"
 
 PUPPET_SSL_CERT="/etc/puppetlabs/puppet/ssl/certs/$(hostname -f).pem"
 PUPPET_SSL_KEY="/etc/puppetlabs/puppet/ssl/private_keys/$(hostname -f).pem"
 PUPPET_SSL_CA="/etc/puppetlabs/puppet/ssl/certs/ca.pem"
+
+# ENC: wire external_nodes on this host when local puppetserver is present.
+# auto | true | false — auto configures when puppetserver unit or conf.d exists.
+CONFIGURE_ENC="auto"
+# Comma-separated GUI API URLs for enc.py (OPENVOX_GUI_API_BASE). Empty = https://localhost:APP_PORT
+ENC_API_BASE=""
 
 # SSL for the GUI itself (incoming connections on port 4567)
 SSL_ENABLED="false"
@@ -595,11 +604,21 @@ if [ "$SILENT" != "true" ]; then
     echo
     
     echo -e "${BOLD}Puppet Settings${NC}"
-    prompt PUPPET_SERVER_HOST "PuppetServer hostname" "$PUPPET_SERVER_HOST"
+    echo "  Clustered estates: set PuppetServer hostname to the *compiler VIP*"
+    echo "  (agents compile there). Set CA host to the CA VIP if different."
+    prompt PUPPET_SERVER_HOST "PuppetServer hostname (compiler VIP if clustered)" "$PUPPET_SERVER_HOST"
+    prompt PUPPET_CA_HOST "CA hostname (blank = same as PuppetServer)" "$PUPPET_CA_HOST"
     prompt PUPPETDB_HOST "PuppetDB hostname" "$PUPPETDB_HOST"
     prompt PUPPET_SSL_CERT "SSL client certificate" "$PUPPET_SSL_CERT"
     prompt PUPPET_SSL_KEY "SSL client private key" "$PUPPET_SSL_KEY"
     prompt PUPPET_SSL_CA "SSL CA certificate" "$PUPPET_SSL_CA"
+    echo
+    echo -e "${BOLD}ENC (classification at compile time)${NC}"
+    echo "  When this host runs puppetserver (single-server or co-located compiler),"
+    echo "  install wires node_terminus=exec + enc.py. Compilers in a multi-DC"
+    echo "  estate use scripts/bootstrap-compiler-enc.sh from the console."
+    prompt CONFIGURE_ENC "Configure local ENC (auto|true|false)" "$CONFIGURE_ENC"
+    prompt ENC_API_BASE "ENC API base URL(s), comma-sep (blank=localhost:port)" "$ENC_API_BASE"
     echo
     
     echo -e "${BOLD}GUI SSL (incoming connections)${NC}"
@@ -720,8 +739,29 @@ BUILD_ID="${BASE_VERSION}+install-$(date +%Y%m%d%H%M%S)"
 echo "$BUILD_ID" > "${INSTALL_DIR}/VERSION.build"
 log_ok "Wrote initial build version: ${BUILD_ID}"
 
-# Copy scripts
-for script in enc.py manage_users.py deploy.sh r10k-deploy.sh r10k-stage-activate.sh update_local.sh sync-openvox-repo.sh generate_fleet_health_report.py ca-reject-csr.sh enable-console-orchestration.sh bootstrap-compiler.sh hiera-list-remote.py list-classes-remote.py; do
+# Copy scripts — canonical runtime set (keep in sync with update_local.sh + deploy.sh).
+# Missed scripts become "ad-hoc bugfixes" after install; never omit shipped helpers.
+for script in \
+    enc.py \
+    manage_users.py \
+    deploy.sh \
+    update_local.sh \
+    update_remote.sh \
+    sync-openvox-repo.sh \
+    r10k-deploy.sh \
+    r10k-stage-activate.sh \
+    ensure-sudoers.sh \
+    generate_fleet_health_report.py \
+    ca-reject-csr.sh \
+    enable-console-orchestration.sh \
+    fix-console-bolt-inventory.sh \
+    apply-singleton-bolt-layout.sh \
+    bootstrap-compiler.sh \
+    bootstrap-compiler-enc.sh \
+    hiera-list-remote.py \
+    list-classes-remote.py \
+    generate_bolt_token.py
+do
     if [ -f "${SCRIPT_DIR}/scripts/${script}" ]; then
         cp "${SCRIPT_DIR}/scripts/${script}" "${INSTALL_DIR}/scripts/${script}"
         chmod +x "${INSTALL_DIR}/scripts/${script}"
@@ -1041,9 +1081,12 @@ OPENVOX_GUI_APP_PORT=${APP_PORT}
 OPENVOX_GUI_DEBUG=${APP_DEBUG}
 OPENVOX_GUI_SECRET_KEY=${SECRET_KEY}
 
-# PuppetServer
+# PuppetServer — catalog compile endpoint (compiler VIP in clustered estates)
 OPENVOX_GUI_PUPPET_SERVER_HOST=${PUPPET_SERVER_HOST}
 OPENVOX_GUI_PUPPET_SERVER_PORT=${PUPPET_SERVER_PORT}
+# CA VIP when different from compiler VIP (clustered / dedicated console). Leave empty if co-located.
+OPENVOX_GUI_PUPPET_CA_HOST=${PUPPET_CA_HOST}
+OPENVOX_GUI_PUPPET_CA_PORT=${PUPPET_CA_PORT}
 OPENVOX_GUI_PUPPET_SSL_CERT=${PUPPET_SSL_CERT}
 OPENVOX_GUI_PUPPET_SSL_KEY=${PUPPET_SSL_KEY}
 OPENVOX_GUI_PUPPET_SSL_CA=${PUPPET_SSL_CA}
@@ -1080,11 +1123,45 @@ OPENVOX_GUI_FLEET_HEALTH_REPORT_OUTPUT_DIR=${INSTALL_DIR}/data/reports
 ENVEOF
 log_ok "Generated ${INSTALL_DIR}/config/.env"
 
-# Update ENC script API base URL
-# Use localhost so it works whether the backend bound to IPv4, IPv6, or dual-stack.
-if [ -f "${INSTALL_DIR}/scripts/enc.py" ]; then
-    sed -i "s|API_BASE = .*|API_BASE = \"https://localhost:${APP_PORT}\"|" "${INSTALL_DIR}/scripts/enc.py"
-    log_ok "Updated ENC script API base URL to https://localhost:${APP_PORT}"
+# ENC for compilers uses OPENVOX_GUI_API_BASE via EnvironmentFile (see
+# scripts/bootstrap-compiler-enc.sh). Do NOT sed-edit enc.py — it reads env.
+# Local co-located / single-server: configure ENC when puppetserver is here.
+_do_enc="false"
+case "${CONFIGURE_ENC}" in
+    true|yes|1) _do_enc="true" ;;
+    false|no|0) _do_enc="false" ;;
+    auto|*)
+        if systemctl list-unit-files puppetserver.service &>/dev/null \
+            || [ -d /etc/puppetlabs/puppetserver/conf.d ]; then
+            _do_enc="true"
+        fi
+        ;;
+esac
+if [ "$_do_enc" = "true" ]; then
+    _enc_base="${ENC_API_BASE}"
+    if [ -z "$_enc_base" ]; then
+        _scheme="http"
+        [ "$SSL_ENABLED" = "true" ] && _scheme="https"
+        _enc_base="${_scheme}://localhost:${APP_PORT}"
+    fi
+    if [ -x "${INSTALL_DIR}/scripts/bootstrap-compiler-enc.sh" ]; then
+        log_info "Configuring local ENC (external_nodes) via bootstrap-compiler-enc.sh"
+        if bash "${INSTALL_DIR}/scripts/bootstrap-compiler-enc.sh" \
+            --api-base "${_enc_base}" \
+            --enc-src "${INSTALL_DIR}/scripts/enc.py" \
+            --enc-dest "${INSTALL_DIR}/scripts/enc.py" \
+            --force
+        then
+            log_ok "Local ENC wired (OPENVOX_GUI_API_BASE=${_enc_base})"
+        else
+            log_warn "ENC bootstrap failed — set node_terminus/external_nodes manually"
+        fi
+    else
+        log_warn "bootstrap-compiler-enc.sh missing — ENC not configured automatically"
+    fi
+else
+    log_info "Local ENC skipped (CONFIGURE_ENC=${CONFIGURE_ENC}; dedicated console?)"
+    log_info "  Compilers: bolt script run ${INSTALL_DIR}/scripts/bootstrap-compiler-enc.sh --api-base 'https://gui:4567,...'"
 fi
 
 # ─── Step 7: Systemd Service ─────────────────────────────────
@@ -1648,9 +1725,19 @@ if [ -d "/etc/letsencrypt/live" ]; then
 fi
 echo
 echo -e "  ${BOLD}ENC Integration:${NC}"
-echo -e "    Add to puppet.conf [server] section:"
+echo -e "    Compilers (catalog compile hosts) need enc.py at compile time."
+echo -e "    Single-server / co-located: install.sh auto-wires when puppetserver is local"
+echo -e "      (CONFIGURE_ENC=auto|true) → node_terminus=exec + EnvironmentFile for API base."
+echo -e "    Dedicated consoles: do not run external_nodes here; push ENC to compilers:"
+echo -e "      sudo -u bolt bolt script run ${INSTALL_DIR}/scripts/bootstrap-compiler-enc.sh \\"
+echo -e "        --targets <compilers> --run-as root --no-tty --project /etc/puppetlabs/bolt -- \\"
+echo -e "        --api-base 'https://$(hostname -f):${APP_PORT}' --enc-src ${INSTALL_DIR}/scripts/enc.py"
+echo -e "    Multi-console: comma-separate both GUI URLs in --api-base (shared ENC DB required)."
+echo -e "    Manual puppet.conf [server] (if you skipped auto-config):"
 echo -e "      node_terminus = exec"
 echo -e "      external_nodes = ${INSTALL_DIR}/scripts/enc.py"
+echo -e "    Class picker / Hiera on dedicated consoles need OpenBolt + Stage targets;"
+echo -e "    list-classes-remote.py and hiera-list-remote.py are installed under scripts/."
 echo
 
 if [ "$CONFIGURE_PKG_REPO" = "true" ]; then

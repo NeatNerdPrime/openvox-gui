@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.11.1-alpha.2**
+**OpenVox GUI Version 3.11.1-alpha.3**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -289,11 +289,16 @@ SERVICE_USER="puppet"
 APP_PORT="4567"
 
 # Your OpenVox infrastructure
+# Single-server: FQDN of this host. Clustered: *compiler VIP* (not console).
 PUPPET_SERVER_HOST="openvox.yourcompany.com"    # Change this!
 PUPPETDB_HOST="openvox.yourcompany.com"         # Usually same as OpenVox Server
 # Dedicated console (GUI not on the CA): set the CA VIP. Do NOT install
 # openvox-server / puppetserver on the console — the GUI uses the CA HTTP API.
 # PUPPET_CA_HOST="ovca.example.com"
+# ENC: auto-wires external_nodes when local puppetserver is present.
+# CONFIGURE_ENC="auto"
+# Multi-console failover for enc.py on compilers (shared ENC DB required):
+# ENC_API_BASE="https://openvox.site1.example.com:4567,https://openvox.site2.example.com:4567"
 
 # Authentication
 AUTH_BACKEND="local"
@@ -324,7 +329,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.11.1-alpha.2"}` if everything is working.
+You should see `{"status":"ok","version":"3.11.1-alpha.3"}` if everything is working.
 
 ---
 
@@ -732,12 +737,22 @@ When **Settings → Cluster** is set to **clustered**, OpenVox GUI can:
    - **Stage** code into a staging codedir on all targets (OpenBolt uploads `r10k-stage-activate.sh` into `/home/bolt/.bolt/tmp` — not `/tmp`, which CIS mounts `noexec` — and runs it as root on each FQDN). `install.sh` and `enable-console-orchestration.sh` create that directory on the console; compilers need the same path via `profiles::base::bolt_user` (or the one-shot `install -d` in TROUBLESHOOTING).  
    - **Activate** staged code to the live codedir so cutover is coordinated across the set.  
    - Compilers need r10k + `r10k.yaml` and SSH as `bolt@` (`profiles::base::bolt_user`). The console is not a compiler — Stage will not silently r10k the GUI host.  
-   - **First install (manual, until Puppet owns it):** on each compiler run `scripts/bootstrap-compiler.sh` (AIO `gem install r10k`, git, Bolt tmpdir). Copy `/etc/puppetlabs/r10k/r10k.yaml` from a working compiler — the script will not invent a control-repo URL. From a console after `bolt@` works: `bolt script run /opt/openvox-gui/scripts/bootstrap-compiler.sh --targets <compilers> --run-as root --no-tty`. `install.sh` also installs r10k on the console when AIO Ruby is present.
+   - **First install (manual, until Puppet owns it):** on each compiler run `scripts/bootstrap-compiler.sh` (AIO `gem install r10k`, git, Bolt tmpdir). Copy `/etc/puppetlabs/r10k/r10k.yaml` from a working compiler — the script will not invent a control-repo URL. From a console after `bolt@` works: `bolt script run /opt/openvox-gui/scripts/bootstrap-compiler.sh --targets <compilers> --run-as root --no-tty`. Pass `--enc-api-base 'https://gui1:4567,https://gui2:4567'` (or run `bootstrap-compiler-enc.sh` alone) so compilers get `enc.py`, `OPENVOX_GUI_API_BASE`, and `node_terminus=exec`. `install.sh` also installs r10k on the console when AIO Ruby is present, and auto-wires ENC when local puppetserver is detected (`CONFIGURE_ENC=auto`).
    - Single-host “Deploy Now” remains for classic r10k on the local box.  
    - **Data | Hiera Data Files** on a dedicated console reads the live
-     codedir on the first code-deploy target via Bolt. Do not copy the
+     codedir on the first code-deploy target via Bolt (`hiera-list-remote.py`).
+     **Classification | Common Classes** uses the compiler VIP
+     (`OPENVOX_GUI_PUPPET_SERVER_HOST` → `/puppet/v3/environment_classes`)
+     with Bolt fallback (`list-classes-remote.py`). Do not copy the
      control repo onto the GUI host. The stock
      `/etc/puppetlabs/puppet/hiera.yaml` is unused.
+   - **Install-time knobs (install.conf):** `PUPPET_SERVER_HOST` = compiler VIP;
+     `PUPPET_CA_HOST` = CA VIP when different; `CONFIGURE_ENC` / `ENC_API_BASE`
+     for local or multi-console ENC wiring. All of
+     `list-classes-remote.py`, `hiera-list-remote.py`,
+     `bootstrap-compiler.sh`, and `bootstrap-compiler-enc.sh` are copied
+     into `/opt/openvox-gui/scripts/` by `install.sh` / `update_local.sh` /
+     `deploy.sh` — no ad-hoc scp after a “missing script” bug.
 
 4. **Classification segmentation**  
    Seeded ENC groups such as **Puppet Compiler** and **PuppetDB**, with configured FQDNs attached, so infrastructure roles are first-class in **Classification and Code → Classification**.

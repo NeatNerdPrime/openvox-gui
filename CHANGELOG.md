@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.3] - 2026-08-12 (fix — install-time parity for shipped features)
+
+### Fixed
+- **Install/update/deploy script whitelist** now ships the full runtime set
+  (no more ad-hoc scp for features we already fixed in place):
+  `list-classes-remote.py`, `hiera-list-remote.py`,
+  `bootstrap-compiler.sh`, `bootstrap-compiler-enc.sh`,
+  `ensure-sudoers.sh`, `fix-console-bolt-inventory.sh`,
+  `apply-singleton-bolt-layout.sh`, `generate_bolt_token.py`, etc.
+- **ENC is no longer a tribal post-install step:**
+  - New `scripts/bootstrap-compiler-enc.sh` installs `enc.py`, writes
+    `/etc/sysconfig/openvox-enc` (`OPENVOX_GUI_API_BASE`), systemd drop-in
+    for puppetserver, and `node_terminus=exec` / `external_nodes`
+  - `bootstrap-compiler.sh --enc-api-base` folds ENC into first-install
+  - `install.sh` `CONFIGURE_ENC=auto|true|false` + `ENC_API_BASE` /
+    `PUPPET_CA_HOST` for clustered consoles
+  - Removed broken `sed` of hard-coded `API_BASE` in `enc.py` (script
+    already reads `OPENVOX_GUI_API_BASE` from the environment)
+- **install.conf.example / config/.env.example / INSTALL.md /
+  TROUBLESHOOTING.md** document compiler VIP, CA VIP, class discovery,
+  Hiera-on-compiler, and multi-console ENC API bases at install time
+
 ## [3.11.1-alpha.2] - 2026-08-12 (fix — ENC class picker from compilers)
 
 ### Fixed

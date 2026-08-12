@@ -154,7 +154,28 @@ cp -a "${REPO_DIR}/backend" "${INSTALL_DIR}/"
 cp "${REPO_DIR}/VERSION" "${INSTALL_DIR}/VERSION"
 rm -rf "${INSTALL_DIR}/frontend"
 cp -a "${REPO_DIR}/frontend" "${INSTALL_DIR}/"
-for script in enc.py manage_users.py deploy.sh update_local.sh sync-openvox-repo.sh r10k-deploy.sh r10k-stage-activate.sh ensure-sudoers.sh generate_fleet_health_report.py ca-reject-csr.sh enable-console-orchestration.sh bootstrap-compiler.sh hiera-list-remote.py list-classes-remote.py; do
+# Canonical runtime set (keep in sync with install.sh + update_local.sh).
+for script in \
+    enc.py \
+    manage_users.py \
+    deploy.sh \
+    update_local.sh \
+    update_remote.sh \
+    sync-openvox-repo.sh \
+    r10k-deploy.sh \
+    r10k-stage-activate.sh \
+    ensure-sudoers.sh \
+    generate_fleet_health_report.py \
+    ca-reject-csr.sh \
+    enable-console-orchestration.sh \
+    fix-console-bolt-inventory.sh \
+    apply-singleton-bolt-layout.sh \
+    bootstrap-compiler.sh \
+    bootstrap-compiler-enc.sh \
+    hiera-list-remote.py \
+    list-classes-remote.py \
+    generate_bolt_token.py
+do
     if [ -f "${REPO_DIR}/scripts/${script}" ]; then
         cp "${REPO_DIR}/scripts/${script}" "${INSTALL_DIR}/scripts/${script}"
         chmod +x "${INSTALL_DIR}/scripts/${script}"

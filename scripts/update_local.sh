@@ -202,8 +202,28 @@ fi
 echo "$BUILD_ID" > "${INSTALL_DIR}/VERSION.build"
 log_ok "Wrote build version: ${BUILD_ID}"
 
-# Copy scripts (preserving anything site-specific in scripts/)
-for script in enc.py manage_users.py deploy.sh r10k-deploy.sh r10k-stage-activate.sh update_local.sh sync-openvox-repo.sh ensure-sudoers.sh generate_fleet_health_report.py ca-reject-csr.sh enable-console-orchestration.sh fix-console-bolt-inventory.sh apply-singleton-bolt-layout.sh bootstrap-compiler.sh hiera-list-remote.py list-classes-remote.py; do
+# Copy scripts — canonical runtime set (keep in sync with install.sh + deploy.sh).
+for script in \
+    enc.py \
+    manage_users.py \
+    deploy.sh \
+    update_local.sh \
+    update_remote.sh \
+    sync-openvox-repo.sh \
+    r10k-deploy.sh \
+    r10k-stage-activate.sh \
+    ensure-sudoers.sh \
+    generate_fleet_health_report.py \
+    ca-reject-csr.sh \
+    enable-console-orchestration.sh \
+    fix-console-bolt-inventory.sh \
+    apply-singleton-bolt-layout.sh \
+    bootstrap-compiler.sh \
+    bootstrap-compiler-enc.sh \
+    hiera-list-remote.py \
+    list-classes-remote.py \
+    generate_bolt_token.py
+do
     if [ -f "${REPO_DIR}/scripts/${script}" ]; then
         cp "${REPO_DIR}/scripts/${script}" "${INSTALL_DIR}/scripts/${script}"
         chmod +x "${INSTALL_DIR}/scripts/${script}"

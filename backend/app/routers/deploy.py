@@ -778,7 +778,9 @@ async def _run_on_targets(
                     "r10k is not installed on one or more compilers. That is "
                     "why Stage spins with no log (one host deploys, the rest "
                     "die). On each compiler, or via bolt script run from the "
-                    "console: sudo /opt/openvox-gui/scripts/bootstrap-compiler.sh"
+                    "console: sudo /opt/openvox-gui/scripts/bootstrap-compiler.sh "
+                    "(add --enc-api-base 'https://gui:4567,…' to wire ENC at "
+                    "the same time; see bootstrap-compiler-enc.sh)"
                 )
             else:
                 hint = (
