@@ -557,8 +557,12 @@ if ! command -v curl >/dev/null 2>&1; then
     exit 1
 fi
 
+# HTTPS via corp proxy is the working path. rsync:// and rsync -e ssh
+# do not use http(s)_proxy and fail on these hosts. Set PREFER_RSYNC=true
+# only if you have working rsync to rsync.voxpupuli.org.
+PREFER_RSYNC="${PREFER_RSYNC:-false}"
 HAVE_RSYNC="false"
-if command -v rsync >/dev/null 2>&1; then
+if [ "$PREFER_RSYNC" = "true" ] && command -v rsync >/dev/null 2>&1; then
     HAVE_RSYNC="true"
 fi
 
@@ -575,12 +579,13 @@ info "  Platforms  : ${PLATFORMS}"
 info "  Versions   : ${VERSIONS}"
 info "  Arches     : ${ARCHES}"
 if [ "$HAVE_RSYNC" = "true" ]; then
+    info "  Transport  : rsync (PREFER_RSYNC=true)"
     info "  Rsync yum  : ${RSYNC_YUM}"
     info "  Rsync apt  : ${RSYNC_APT}"
     info "  Rsync mac  : ${RSYNC_MAC}"
     info "  Rsync win  : ${RSYNC_WIN}"
 else
-    info "  Transport  : HTTPS only (rsync not installed)"
+    info "  Transport  : HTTPS (yum/apt/downloads.voxpupuli.org via http(s)_proxy)"
 fi
 [ "$DRY_RUN" = "true" ] && info "  Mode       : DRY RUN (no files will be written)"
 
@@ -677,7 +682,7 @@ curl_sync_yum() {
 }
 
 sync_yum() {
-    info "Syncing yum packages -> ${PKG_REPO_DIR}/yum/"
+    info "Syncing yum packages -> ${PKG_REPO_DIR}/yum/ (HTTPS ${YUM_BASE})"
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_yum; then
             return 0
@@ -905,7 +910,7 @@ curl_sync_apt() {
 }
 
 sync_apt() {
-    info "Syncing apt packages -> ${PKG_REPO_DIR}/apt/"
+    info "Syncing apt packages -> ${PKG_REPO_DIR}/apt/ (HTTPS ${APT_BASE})"
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_apt; then
             return 0
@@ -964,7 +969,7 @@ curl_sync_windows() {
 }
 
 sync_windows() {
-    info "Syncing windows packages -> ${PKG_REPO_DIR}/windows/ (${RSYNC_WIN})"
+    info "Syncing windows packages -> ${PKG_REPO_DIR}/windows/ (HTTPS ${DOWNLOADS_BASE}/windows/)"
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_windows; then
             :
@@ -1050,7 +1055,7 @@ curl_sync_mac() {
 }
 
 sync_mac() {
-    info "Syncing mac packages -> ${PKG_REPO_DIR}/mac/ (${RSYNC_MAC})"
+    info "Syncing mac packages -> ${PKG_REPO_DIR}/mac/ (HTTPS ${DOWNLOADS_BASE}/mac/)"
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_mac; then
             :

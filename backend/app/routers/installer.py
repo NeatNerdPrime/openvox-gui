@@ -1131,13 +1131,13 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
             logger.info("Skipping OpenVox %s (not published; mirror 8 and 9 only)", ver)
             continue
         if family in _YUM_FAMILY_LABELS:
-            # Yum: rsync://rsync.voxpupuli.org/yum/  HTTPS: yum.voxpupuli.org
-            src = f"{RSYNC_YUM}/openvox{ver}/{family}/{release}/"
             dest = PKG_REPO_DIR / "yum" / f"openvox{ver}" / family / release
             dest.mkdir(parents=True, exist_ok=True)
             ok = await _rsync_or_curl(
-                src, str(dest),
+                "",
+                str(dest),
                 f"{YUM_BASE}/openvox{ver}/{family}/{release}/",
+                use_rsync=False,
             )
             if not ok:
                 success = False
@@ -1153,12 +1153,13 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
             dist_name = release  # e.g., "debian12", "ubuntu24.04"
             # APT: mirror dists metadata + pool
             for sub in (f"dists/{dist_name}/openvox{ver}/", f"pool/openvox{ver}/"):
-                src = f"{RSYNC_APT}/{sub}"
                 dest = PKG_REPO_DIR / "apt" / sub.rstrip("/")
                 dest.mkdir(parents=True, exist_ok=True)
                 ok = await _rsync_or_curl(
-                    src, str(dest) + "/",
+                    "",
+                    str(dest) + "/",
                     f"{APT_BASE}/{sub}",
+                    use_rsync=False,
                 )
                 if not ok:
                     success = False
@@ -1178,13 +1179,13 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
                 )
 
         elif family in ("windows", "mac"):
-            rsync_root = RSYNC_WIN if family == "windows" else RSYNC_MAC
             dest = PKG_REPO_DIR / family / f"openvox{ver}"
             dest.mkdir(parents=True, exist_ok=True)
             ok = await _rsync_or_curl(
-                f"{rsync_root}/openvox{ver}/",
+                "",
                 str(dest) + "/",
                 f"{DOWNLOADS_BASE}/{family}/openvox{ver}/",
+                use_rsync=False,
             )
             if not ok:
                 success = False

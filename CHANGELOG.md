@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.38] - 2026-08-12 (fix — mirror over HTTPS only)
+
+### Changed
+- Agent Installer sync is **HTTPS-only** by default (`yum` / `apt` /
+  `downloads.voxpupuli.org`). rsync is off (`PREFER_RSYNC=false`) so
+  corp `http(s)_proxy` is used. These hosts cannot reach rsync daemon
+  or rsync-over-SSH.
+
 ## [3.11.0-alpha.37] - 2026-08-12 (fix — installer Server is this console)
 
 ### Changed
