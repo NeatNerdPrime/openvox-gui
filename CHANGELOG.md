@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.44] - 2026-08-12 (fix — Cert Audit active count)
+
+### Fixed
+- Certificate Audit **Active Nodes** was every non-deactivated PuppetDB
+  row, so it could exceed signed certs (14 certs / 15 PDB leftovers).
+  It is now signed ∩ active PuppetDB. PDB-only ghosts are listed
+  separately.
+
 ## [3.11.0-alpha.43] - 2026-08-12 (fix — apt mirror is raw .debs only)
 
 ### Changed

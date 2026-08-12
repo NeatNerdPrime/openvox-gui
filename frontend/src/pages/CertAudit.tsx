@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router';
 import {
   Title, Card, Stack, Group, Text, Alert, Loader, Center,
   Table, Badge, Button, ActionIcon, Tooltip, Collapse, Paper,
-  Modal, Checkbox,
+  Modal, Checkbox, Code,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -147,13 +147,23 @@ export function CertAuditPage() {
         </Paper>
         <Paper withBorder p="md" ta="center">
           <Text size="xl" fw={700} c="green">{data?.total_active_nodes || 0}</Text>
-          <Text size="sm" c="dimmed">Active Nodes</Text>
+          <Text size="sm" c="dimmed">Active (signed ∩ PuppetDB)</Text>
         </Paper>
         <Paper withBorder p="md" ta="center">
           <Text size="xl" fw={700} c={orphaned.length > 0 ? 'red' : 'green'}>{data?.total_orphaned || 0}</Text>
           <Text size="sm" c="dimmed">Orphaned Certificates</Text>
         </Paper>
       </Group>
+
+      {(data?.pdb_without_cert || []).length > 0 && (
+        <Alert color="yellow" title="PuppetDB nodes with no signed certificate">
+          {data.pdb_without_cert.length} active PuppetDB record(s) have no CA
+          cert (typical after a CA rebuild or <Code>ca clean</Code> without a
+          PDB deactivate). They are not agents:{' '}
+          {data.pdb_without_cert.map((n: any) => n.certname).join(', ')}.
+          Deactivate or purge them under Overview | Nodes if they should be gone.
+        </Alert>
+      )}
 
       {/* Orphaned Certificates */}
       <Card withBorder shadow="sm" padding="md">

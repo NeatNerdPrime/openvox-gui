@@ -446,12 +446,26 @@ async def audit_certificates(
     expired_nodes = {}
     for node in all_nodes:
         cn = node.get("certname", "").strip().lower()
+        if not cn:
+            continue
         if node.get("deactivated"):
             deactivated_nodes[cn] = node
         elif node.get("expired"):
             expired_nodes[cn] = node
         else:
             active_nodes[cn] = node
+
+    signed_names = {
+        str(c.get("name", "")).strip().lower()
+        for c in signed_certs
+        if c.get("name")
+    }
+    # Inverse orphan: PuppetDB row with no signed cert (common after a CA rebuild)
+    pdb_without_cert = [
+        {"certname": n.get("certname"), "latest_report_status": n.get("latest_report_status")}
+        for key, n in sorted(active_nodes.items())
+        if key not in signed_names
+    ]
 
     # Categorize each cert
     active = []
@@ -489,8 +503,11 @@ async def audit_certificates(
 
     return {
         "total_signed": len(signed_certs),
-        "total_active_nodes": len(active_nodes),
+        # Signed ∩ active PuppetDB — cannot exceed signed certs
+        "total_active_nodes": len(active),
+        "total_pdb_active": len(active_nodes),
         "total_orphaned": len(orphaned),
         "orphaned": orphaned,
         "active": active,
+        "pdb_without_cert": pdb_without_cert,
     }
