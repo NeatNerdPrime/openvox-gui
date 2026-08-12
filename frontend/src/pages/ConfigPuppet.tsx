@@ -243,26 +243,46 @@ export function HieraViewer() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedFile, setSelectedFile] = useState<HieraFile | null>(null);
+  const [sourceNote, setSourceNote] = useState<string | null>(null);
 
   useEffect(() => {
     config.getHieraFiles()
       .then((data: any) => {
         const environments: HieraEnv[] = data.environments || [];
         setEnvs(environments);
+        setSourceNote(data.message || null);
         // Auto-select first file of first environment
         if (environments.length > 0 && environments[0].files.length > 0) {
           setExpanded({ [environments[0].environment]: true });
           setSelectedFile(environments[0].files[0]);
         }
       })
-      .catch(() => notifications.show({ title: 'Error', message: 'Failed to load hiera files', color: 'red' }))
+      .catch((e: any) => notifications.show({
+        title: 'Error',
+        message: e.message || 'Failed to load hiera files',
+        color: 'red',
+      }))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <Center h={200}><Loader /></Center>;
-  if (envs.length === 0) return <Alert color="yellow">No Hiera data found</Alert>;
+  if (envs.length === 0) {
+    return (
+      <Stack>
+        {sourceNote && <Alert color="blue">{sourceNote}</Alert>}
+        <Alert color="yellow">
+          No Hiera data found. Dedicated consoles read the live codedir on a
+          compiler via Bolt — they do not use /etc/puppetlabs/puppet/hiera.yaml
+          and they do not check out the control repo. Stage code first, or set
+          code_deploy_targets under Settings → Cluster.
+        </Alert>
+      </Stack>
+    );
+  }
 
   return (
+    <Stack>
+      {sourceNote && <Alert color="blue">{sourceNote}</Alert>}
     <Group align="flex-start" gap="md" wrap="nowrap" style={{ minHeight: 400 }}>
       {/* Left: file tree grouped by environment */}
       <Card withBorder shadow="sm" padding={0} style={{ width: 320, flexShrink: 0 }}>
@@ -333,6 +353,7 @@ export function HieraViewer() {
         )}
       </Card>
     </Group>
+    </Stack>
   );
 }
 

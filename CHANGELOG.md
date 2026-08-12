@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.55] - 2026-08-12 (fix — Hiera Data Files from compiler)
+
+### Changed
+- **Data | Hiera Data Files** on a clustered console no longer reads the
+  unused local `/etc/puppetlabs/puppet/hiera.yaml` or an empty codedir.
+  It Bolt-reads the live tree on the first code-deploy target
+  (`hiera.yaml` + `data/` / `hieradata/`). Edit in Git, then Stage /
+  Activate. Singleton GUI-on-compiler still uses the local codedir.
+
 ## [3.11.0-alpha.54] - 2026-08-12 (fix — git proxy 407)
 
 ### Fixed

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.54**
+**OpenVox GUI Version 3.11.0-alpha.55**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.54"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.55"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -786,6 +786,14 @@ to the browser).
    echo 'export HTTPS_PROXY=http://httpproxy.atlc.twitter.com:3128' \
      | sudo tee /etc/profile.d/https_proxy.sh
    ```
+
+### Problem: Data | Hiera Data Files shows a stock / empty hiera.yaml
+
+Dedicated consoles do not have the control repo. The unused file is
+`/etc/puppetlabs/puppet/hiera.yaml`. After 3.11.0-alpha.55 the page
+reads `/etc/puppetlabs/code/environments` on the first
+`code_deploy_targets` compiler via Bolt. Stage that environment first.
+Do not `git clone` the control repo onto the GUI host.
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 

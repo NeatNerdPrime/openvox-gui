@@ -900,65 +900,152 @@ async def save_config_file(
 
 # ─── Hiera YAML Files (read-only) ─────────────────────────
 
+_HIERA_LIST_SCRIPT = Path("/opt/openvox-gui/scripts/hiera-list-remote.py")
+
+
+def _scan_hiera_local(envs_dir: Path) -> list:
+    environments = []
+    if not envs_dir.is_dir():
+        return environments
+    for env_dir in sorted(envs_dir.iterdir()):
+        if not env_dir.is_dir() or env_dir.name.startswith("."):
+            continue
+        env_files = []
+        h = env_dir / "hiera.yaml"
+        if h.exists():
+            try:
+                env_files.append({
+                    "name": "hiera.yaml",
+                    "path": str(h),
+                    "content": h.read_text(encoding="utf-8", errors="replace"),
+                })
+            except PermissionError:
+                env_files.append({
+                    "name": "hiera.yaml",
+                    "path": str(h),
+                    "content": "(permission denied)",
+                })
+        for sub in ("data", "hieradata"):
+            data_dir = env_dir / sub
+            if not data_dir.is_dir():
+                continue
+            for suffix in ("*.yaml", "*.yml"):
+                for yaml_file in sorted(data_dir.rglob(suffix)):
+                    if not yaml_file.is_file():
+                        continue
+                    rel = str(yaml_file.relative_to(data_dir))
+                    display = f"{sub}/{rel}"
+                    try:
+                        env_files.append({
+                            "name": display,
+                            "path": str(yaml_file),
+                            "content": yaml_file.read_text(
+                                encoding="utf-8", errors="replace"
+                            ),
+                        })
+                    except PermissionError:
+                        env_files.append({
+                            "name": display,
+                            "path": str(yaml_file),
+                            "content": "(permission denied)",
+                        })
+        if env_files:
+            environments.append({"environment": env_dir.name, "files": env_files})
+    return environments
+
+
+def _hiera_from_bolt_item(result: dict) -> dict:
+    from .deploy import _extract_bolt_json, _script_body
+
+    data = _extract_bolt_json(result.get("stdout") or "")
+    if not isinstance(data, dict):
+        return {}
+    items = data.get("items") or []
+    if not items or not isinstance(items[0], dict):
+        return {}
+    body = _script_body(items[0].get("value") or {})
+    body = (body or "").strip()
+    if not body.startswith("{"):
+        return {}
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 @router.get("/hiera/files")
 async def list_hiera_files():
-    """List hiera.yaml + all data/*.yaml (recursively) per environment.
+    """List environment hiera.yaml + data/hieradata YAML.
 
-    This now properly descends into subdirectories such as data/nodes/, data/locations/,
-    data/roles/ etc. so their contents can be viewed and edited in the Hiera Data Files page.
+    Dedicated consoles have no control-repo checkout. In clustered mode
+    we read the **live** tree on the first code-deploy target via Bolt
+    (``/etc/puppetlabs/code/environments``). Local
+    ``/etc/puppetlabs/puppet/hiera.yaml`` is the unused stock default.
     """
-    from pathlib import Path
-    environments = []
+    from ..services.cluster_config import deploy_targets, is_clustered
 
-    envs_dir = Path("/etc/puppetlabs/code/environments")
-    if envs_dir.is_dir():
-        for env_dir in sorted(envs_dir.iterdir()):
-            if not env_dir.is_dir():
-                continue
-            env_name = env_dir.name
-            env_files = []
+    local_envs = _scan_hiera_local(Path("/etc/puppetlabs/code/environments"))
+    if is_clustered():
+        targets = deploy_targets()
+        if not targets:
+            return {
+                "source": "none",
+                "host": None,
+                "environments": [],
+                "message": (
+                    "Clustered mode has no code_deploy_targets. "
+                    "Set compilers under Settings → Cluster."
+                ),
+            }
+        host = targets[0]
+        if not _HIERA_LIST_SCRIPT.is_file():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Missing {_HIERA_LIST_SCRIPT}. Run update_local.sh.",
+            )
+        from .bolt_runtime import run_bolt_command
 
-            # hiera.yaml at environment root
-            h = env_dir / "hiera.yaml"
-            if h.exists():
-                try:
-                    content = h.read_text(encoding="utf-8", errors="replace")
-                    env_files.append({"name": "hiera.yaml", "path": str(h), "content": content})
-                except PermissionError:
-                    env_files.append({"name": "hiera.yaml", "path": str(h), "content": "(permission denied)"})
+        bolt = await run_bolt_command(
+            [
+                "script", "run", str(_HIERA_LIST_SCRIPT),
+                "--targets", host,
+                "--run-as", "root",
+                "--no-tty",
+                "--format", "json",
+            ],
+            timeout=60,
+        )
+        parsed = _hiera_from_bolt_item(bolt)
+        envs = parsed.get("environments") if isinstance(parsed, dict) else None
+        if not isinstance(envs, list):
+            rc = bolt.get("returncode")
+            err = (bolt.get("stderr") or bolt.get("stdout") or "")[:800]
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Could not list Hiera on {host} (bolt rc={rc}). "
+                    f"{err or 'No JSON from hiera-list-remote.py'}"
+                ),
+            )
+        return {
+            "source": "compiler",
+            "host": host,
+            "codedir": parsed.get("codedir") or "/etc/puppetlabs/code/environments",
+            "environments": envs,
+            "message": (
+                f"Read-only view of live codedir on {host}. "
+                "Edit in the control repo, then Stage / Activate."
+            ),
+        }
 
-            # Recursively collect from both data/ and hieradata/ (common layouts)
-            for sub in ("data", "hieradata"):
-                data_dir = env_dir / sub
-                if not data_dir.is_dir():
-                    continue
-
-                # Recurse for .yaml and .yml so nodes/, locations/, etc. are included
-                for suffix in ("*.yaml", "*.yml"):
-                    for yaml_file in sorted(data_dir.rglob(suffix)):
-                        if not yaml_file.is_file():
-                            continue
-                        try:
-                            rel = str(yaml_file.relative_to(data_dir))
-                            content = yaml_file.read_text(encoding="utf-8", errors="replace")
-                            # Present a nice name that shows the subdirectory structure
-                            display_name = f"{sub}/{rel}"
-                            env_files.append({
-                                "name": display_name,
-                                "path": str(yaml_file),
-                                "content": content,
-                            })
-                        except PermissionError:
-                            rel = str(yaml_file.relative_to(data_dir))
-                            env_files.append({
-                                "name": f"{sub}/{rel}",
-                                "path": str(yaml_file),
-                                "content": "(permission denied)",
-                            })
-
-            environments.append({"environment": env_name, "files": env_files})
-
-    return {"environments": environments}
+    return {
+        "source": "local",
+        "host": socket.gethostname(),
+        "codedir": "/etc/puppetlabs/code/environments",
+        "environments": local_envs,
+        "message": None,
+    }
 
 
 
