@@ -29,6 +29,7 @@ import {
   Title, Card, Stack, Group, Text, Button, Alert, Loader, Center,
   Table, Badge, Code, ScrollArea, Grid, Divider, Tabs, Checkbox,
   CopyButton, ActionIcon, Tooltip, Progress, Anchor, SimpleGrid, Box,
+  Select,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -41,7 +42,7 @@ import {
 import {
   installer, certificates,
   InstallerInfo, InstallerDiskInfo,
-  UpstreamInfo, UpstreamFamily, MirrorSelections,
+  UpstreamInfo, UpstreamFamily, MirrorSelections, MirrorTransport,
 } from '../services/api';
 import { useAuth } from '../hooks/AuthContext';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -218,9 +219,10 @@ export function InstallerPage() {
 
   // Distribution selector state
   const [upstream, setUpstream]           = useState<UpstreamInfo | null>(null);
-  const [savedSelections, setSavedSelections] = useState<MirrorSelections>({ openvox_versions: ['8'], distributions: [] });
+  const [savedSelections, setSavedSelections] = useState<MirrorSelections>({ openvox_versions: ['8'], distributions: [], transport: 'https' });
   const [draftVersions, setDraftVersions]     = useState<string[]>(['8']);
   const [draftDists, setDraftDists]           = useState<string[]>([]);
+  const [draftTransport, setDraftTransport]   = useState<MirrorTransport>('https');
   const [savingSelections, setSavingSelections] = useState(false);
 
   // Operators and admins can trigger syncs and sign certs; viewers cannot.
@@ -240,7 +242,7 @@ export function InstallerPage() {
         installer.getLog(50).catch(() => ({ lines: [] as string[] })),
         certificates.list().catch((e: any) => ({ requested: [], _err: e?.message })),
         installer.getUpstream().catch(() => null),
-        installer.getSelections().catch(() => ({ openvox_versions: ['8'], distributions: [] } as MirrorSelections)),
+        installer.getSelections().catch(() => ({ openvox_versions: ['8'], distributions: [], transport: 'https' } as MirrorSelections)),
       ]);
       setInfo(i);
       setDiskInfo(d);
@@ -252,6 +254,8 @@ export function InstallerPage() {
       const vers = (s.openvox_versions || ['8', '9']).filter((v) => v !== '7');
       setDraftVersions(vers.length ? vers : ['8', '9']);
       setDraftDists(s.distributions);
+      const t = s.transport === 'rsync' || s.transport === 'rsync_fallback' ? s.transport : 'https';
+      setDraftTransport(t);
       setError(null);
     } catch (e: any) {
       setError(e.message || String(e));
@@ -345,7 +349,8 @@ export function InstallerPage() {
   // ── Distribution selection helpers ──────────────────────────────────────
   const hasDraftChanges =
     JSON.stringify([...draftVersions].sort()) !== JSON.stringify([...savedSelections.openvox_versions].sort()) ||
-    JSON.stringify([...draftDists].sort()) !== JSON.stringify([...savedSelections.distributions].sort());
+    JSON.stringify([...draftDists].sort()) !== JSON.stringify([...savedSelections.distributions].sort()) ||
+    draftTransport !== (savedSelections.transport || 'https');
 
   const draftAdded = draftDists.filter(d => !savedSelections.distributions.includes(d));
   const draftRemoved = savedSelections.distributions.filter(d => !draftDists.includes(d));
@@ -369,6 +374,7 @@ export function InstallerPage() {
       const res = await installer.saveSelections({
         openvox_versions: draftVersions,
         distributions: draftDists,
+        transport: draftTransport,
       });
       notifications.show({
         title: 'Selections updated',
@@ -710,6 +716,21 @@ export function InstallerPage() {
                   Select which distributions to mirror locally. Selecting a distribution downloads its
                   packages; deselecting removes them from disk to save space.
                 </Text>
+
+                <Select
+                  label="Mirror transport"
+                  description="HTTPS uses the GUI HTTP proxy (typical behind Squid). rsync talks to rsync.voxpupuli.org on port 873 and ignores the proxy."
+                  data={[
+                    { value: 'https', label: 'HTTPS (yum / apt / downloads.voxpupuli.org)' },
+                    { value: 'rsync', label: 'rsync only (rsync.voxpupuli.org yum/apt/downloads)' },
+                    { value: 'rsync_fallback', label: 'rsync, then HTTPS if rsync fails' },
+                  ]}
+                  value={draftTransport}
+                  onChange={(v) => v && setDraftTransport(v as MirrorTransport)}
+                  disabled={!canManage}
+                  mb="md"
+                  maw={520}
+                />
 
                 {/* OpenVox version toggles */}
                 <Group gap="lg" mb="md">

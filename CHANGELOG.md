@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.39] - 2026-08-12 (feat — pick mirror transport in the GUI)
+
+### Added
+- Agent Installer → Mirror: **Mirror transport** control — HTTPS (default,
+  uses HTTP proxy), rsync only, or rsync then HTTPS. Stored in
+  `.mirror-selections.json` so nightly sync and Sync now follow the
+  same choice on any site, not just proxied estates.
+
 ## [3.11.0-alpha.38] - 2026-08-12 (fix — mirror over HTTPS only)
 
 ### Changed

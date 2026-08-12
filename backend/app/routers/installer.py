@@ -772,9 +772,25 @@ class UpstreamInfo(BaseModel):
     cached_at: Optional[str] = None
 
 
+MIRROR_TRANSPORTS = ("https", "rsync", "rsync_fallback")
+
+
+def _normalize_transport(value: Optional[str]) -> str:
+    t = (value or "https").strip().lower().replace("-", "_")
+    if t in ("https", "http", "curl"):
+        return "https"
+    if t == "rsync":
+        return "rsync"
+    if t in ("rsync_fallback", "auto", "rsync_then_https"):
+        return "rsync_fallback"
+    return "https"
+
+
 class MirrorSelections(BaseModel):
     openvox_versions: list[str] = ["8"]
     distributions: list[str] = []
+    # https | rsync | rsync_fallback — how this site pulls the upstream mirror
+    transport: str = "https"
 
 
 class SelectionUpdateResult(BaseModel):
@@ -1071,6 +1087,7 @@ def _detect_mirrored_selections() -> MirrorSelections:
             v for v in versions if v in SUPPORTED_OPENVOX_MAJORS
         ) or ["8", "9"],
         distributions=sorted(dists),
+        transport="https",
     )
 
 
@@ -1081,6 +1098,7 @@ def _read_selections() -> MirrorSelections:
         raw = MirrorSelections(**json.loads(SELECTIONS_FILE.read_text()))
         cleaned = [v for v in raw.openvox_versions if v in SUPPORTED_OPENVOX_MAJORS]
         raw.openvox_versions = cleaned or ["8", "9"]
+        raw.transport = _normalize_transport(raw.transport)
         return raw
     except Exception as exc:
         logger.warning("Could not read selections: %s", exc)
@@ -1089,7 +1107,8 @@ def _read_selections() -> MirrorSelections:
 
 def _write_selections(sel: MirrorSelections) -> None:
     PKG_REPO_DIR.mkdir(parents=True, exist_ok=True)
-    SELECTIONS_FILE.write_text(json.dumps(sel.model_dump(), indent=2))
+    sel.transport = _normalize_transport(sel.transport)
+    SELECTIONS_FILE.write_text(json.dumps(sel.model_dump(), indent=2) + "\n")
 
 
 def _removable_paths(dist_key: str, versions: list[str]) -> list[Path]:
@@ -1125,6 +1144,10 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
 
     loop = asyncio.get_event_loop()
     success = True
+    transport = _normalize_transport(_read_selections().transport)
+    use_rsync = transport in ("rsync", "rsync_fallback")
+    https_fallback = transport != "rsync"
+    logger.info("Mirror transport=%s for %s", transport, dist_key)
 
     for ver in versions:
         if str(ver) not in SUPPORTED_OPENVOX_MAJORS:
@@ -1134,10 +1157,11 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
             dest = PKG_REPO_DIR / "yum" / f"openvox{ver}" / family / release
             dest.mkdir(parents=True, exist_ok=True)
             ok = await _rsync_or_curl(
-                "",
+                f"{RSYNC_YUM}/openvox{ver}/{family}/{release}/",
                 str(dest),
                 f"{YUM_BASE}/openvox{ver}/{family}/{release}/",
-                use_rsync=False,
+                use_rsync=use_rsync,
+                https_fallback=https_fallback,
             )
             if not ok:
                 success = False
@@ -1156,10 +1180,11 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
                 dest = PKG_REPO_DIR / "apt" / sub.rstrip("/")
                 dest.mkdir(parents=True, exist_ok=True)
                 ok = await _rsync_or_curl(
-                    "",
+                    f"{RSYNC_APT}/{sub}",
                     str(dest) + "/",
                     f"{APT_BASE}/{sub}",
-                    use_rsync=False,
+                    use_rsync=use_rsync,
+                    https_fallback=https_fallback,
                 )
                 if not ok:
                     success = False
@@ -1179,13 +1204,15 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
                 )
 
         elif family in ("windows", "mac"):
+            rsync_root = RSYNC_WIN if family == "windows" else RSYNC_MAC
             dest = PKG_REPO_DIR / family / f"openvox{ver}"
             dest.mkdir(parents=True, exist_ok=True)
             ok = await _rsync_or_curl(
-                "",
+                f"{rsync_root}/openvox{ver}/",
                 str(dest) + "/",
                 f"{DOWNLOADS_BASE}/{family}/openvox{ver}/",
-                use_rsync=False,
+                use_rsync=use_rsync,
+                https_fallback=https_fallback,
             )
             if not ok:
                 success = False
@@ -1213,8 +1240,9 @@ async def _rsync_or_curl(
     curl_url: str,
     *,
     use_rsync: bool = True,
+    https_fallback: bool = True,
 ) -> bool:
-    """Try rsync first (yum/apt), fall back to HTTPS directory scrape."""
+    """Pull one tree via rsync and/or HTTPS, per Mirror transport setting."""
     loop = asyncio.get_event_loop()
 
     def _try_rsync():
@@ -1241,6 +1269,9 @@ async def _rsync_or_curl(
     if use_rsync and rsync_src:
         if await loop.run_in_executor(None, _try_rsync):
             return True
+        if not https_fallback:
+            logger.warning("rsync failed for %s (HTTPS fallback off)", rsync_src)
+            return False
         logger.info("rsync failed for %s, falling back to HTTPS %s", rsync_src, curl_url)
     else:
         logger.info("Mirroring via HTTPS %s", curl_url)
@@ -1257,7 +1288,11 @@ async def _rsync_or_curl(
             sub_dest = os.path.join(local_dest, subdir)
             os.makedirs(sub_dest, exist_ok=True)
             if not await _rsync_or_curl(
-                rsync_src + link, sub_dest + "/", curl_url + link,
+                (rsync_src + link) if rsync_src else "",
+                sub_dest + "/",
+                curl_url + link,
+                use_rsync=use_rsync,
+                https_fallback=https_fallback,
             ):
                 ok = False
         else:

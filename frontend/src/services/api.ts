@@ -755,9 +755,13 @@ export interface UpstreamInfo {
   cached_at?: string | null;
 }
 
+export type MirrorTransport = 'https' | 'rsync' | 'rsync_fallback';
+
 export interface MirrorSelections {
   openvox_versions: string[];
   distributions: string[];
+  /** How this site pulls upstream packages. Default https (works through HTTP proxy). */
+  transport?: MirrorTransport;
 }
 
 export interface SelectionUpdateResult {

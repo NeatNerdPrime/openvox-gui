@@ -96,6 +96,20 @@ There are five moving parts:
 | `install.bash` | `/opt/openvox-pkgs/` | Linux agent bootstrap |
 | `install.ps1` | `/opt/openvox-pkgs/` | Windows agent bootstrap |
 
+## Mirror transport
+
+On **Infrastructure → Agent Install → Mirror**, operators pick how this
+site pulls upstream packages (saved in `/opt/openvox-pkgs/.mirror-selections.json`
+as `transport`):
+
+| Setting | When to use |
+|---------|-------------|
+| **HTTPS** (default) | Behind an HTTP proxy. Uses `yum.voxpupuli.org`, `apt.voxpupuli.org`, `downloads.voxpupuli.org` and the GUI proxy settings. |
+| **rsync only** | Direct path to `rsync.voxpupuli.org` (`yum`, `apt`, `downloads/mac`, `downloads/windows`). Does **not** use the HTTP proxy. |
+| **rsync, then HTTPS** | Try rsync first; fall back to HTTPS if rsync cannot connect. |
+
+The nightly timer and **Sync now** both honor that choice.
+
 ## Mirror layout
 
 The local mirror under `/opt/openvox-pkgs/` preserves the upstream

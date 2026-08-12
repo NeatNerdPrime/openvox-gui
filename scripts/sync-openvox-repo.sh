@@ -519,6 +519,14 @@ deb_rels = [r.replace('debian','') for r in families.get('debian',[]) if r]
 ubu_rels = [r.replace('ubuntu','') for r in families.get('ubuntu',[]) if r]
 print('CFG_DEB=' + ','.join(deb_rels))
 print('CFG_UBU=' + ','.join(ubu_rels))
+t = str(cfg.get('transport') or 'https').strip().lower().replace('-', '_')
+if t in ('http', 'curl'):
+    t = 'https'
+elif t in ('auto', 'rsync_then_https'):
+    t = 'rsync_fallback'
+elif t not in ('https', 'rsync', 'rsync_fallback'):
+    t = 'https'
+print('CFG_TRANSPORT=' + t)
 " 2>/dev/null) || {
         warn "Could not parse ${SELECTIONS_FILE}"
         return
@@ -534,6 +542,7 @@ print('CFG_UBU=' + ','.join(ubu_rels))
     [ -n "${CFG_FIPS:-}" ]           && FIPS_RELEASES="$CFG_FIPS"
     [ -n "${CFG_DEB:-}" ]            && DEB_RELEASES="$CFG_DEB"
     [ -n "${CFG_UBU:-}" ]            && UBU_RELEASES="$CFG_UBU"
+    [ -n "${CFG_TRANSPORT:-}" ]      && MIRROR_TRANSPORT="$CFG_TRANSPORT"
 }
 
 if [ "$FROM_CONFIG" = "true" ]; then
@@ -557,10 +566,24 @@ if ! command -v curl >/dev/null 2>&1; then
     exit 1
 fi
 
-# HTTPS via corp proxy is the working path. rsync:// and rsync -e ssh
-# do not use http(s)_proxy and fail on these hosts. Set PREFER_RSYNC=true
-# only if you have working rsync to rsync.voxpupuli.org.
-PREFER_RSYNC="${PREFER_RSYNC:-false}"
+# Transport comes from GUI Mirror selections (https | rsync | rsync_fallback).
+# PREFER_RSYNC=true still forces rsync+fallback for CLI/cron overrides.
+MIRROR_TRANSPORT="${MIRROR_TRANSPORT:-https}"
+RSYNC_FALLBACK="true"
+case "$MIRROR_TRANSPORT" in
+    rsync)
+        PREFER_RSYNC="true"
+        RSYNC_FALLBACK="false"
+        ;;
+    rsync_fallback)
+        PREFER_RSYNC="true"
+        RSYNC_FALLBACK="true"
+        ;;
+    *)
+        PREFER_RSYNC="${PREFER_RSYNC:-false}"
+        RSYNC_FALLBACK="true"
+        ;;
+esac
 HAVE_RSYNC="false"
 if [ "$PREFER_RSYNC" = "true" ] && command -v rsync >/dev/null 2>&1; then
     HAVE_RSYNC="true"
@@ -578,14 +601,12 @@ info "  Target dir : ${PKG_REPO_DIR}"
 info "  Platforms  : ${PLATFORMS}"
 info "  Versions   : ${VERSIONS}"
 info "  Arches     : ${ARCHES}"
+info "  Transport  : ${MIRROR_TRANSPORT}"
 if [ "$HAVE_RSYNC" = "true" ]; then
-    info "  Transport  : rsync (PREFER_RSYNC=true)"
     info "  Rsync yum  : ${RSYNC_YUM}"
     info "  Rsync apt  : ${RSYNC_APT}"
     info "  Rsync mac  : ${RSYNC_MAC}"
     info "  Rsync win  : ${RSYNC_WIN}"
-else
-    info "  Transport  : HTTPS (yum/apt/downloads.voxpupuli.org via http(s)_proxy)"
 fi
 [ "$DRY_RUN" = "true" ] && info "  Mode       : DRY RUN (no files will be written)"
 
@@ -682,12 +703,17 @@ curl_sync_yum() {
 }
 
 sync_yum() {
-    info "Syncing yum packages -> ${PKG_REPO_DIR}/yum/ (HTTPS ${YUM_BASE})"
+    info "Syncing yum packages -> ${PKG_REPO_DIR}/yum/"
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_yum; then
             return 0
         fi
-        warn "rsync failed for yum; falling back to curl"
+        if [ "$RSYNC_FALLBACK" != "true" ]; then
+            warn "rsync failed for yum; HTTPS fallback disabled"
+            SYNC_FAILURES=$((SYNC_FAILURES + 1))
+            return 1
+        fi
+        warn "rsync failed for yum; falling back to HTTPS ${YUM_BASE}"
     fi
     curl_sync_yum
 }
@@ -910,12 +936,17 @@ curl_sync_apt() {
 }
 
 sync_apt() {
-    info "Syncing apt packages -> ${PKG_REPO_DIR}/apt/ (HTTPS ${APT_BASE})"
+    info "Syncing apt packages -> ${PKG_REPO_DIR}/apt/"
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_apt; then
             return 0
         fi
-        warn "rsync failed for apt; falling back to curl (Packages-file parsing)"
+        if [ "$RSYNC_FALLBACK" != "true" ]; then
+            warn "rsync failed for apt; HTTPS fallback disabled"
+            SYNC_FAILURES=$((SYNC_FAILURES + 1))
+            return 1
+        fi
+        warn "rsync failed for apt; falling back to HTTPS ${APT_BASE}"
     fi
     curl_sync_apt
 }
@@ -973,9 +1004,12 @@ sync_windows() {
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_windows; then
             :
-        else
+        elif [ "$RSYNC_FALLBACK" = "true" ]; then
             warn "rsync failed for windows; falling back to HTTPS ${DOWNLOADS_BASE}/windows/"
             curl_sync_windows
+        else
+            warn "rsync failed for windows; HTTPS fallback disabled"
+            SYNC_FAILURES=$((SYNC_FAILURES + 1))
         fi
     else
         curl_sync_windows
@@ -1059,9 +1093,12 @@ sync_mac() {
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_mac; then
             :
-        else
+        elif [ "$RSYNC_FALLBACK" = "true" ]; then
             warn "rsync failed for mac; falling back to HTTPS ${DOWNLOADS_BASE}/mac/"
             curl_sync_mac
+        else
+            warn "rsync failed for mac; HTTPS fallback disabled"
+            SYNC_FAILURES=$((SYNC_FAILURES + 1))
         fi
     else
         curl_sync_mac
