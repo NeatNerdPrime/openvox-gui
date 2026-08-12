@@ -17,23 +17,23 @@
 #     ├── install.ps1                  (Windows agent bootstrap)
 #     ├── yum/
 #     │   ├── GPG-KEY-openvox.pub
-#     │   ├── openvox{7,8}-release-el-{8,9,10}.noarch.rpm
-#     │   └── openvox{7,8}/el/{8,9,10}/{x86_64,aarch64}/
+#     │   ├── openvox{8,9}-release-el-{8,9,10}.noarch.rpm
+#     │   └── openvox{8,9}/el/{8,9,10}/{x86_64,aarch64}/
 #     │         ├── repodata/
 #     │         └── openvox-agent-*.rpm, openbolt-*.rpm
 #     ├── apt/
 #     │   ├── GPG-KEY-openvox.pub
 #     │   ├── openvox-keyring.gpg
-#     │   ├── openvox{7,8}-release-{debian10,debian12,debian13,ubuntu22.04,ubuntu24.04}.deb
-#     │   ├── dists/{debian10,debian12,debian13,ubuntu22.04,ubuntu24.04}/openvox{7,8}/binary-{amd64,arm64}/
+#     │   ├── openvox{8,9}-release-{debian10,debian12,debian13,ubuntu22.04,ubuntu24.04}.deb
+#     │   ├── dists/{debian10,debian12,debian13,ubuntu22.04,ubuntu24.04}/openvox{8,9}/binary-{amd64,arm64}/
 #     │   │     ├── Packages, Packages.gz, Release
 #     │   │     └── (also dists/<dist>/{InRelease,Release,Release.gpg})
-#     │   └── pool/openvox{7,8}/o/{openvox-agent,openbolt,...}/
-#     ├── windows/openvox{7,8}/
+#     │   └── pool/openvox{8,9}/o/{openvox-agent,openbolt,...}/
+#     ├── windows/openvox{8,9}/
 #     │   ├── openvox-agent-{ver}-x64.msi   (every version mirrored)
 #     │   └── openvox-agent-x64.msi         (real copy of the highest version,
 #     │                                      so install.ps1 has a stable URL)
-#     ├── mac/openvox{7,8}/
+#     ├── mac/openvox{8,9}/
 #     │   ├── openvox-agent-{ver}-1.macos.all.{x86_64,arm64}.dmg
 #     │   ├── openvox-agent-{arch}.dmg      (latest copy per arch)
 #     │   └── 13/, 14/, 15/                  (per-macOS-major sub-trees)
@@ -108,7 +108,7 @@ fi
 # Defaults reflect "latest two only" as chosen at design time. Override
 # with the matching --flag or in /etc/sysconfig/openvox-repo-sync.
 PLATFORMS_DEFAULT="yum,apt,windows,mac"
-VERSIONS_DEFAULT="7,8"
+VERSIONS_DEFAULT="8,9"
 EL_RELEASES_DEFAULT="8,9"
 DEB_RELEASES_DEFAULT="10,12,13"
 UBU_RELEASES_DEFAULT="22.04,24.04"
@@ -476,7 +476,9 @@ _load_from_config() {
     parsed=$(python3 -c "
 import json, sys
 cfg = json.load(open('${SELECTIONS_FILE}'))
-versions = cfg.get('openvox_versions', ['7','8'])
+versions = [v for v in cfg.get('openvox_versions', ['8','9']) if str(v) != '7']
+if not versions:
+    versions = ['8', '9']
 dists = cfg.get('distributions', [])
 print('CFG_VERSIONS=' + ','.join(versions))
 # Group distributions by family
@@ -533,6 +535,13 @@ if [ "$FROM_CONFIG" = "true" ]; then
 elif [ -f "$SELECTIONS_FILE" ]; then
     # Auto-load config if it exists and no explicit CLI overrides were given
     _load_from_config
+fi
+
+# OpenVox 7 is unpublished for yum/apt/windows/mac. Drop it even if an
+# old .mirror-selections.json or --versions 7,8 still lists it.
+VERSIONS="$(echo "$VERSIONS" | tr ',' '\n' | grep -v '^7$' | paste -sd, -)"
+if [ -z "$VERSIONS" ]; then
+    VERSIONS="$VERSIONS_DEFAULT"
 fi
 
 # ─── Preflight ───────────────────────────────────────────────────────────────

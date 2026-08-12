@@ -25,7 +25,7 @@
 #                                      pulled from existing puppet.conf.
 #   --pkg-repo-url <url>               Override the package mirror base
 #                                      URL (default: https://<server>:8140/packages)
-#   --version <7|8>                    Pick OpenVox major version (default 8)
+#   --version <8|9>                    Pick OpenVox major version (default 8)
 #   --puppet-service-ensure <state>    running | stopped (default: running)
 #   --puppet-service-enable <bool>     true | false (default: true)
 #   <section>:<setting>=<value>        Apply settings to puppet.conf or
@@ -74,7 +74,7 @@ PKG_REPO_URL="${PKG_REPO_URL:-}"
 
 DEFAULT_OPENVOX_VERSION="${DEFAULT_OPENVOX_VERSION:-__OPENVOX_DEFAULT_VERSION__}"
 case "$DEFAULT_OPENVOX_VERSION" in
-    7|8) ;;                                        # rendered, valid
+    8|9) ;;                                        # rendered, valid
     *)   DEFAULT_OPENVOX_VERSION="8" ;;            # placeholder or junk -> default
 esac
 
@@ -338,8 +338,8 @@ fi
 # Default OPENVOX_VERSION if user didn't override
 OPENVOX_VERSION="${OPENVOX_VERSION:-$DEFAULT_OPENVOX_VERSION}"
 case "$OPENVOX_VERSION" in
-    7|8) ;;
-    *)   fail "OPENVOX_VERSION must be 7 or 8 (got '${OPENVOX_VERSION}')" ;;
+    8|9) ;;
+    *)   fail "OPENVOX_VERSION must be 8 or 9 (got '${OPENVOX_VERSION}')" ;;
 esac
 
 # Derive PKG_REPO_URL from the puppetserver FQDN unless an explicit

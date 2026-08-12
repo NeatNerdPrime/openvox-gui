@@ -55,7 +55,7 @@ There are three problems it solves:
                                        ┌────────────────────────────┐
                                        │                            │
    yum.voxpupuli.org                   │  /opt/openvox-pkgs/        │
-   apt.voxpupuli.org   ───[sync]──>    │    yum/openvox{7,8}/...    │
+   apt.voxpupuli.org   ───[sync]──>    │    yum/openvox{8,9}/...    │
    downloads.voxpupuli.org             │    apt/dists/{debian10,    │
                                        │     debian12,ubuntu24.04}/ │
    (sync-openvox-repo.sh,              │    windows/                │
@@ -111,26 +111,26 @@ URL paths that map directly to the upstream documentation.
 │
 ├── yum/                             mirrors yum.voxpupuli.org
 │   ├── GPG-KEY-openvox.pub
-│   ├── openvox{7,8}-release-el-{8,9}.noarch.rpm
-│   └── openvox{7,8}/el/{8,9}/{x86_64,aarch64}/
+│   ├── openvox{8,9}-release-el-{8,9}.noarch.rpm
+│   └── openvox{8,9}/el/{8,9}/{x86_64,aarch64}/
 │         ├── repodata/
 │         └── openvox-agent-*.rpm, openbolt-*.rpm
 │
 ├── apt/                             mirrors apt.voxpupuli.org
 │   ├── GPG-KEY-openvox.pub, openvox-keyring.gpg
-│   ├── openvox{7,8}-release-{debian10,debian12,debian13,ubuntu22.04,ubuntu24.04}.deb
+│   ├── openvox{8,9}-release-{debian10,debian12,debian13,ubuntu22.04,ubuntu24.04}.deb
 │   ├── dists/{debian10,debian12,debian13,ubuntu22.04,ubuntu24.04}/
 │   │     ├── {InRelease,Release,Release.gpg}
-│   │     └── openvox{7,8}/binary-{amd64,arm64}/{Packages,Packages.gz,Release}
-│   └── pool/openvox{7,8}/o/{openvox-agent,openbolt,openvox-server,...}/
+│   │     └── openvox{8,9}/binary-{amd64,arm64}/{Packages,Packages.gz,Release}
+│   └── pool/openvox{8,9}/o/{openvox-agent,openbolt,openvox-server,...}/
 │
-├── windows/openvox{7,8}/
+├── windows/openvox{8,9}/
 │   ├── openvox-agent-{ver}-x64.msi      every published version
 │   └── openvox-agent-x64.msi            real copy of the latest stable
 │                                         (puppetserver mount can't follow
 │                                          symlinks, so we copy)
 │
-└── mac/openvox{7,8}/
+└── mac/openvox{8,9}/
     ├── openvox-agent-{ver}-1.macos.all.{x86_64,arm64}.dmg
     ├── openvox-agent-{x86_64,arm64}.dmg  latest copies per arch
     └── 13/, 14/, 15/                      per-macOS-major sub-trees

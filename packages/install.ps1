@@ -35,7 +35,7 @@ Param(
   # mirror lives on a different host from the puppetserver.
   [String]$PkgRepoUrl = '',
 
-  # OpenVox major version (7 or 8). Defaults to 8.
+  # OpenVox major version (8 or 9). Defaults to 8.
   [String]$OpenVoxVersion = '__OPENVOX_DEFAULT_VERSION__',
 
   # Optional MSI tweaks (mirrors PE's PowerShell installer).
@@ -106,7 +106,7 @@ As a one-shot workaround, re-run this installer with -Server:
 }
 
 # Default OpenVox version handling (placeholder OR junk -> 8)
-if (-not $OpenVoxVersion -or $OpenVoxVersion -notmatch '^[78]$') {
+if (-not $OpenVoxVersion -or $OpenVoxVersion -notmatch '^[89]$') {
     $OpenVoxVersion = '8'
 }
 

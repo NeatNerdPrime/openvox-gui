@@ -81,6 +81,8 @@ SYNC_SCRIPT  = Path(os.environ.get("OPENVOX_GUI_SYNC_SCRIPT", "/opt/openvox-gui/
 # puppetserver is not co-located).
 DEFAULT_PUPPETSERVER_PORT = 8140
 DEFAULT_OPENVOX_VERSION   = "8"
+# OpenVox 7 is no longer published (yum/apt/windows/mac). Mirror 8 + 9 only.
+SUPPORTED_OPENVOX_MAJORS = ("8", "9")
 
 # NB: a SUPPORTED_LINUX_FAMILIES tuple used to live here. It was never
 # referenced -- the frontend renders platform labels directly from
@@ -797,7 +799,11 @@ async def _discover_upstream() -> UpstreamInfo:
             # An empty cache from a pre-proxy failed attempt must be
             # discarded so the next call retries with working proxy.
             if age_hours < CACHE_TTL_HOURS and cache.get("families"):
-                return UpstreamInfo(**cache)
+                cached_vers = set(str(v) for v in cache.get("openvox_versions") or [])
+                if "7" in cached_vers or not cached_vers.issubset(set(SUPPORTED_OPENVOX_MAJORS)):
+                    logger.info("Discarding upstream cache that still lists OpenVox 7")
+                else:
+                    return UpstreamInfo(**cache)
         except Exception:
             pass
 
@@ -819,7 +825,10 @@ async def _discover_upstream() -> UpstreamInfo:
         h.strip("/") for h in yum_root
         if h.endswith("/") and h.startswith("openvox")
     )
-    yum_versions = [d.replace("openvox", "") for d in openvox_dirs]
+    yum_versions = [
+        d.replace("openvox", "") for d in openvox_dirs
+        if d.replace("openvox", "") in SUPPORTED_OPENVOX_MAJORS
+    ]
     all_versions.update(yum_versions)
 
     # ── Phase 2: discover yum families (parallel per version) ──
@@ -918,6 +927,7 @@ async def _discover_upstream() -> UpstreamInfo:
             c.strip("/").replace("openvox", "")
             for c in comp_links
             if c.endswith("/") and c.startswith("openvox")
+            and c.strip("/").replace("openvox", "") in SUPPORTED_OPENVOX_MAJORS
         )
         all_versions.update(versions)
         if dist.startswith("debian"):
@@ -954,6 +964,7 @@ async def _discover_upstream() -> UpstreamInfo:
             p.strip("/").replace("openvox", "")
             for p in plat_links
             if p.endswith("/") and p.startswith("openvox")
+            and p.strip("/").replace("openvox", "") in SUPPORTED_OPENVOX_MAJORS
         )
         all_versions.update(versions)
         label = "Windows" if platform == "windows" else "macOS"
@@ -1035,7 +1046,9 @@ def _detect_mirrored_selections() -> MirrorSelections:
                     versions.add(sub.name.replace("openvox", ""))
 
     return MirrorSelections(
-        openvox_versions=sorted(versions) if versions else ["8"],
+        openvox_versions=sorted(
+            v for v in versions if v in SUPPORTED_OPENVOX_MAJORS
+        ) or ["8", "9"],
         distributions=sorted(dists),
     )
 
@@ -1044,7 +1057,10 @@ def _read_selections() -> MirrorSelections:
     if not SELECTIONS_FILE.exists():
         return _detect_mirrored_selections()
     try:
-        return MirrorSelections(**json.loads(SELECTIONS_FILE.read_text()))
+        raw = MirrorSelections(**json.loads(SELECTIONS_FILE.read_text()))
+        cleaned = [v for v in raw.openvox_versions if v in SUPPORTED_OPENVOX_MAJORS]
+        raw.openvox_versions = cleaned or ["8", "9"]
+        return raw
     except Exception as exc:
         logger.warning("Could not read selections: %s", exc)
         return _detect_mirrored_selections()
@@ -1091,6 +1107,9 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
     success = True
 
     for ver in versions:
+        if str(ver) not in SUPPORTED_OPENVOX_MAJORS:
+            logger.info("Skipping OpenVox %s (not published; mirror 8 and 9 only)", ver)
+            continue
         if family in _YUM_FAMILY_LABELS:
             # Yum: mirror the entire release directory for all arches
             src = f"{rsync_base}/yum/openvox{ver}/{family}/{release}/"

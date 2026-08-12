@@ -249,7 +249,8 @@ export function InstallerPage() {
       setPendingCertsErr((c as any)._err || (c as any).error || null);
       if (u) setUpstream(u);
       setSavedSelections(s);
-      setDraftVersions(s.openvox_versions);
+      const vers = (s.openvox_versions || ['8', '9']).filter((v) => v !== '7');
+      setDraftVersions(vers.length ? vers : ['8', '9']);
       setDraftDists(s.distributions);
       setError(null);
     } catch (e: any) {
@@ -713,7 +714,7 @@ export function InstallerPage() {
                 {/* OpenVox version toggles */}
                 <Group gap="lg" mb="md">
                   <Text size="sm" fw={600}>OpenVox Versions:</Text>
-                  {(upstream?.openvox_versions || ['7', '8']).map(ver => (
+                  {(upstream?.openvox_versions || ['8', '9']).map(ver => (
                     <Checkbox
                       key={ver}
                       label={`OpenVox ${ver}`}

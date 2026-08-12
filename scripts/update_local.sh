@@ -792,10 +792,12 @@ fi
 MIRROR_HAS_CONTENT="false"
 for marker in \
     "${PKG_REPO_DIR}/yum/openvox8" \
-    "${PKG_REPO_DIR}/yum/openvox7" \
+    "${PKG_REPO_DIR}/yum/openvox9" \
     "${PKG_REPO_DIR}/apt/dists" \
     "${PKG_REPO_DIR}/windows/openvox8" \
-    "${PKG_REPO_DIR}/mac/openvox8"; do
+    "${PKG_REPO_DIR}/windows/openvox9" \
+    "${PKG_REPO_DIR}/mac/openvox8" \
+    "${PKG_REPO_DIR}/mac/openvox9"; do
     if [ -d "$marker" ] && [ -n "$(ls -A "$marker" 2>/dev/null)" ]; then
         MIRROR_HAS_CONTENT="true"
         break

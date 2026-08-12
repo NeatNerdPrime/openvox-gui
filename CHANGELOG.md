@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.33] - 2026-08-12 (fix — drop OpenVox 7 from package mirror)
+
+### Fixed
+- Agent Installer mirror no longer requests unpublished **OpenVox 7**
+  trees (`downloads.voxpupuli.org/{windows,mac}/openvox7/`). Defaults
+  and saved selections are **8 and 9** only. `sync-openvox-repo.sh`,
+  GUI discovery, `install.bash`, and `install.ps1` reject 7.
+
 ## [3.11.0-alpha.32] - 2026-08-12 (fix — do not force default ssldir)
 
 ### Fixed
