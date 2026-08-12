@@ -81,7 +81,7 @@ config:
     user: bolt
     private-key: /etc/puppetlabs/bolt/id_bolt
     host-key-check: false
-    tty: true
+    tty: false
     connect-timeout: 10
     tmpdir: {BOLT_REMOTE_TMPDIR}
 groups:

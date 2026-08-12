@@ -252,7 +252,8 @@ export function CodeDeploymentPage() {
   const { data: clusterCfg } = useApi(() => config.getCluster());
 
   const [selectedEnv, setSelectedEnv] = useState<string | null>(null);
-  const [deploying, setDeploying] = useState(false);
+  const [busy, setBusy] = useState<null | 'deploy' | 'stage' | 'activate'>(null);
+  const deploying = busy !== null;
   const [deployError, setDeployError] = useState<string | null>(null);
   const [outputLog, setOutputLog] = useState<string[]>([]);
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
@@ -308,7 +309,7 @@ export function CodeDeploymentPage() {
 
   const handleDeploy = async () => {
     setConfirmDeploy(false);
-    setDeploying(true);
+    setBusy('deploy');
     setDeployError(null);
     setLastExitCode(null);
     setLastSuccess(null);
@@ -338,12 +339,12 @@ export function CodeDeploymentPage() {
       setOutputLog((prev) => [...prev, `ERROR: ${errMsg}`, '']);
       end(actId, 'error', errMsg);
     } finally {
-      setDeploying(false);
+      setBusy(null);
     }
   };
 
   const handleStageOrActivate = async (kind: 'stage' | 'activate') => {
-    setDeploying(true);
+    setBusy(kind);
     setDeployError(null);
     const env = selectedEnv || 'all';
     const actId = begin(`r10k ${kind}: ${env}`, { href: '/deployment' });
@@ -370,7 +371,7 @@ export function CodeDeploymentPage() {
       setOutputLog((prev) => [...prev, `ERROR: ${errMsg}`, '']);
       end(actId, 'error', errMsg);
     } finally {
-      setDeploying(false);
+      setBusy(null);
     }
   };
 
@@ -430,18 +431,18 @@ export function CodeDeploymentPage() {
                     variant="outline"
                     color="violet"
                     disabled={deploying || deployTargets.length === 0}
-                    loading={deploying}
+                    loading={busy === 'stage'}
                     onClick={() => handleStageOrActivate('stage')}
                   >
-                    Stage on all targets
+                    {busy === 'stage' ? 'Staging…' : 'Stage (r10k → code-staging)'}
                   </Button>
                   <Button
                     color="violet"
                     disabled={deploying || deployTargets.length === 0}
-                    loading={deploying}
+                    loading={busy === 'activate'}
                     onClick={() => handleStageOrActivate('activate')}
                   >
-                    Activate staged code
+                    {busy === 'activate' ? 'Activating…' : 'Activate (promote to live)'}
                   </Button>
                 </Group>
               )}

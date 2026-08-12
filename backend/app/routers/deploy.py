@@ -695,6 +695,7 @@ async def _run_on_targets(
             *env_args,
             "--targets", ",".join(targets),
             "--run-as", "root",
+            "--no-tty",
             "--connect-timeout", "15",
             "--no-host-key-check",
             "--format", "json",
@@ -709,6 +710,26 @@ async def _run_on_targets(
                 [{"host": t, "success": False, "via": "bolt", "exit_code": -1} for t in targets],
             )
         rc, out, hosts = _flatten_bolt_json(result, targets, via="bolt")
+        # Inventory tty:true used to return COMMAND_ERROR with empty
+        # stdout/stderr. If the helper logged to disk, pull that.
+        if rc != 0 and not any("r10k-stage-activate.sh:" in (ln or "") for ln in out):
+            log_args = [
+                "command", "run", "cat /var/tmp/r10k-stage-activate.log",
+                "--targets", ",".join(targets),
+                "--run-as", "root",
+                "--no-tty",
+                "--connect-timeout", "8",
+                "--no-host-key-check",
+                "--format", "json",
+            ]
+            try:
+                fetched = await run_bolt_command(log_args, timeout=25)
+                _, log_lines, _ = _flatten_bolt_json(
+                    fetched, targets, via="stage-log"
+                )
+                out = list(out) + ["── /var/tmp/r10k-stage-activate.log ──"] + log_lines
+            except Exception as e:
+                logger.warning("cluster %s could not fetch stage log: %s", mode, e)
         return _cluster_result(
             mode, environment, targets, rc == 0, 0 if rc == 0 else 1,
             out,

@@ -544,7 +544,7 @@ def console_disk_inventory() -> dict:
                 "user": "bolt",
                 "private-key": "/etc/puppetlabs/bolt/id_bolt",
                 "host-key-check": False,
-                "tty": True,
+                "tty": False,
                 "tmpdir": "/home/bolt/.bolt/tmp",
             },
         },

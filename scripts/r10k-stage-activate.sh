@@ -11,11 +11,20 @@
 ###############################################################################
 set -euo pipefail
 
+# Do NOT source /etc/profile or /root/.bashrc. A sourced `exit` (or set -u
+# trip) kills this script with empty Bolt output — inventory tty:true also
+# swallows the PTY. Keep PATH explicit.
 export HOME=/root
 export USER=root
-[ -r /etc/profile ] && . /etc/profile 2>/dev/null || true
-[ -r /root/.bash_profile ] && . /root/.bash_profile 2>/dev/null || true
-[ -r /root/.bashrc ] && . /root/.bashrc 2>/dev/null || true
+export PATH="/opt/puppetlabs/puppet/bin:/opt/puppetlabs/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+LOG="${OPENVOX_STAGE_LOG:-/var/tmp/r10k-stage-activate.log}"
+_log() {
+  # stdout+stderr so Bolt captures it; copy to a file if the PTY eats it.
+  printf 'r10k-stage-activate.sh: %s\n' "$*" | tee -a "$LOG" >&2
+}
+
+_log "start uid=$(id -u) user=$(id -un) host=$(hostname -f 2>/dev/null || hostname) args=$*"
 
 MODE="${1:-}"
 shift || true
@@ -31,7 +40,7 @@ if [ -z "$R10K_BIN" ]; then
   elif [ -x /opt/puppetlabs/puppet/bin/r10k ]; then
     R10K_BIN=/opt/puppetlabs/puppet/bin/r10k
   else
-    echo "r10k-stage-activate.sh: r10k not found" >&2
+    _log "r10k not found"
     exit 127
   fi
 fi
@@ -66,10 +75,10 @@ case "$MODE" in
     TMP_CFG=$(mktemp "$STAGING/.r10k-staging.XXXXXX.yaml")
     trap 'rm -f "$TMP_CFG"' EXIT
     if [ ! -f "$R10K_YAML" ]; then
-      echo "r10k-stage-activate.sh: missing $R10K_YAML" >&2
+      _log "missing $R10K_YAML"
       exit 1
     fi
-    echo "r10k-stage-activate.sh: uid=$(id -u) user=$(id -un) r10k=$R10K_BIN yaml=$R10K_YAML" >&2
+    _log "uid=$(id -u) user=$(id -un) r10k=$R10K_BIN yaml=$R10K_YAML"
     RUBY_BIN=""
     if [ -x /opt/puppetlabs/puppet/bin/ruby ]; then
       RUBY_BIN=/opt/puppetlabs/puppet/bin/ruby

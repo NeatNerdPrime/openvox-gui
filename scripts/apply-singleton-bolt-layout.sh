@@ -36,7 +36,7 @@ config:
     user: bolt
     private-key: /etc/puppetlabs/bolt/id_bolt
     host-key-check: false
-    tty: true
+    tty: false
     tmpdir: /home/bolt/.bolt/tmp
 
 # Bolt inventory

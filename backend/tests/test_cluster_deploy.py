@@ -223,6 +223,7 @@ def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
     assert "stage" in script_argv
     assert "--format" in script_argv
     assert "json" in script_argv
+    assert "--no-tty" in script_argv
 
 
 def test_flatten_bolt_json_surfaces_script_stderr():

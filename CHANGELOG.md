@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.48] - 2026-08-12 (fix — Stage/Activate UI + silent script)
+
+### Fixed
+- **Stage and Activate are not the same action.** They already hit
+  `POST /deploy/stage` vs `POST /deploy/activate`. They shared one
+  `deploying` flag, so both buttons showed the spinner. Each button now
+  has its own loading label; the other is only disabled.
+- Stage helper no longer sources `/etc/profile` or `/root/.bashrc`
+  (a sourced `exit` killed the script with empty Bolt output).
+- GUI Bolt inventory `tty: false` and Stage passes `--no-tty`. `tty: true`
+  returned `COMMAND_ERROR` with empty stdout/stderr (PTY ate the log).
+  On empty failure, Stage cats `/var/tmp/r10k-stage-activate.log`.
+
 ## [3.11.0-alpha.47] - 2026-08-12 (fix — Bolt tmpdir at install time)
 
 ### Fixed

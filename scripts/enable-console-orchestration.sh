@@ -119,7 +119,7 @@ config:
     user: bolt
     private-key: ${BOLT_DIR}/id_bolt
     host-key-check: false
-    tty: true
+    tty: false
     tmpdir: /home/bolt/.bolt/tmp
 
 # Bolt inventory
