@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.4] - 2026-08-12 (fix — compiler ENC path + install docs)
+
+### Fixed / documented (no more tribal ENC steps)
+- **Compiler ENC runtime path** is **`/usr/local/bin/enc.py`** everywhere
+  (bootstrap default, install.sh co-located, docs, TROUBLESHOOTING). Was
+  `/usr/local/sbin` or only `/opt/openvox-gui/scripts` in places.
+- **Required layout called out in product docs and installers:**
+  - `/etc/sysconfig/openvox-enc` → `OPENVOX_GUI_API_BASE` for **puppetserver**
+  - systemd drop-in `EnvironmentFile=-/etc/sysconfig/openvox-enc`
+  - `node_terminus=exec` + `external_nodes=/usr/local/bin/enc.py`
+  - Multi-console: first HTTP 200 wins; put classification console **first**
+    without shared Postgres (split SQLite is not true failover)
+- New **`docs/COMPILER_ENC.md`** (shipped to `/opt/openvox-gui/docs/` on
+  install/update/deploy)
+- New **`etc/openvox-enc.sysconfig.example`** staged under install `etc/`
+- `install.sh` / `update_local.sh` / `deploy.sh` copy `docs/` + ENC example;
+  end-of-install banner and `install.conf.example` match the real path
+
 ## [3.11.1-alpha.3] - 2026-08-12 (fix — install-time parity for shipped features)
 
 ### Fixed

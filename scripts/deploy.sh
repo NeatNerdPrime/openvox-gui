@@ -182,21 +182,19 @@ do
     fi
 done
 
-# Optional r10k environment allow-list example (srsysarch1 #8); operators copy to
-# allowed-environments.txt to enforce. Do not overwrite an existing installed list.
+# Operator docs + etc examples (never overwrite live operator allowlist files)
+if [ -d "${REPO_DIR}/docs" ]; then
+    rm -rf "${INSTALL_DIR}/docs"
+    cp -a "${REPO_DIR}/docs" "${INSTALL_DIR}/"
+    chmod -R a+rX "${INSTALL_DIR}/docs" 2>/dev/null || true
+fi
 mkdir -p "${INSTALL_DIR}/etc"
-if [ -f "${REPO_DIR}/etc/allowed-environments.txt.example" ]; then
-    cp -f "${REPO_DIR}/etc/allowed-environments.txt.example" \
-        "${INSTALL_DIR}/etc/allowed-environments.txt.example"
-fi
-# Installer script IP allowlist example (operator copies to installer-ip-allowlist.txt)
-if [ -f "${REPO_DIR}/etc/installer-ip-allowlist.txt.example" ]; then
-    cp -f "${REPO_DIR}/etc/installer-ip-allowlist.txt.example" \
-        "${INSTALL_DIR}/etc/installer-ip-allowlist.txt.example"
-fi
-if [ -f "${REPO_DIR}/etc/README.md" ]; then
-    cp -f "${REPO_DIR}/etc/README.md" "${INSTALL_DIR}/etc/README.md"
-fi
+for etcf in allowed-environments.txt.example installer-ip-allowlist.txt.example \
+            openvox-enc.sysconfig.example README.md; do
+    if [ -f "${REPO_DIR}/etc/${etcf}" ]; then
+        cp -f "${REPO_DIR}/etc/${etcf}" "${INSTALL_DIR}/etc/${etcf}"
+    fi
+done
 
 # Write a precise build version (base + git sha + timestamp) so every deploy
 # produces a unique, traceable version without requiring a manual bump.

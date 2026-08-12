@@ -231,6 +231,23 @@ do
 done
 log_ok "Deployed scripts"
 
+# Operator docs (COMPILER_ENC, METRICS, …)
+if [ -d "${REPO_DIR}/docs" ]; then
+    rm -rf "${INSTALL_DIR}/docs"
+    cp -a "${REPO_DIR}/docs" "${INSTALL_DIR}/"
+    chmod -R a+rX "${INSTALL_DIR}/docs" 2>/dev/null || true
+    log_ok "Deployed docs/"
+fi
+
+# etc/ examples (do not overwrite operator live files)
+mkdir -p "${INSTALL_DIR}/etc"
+for etcf in allowed-environments.txt.example installer-ip-allowlist.txt.example \
+            openvox-enc.sysconfig.example README.md; do
+    if [ -f "${REPO_DIR}/etc/${etcf}" ]; then
+        cp -f "${REPO_DIR}/etc/${etcf}" "${INSTALL_DIR}/etc/${etcf}"
+    fi
+done
+
 # Deploy ovox CLI source (pip package) so the venv can be refreshed with latest CLI
 if [ -d "${REPO_DIR}/ovox" ]; then
     rm -rf "${INSTALL_DIR}/ovox"

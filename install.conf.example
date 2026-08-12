@@ -28,18 +28,24 @@ PUPPET_SERVER_PORT="8140"
 #PUPPET_CA_PORT="8140"
 
 # ─── ENC (external_nodes on compile hosts) ────────────────────
+# Full guide: docs/COMPILER_ENC.md
+# Runtime on compilers: /usr/local/bin/enc.py + /etc/sysconfig/openvox-enc
+# (puppetserver EnvironmentFile). Shell-only exports are not enough.
+#
 # auto  = wire ENC when local puppetserver is detected (default)
 # true  = always run bootstrap-compiler-enc.sh on this host
 # false = skip (dedicated GUI console; push ENC to compilers separately)
 #CONFIGURE_ENC="auto"
 # Comma-separated OpenVox GUI URLs for enc.py (OPENVOX_GUI_API_BASE).
 # Blank = https://localhost:APP_PORT (or http if SSL_ENABLED=false).
-# Multi-console example:
-#ENC_API_BASE="https://openvox.site1.example.com:4567,https://openvox.site2.example.com:4567"
+# Order matters without shared Postgres: first HTTP 200 wins — put the
+# console that holds classification FIRST (split SQLite is not failover).
+#ENC_API_BASE="https://openvox.site-with-data.example.com:4567,https://openvox.other.example.com:4567"
 # Compilers in a multi-host estate (no GUI install on them):
 #   bolt script run /opt/openvox-gui/scripts/bootstrap-compiler-enc.sh \
 #     --targets compiler1,compiler2 --run-as root -- \
-#     --api-base "$ENC_API_BASE" --enc-src /opt/openvox-gui/scripts/enc.py
+#     --api-base "$ENC_API_BASE" --enc-src /opt/openvox-gui/scripts/enc.py \
+#     --force --restart
 
 # ─── PuppetDB Settings ───────────────────────────────────────
 # FQDN of PuppetDB (defaults to hostname -f, often same as PuppetServer)

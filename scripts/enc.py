@@ -6,18 +6,28 @@ This script is called by PuppetServer for each node during catalog compilation.
 It queries the OpenVox GUI API to get the node's classification and outputs
 YAML that Puppet understands.
 
-Usage in puppet.conf:
+Usage in puppet.conf (on **compilers**, not dedicated consoles):
     [server]
     node_terminus = exec
-    external_nodes = /opt/openvox-gui/scripts/enc.py
+    external_nodes = /usr/local/bin/enc.py
+
+Install path:
+    Package/source copy: /opt/openvox-gui/scripts/enc.py (on the GUI console)
+    Runtime on compilers: /usr/local/bin/enc.py (via bootstrap-compiler-enc.sh)
 
 The script expects the certname as the first argument.
 
-Environment variables:
-    OPENVOX_GUI_API_BASE - One URL, or comma-separated URLs tried in order.
-      Clustered two-console example:
-        https://openvox.pdxc-it.corp.int-x.ai:4567,https://openvox.atlc-it.corp.int-x.ai:4567
-      Default: https://localhost:4567
+Environment variables (must be set for the **puppetserver** process):
+    OPENVOX_GUI_API_BASE - One URL, or comma-separated URLs tried in order
+      (first HTTP 200 wins). Prefer /etc/sysconfig/openvox-enc + systemd
+      EnvironmentFile on puppetserver — shell exports alone are not enough.
+      Multi-console without shared Postgres: put the console that holds
+      classification FIRST (split SQLite is not failover).
+      Example (ATLC has ENC data, PDXC may be empty):
+        https://openvox.atlc-it.corp.int-x.ai:4567,https://openvox.pdxc-it.corp.int-x.ai:4567
+      Default if unset: https://localhost:4567
+
+See docs/COMPILER_ENC.md
 """
 import os
 import sys

@@ -4,30 +4,38 @@
 #
 # Compilers (not consoles) run external_nodes at catalog compile time.
 # This script:
-#   - installs enc.py (default /usr/local/sbin/enc.py)
+#   - installs enc.py (default /usr/local/bin/enc.py — estate standard)
 #   - writes /etc/sysconfig/openvox-enc with OPENVOX_GUI_API_BASE
 #   - adds a puppetserver systemd drop-in so the unit loads that env
+#     (interactive shells are NOT enough — puppetserver must load the file)
 #   - sets node_terminus=exec + external_nodes in puppet.conf [server]
 #
 # Consoles only need a copy of this script under /opt/openvox-gui/scripts
 # so operators can Bolt-run it onto compilers. The GUI process itself
 # does not call enc.py.
 #
+# Multi-console / split SQLite:
+#   OPENVOX_GUI_API_BASE is tried in order; first HTTP 200 wins.
+#   Put the console that holds classification FIRST until both GUIs share
+#   Postgres. Example: ATLC has data, PDXC is empty → list ATLC first.
+#
 # Usage (on a compiler as root):
 #   sudo ./scripts/bootstrap-compiler-enc.sh \
-#     --api-base 'https://openvox.pdxc.example.com:4567,https://openvox.atlc.example.com:4567'
+#     --api-base 'https://openvox.atlc.example.com:4567,https://openvox.pdxc.example.com:4567'
 #
 # From a console (after bolt@ works):
 #   sudo -u bolt bolt script run /opt/openvox-gui/scripts/bootstrap-compiler-enc.sh \
 #     --targets ovcompiler1.example.com,ovcompiler2.example.com \
-#     --run-as root --no-tty --project /etc/puppetlabs/bolt \
-#     -- \
-#     --api-base 'https://openvox.pdxc.example.com:4567,https://openvox.atlc.example.com:4567' \
-#     --enc-src /opt/openvox-gui/scripts/enc.py
+#     --run-as root --no-tty --project /etc/puppetlabs/bolt -- \
+#     --api-base 'https://openvox.atlc.example.com:4567,https://openvox.pdxc.example.com:4567' \
+#     --enc-src /opt/openvox-gui/scripts/enc.py \
+#     --force --restart
 #
 # Co-located single-server (GUI on the same host as puppetserver):
 #   install.sh calls this with --api-base https://localhost:${APP_PORT}
-#   and --enc-src ${INSTALL_DIR}/scripts/enc.py
+#   and --enc-src ${INSTALL_DIR}/scripts/enc.py (dest still /usr/local/bin/enc.py)
+#
+# See docs/COMPILER_ENC.md
 ###############################################################################
 set -euo pipefail
 
@@ -35,7 +43,8 @@ export PATH="/opt/puppetlabs/puppet/bin:/opt/puppetlabs/bin:/usr/local/sbin:/usr
 
 API_BASE=""
 ENC_SRC=""
-ENC_DEST="/usr/local/sbin/enc.py"
+# Runtime path for external_nodes on compilers (not the console package tree).
+ENC_DEST="/usr/local/bin/enc.py"
 SYSCONFIG="/etc/sysconfig/openvox-enc"
 PUPPET_CONF="/etc/puppetlabs/puppet/puppet.conf"
 DROPIN_DIR="/etc/systemd/system/puppetserver.service.d"
