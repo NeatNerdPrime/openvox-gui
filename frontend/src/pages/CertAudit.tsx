@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router';
 import {
   Title, Card, Stack, Group, Text, Alert, Loader, Center,
   Table, Badge, Button, ActionIcon, Tooltip, Collapse, Paper,
-  Modal, Checkbox, Code,
+  Modal, Checkbox,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -147,7 +147,7 @@ export function CertAuditPage() {
         </Paper>
         <Paper withBorder p="md" ta="center">
           <Text size="xl" fw={700} c="green">{data?.total_active_nodes || 0}</Text>
-          <Text size="sm" c="dimmed">Active (signed ∩ PuppetDB)</Text>
+          <Text size="sm" c="dimmed">Certificates in use</Text>
         </Paper>
         <Paper withBorder p="md" ta="center">
           <Text size="xl" fw={700} c={orphaned.length > 0 ? 'red' : 'green'}>{data?.total_orphaned || 0}</Text>
@@ -156,12 +156,13 @@ export function CertAuditPage() {
       </Group>
 
       {(data?.pdb_without_cert || []).length > 0 && (
-        <Alert color="yellow" title="PuppetDB nodes with no signed certificate">
-          {data.pdb_without_cert.length} active PuppetDB record(s) have no CA
-          cert (typical after a CA rebuild or <Code>ca clean</Code> without a
-          PDB deactivate). They are not agents:{' '}
-          {data.pdb_without_cert.map((n: any) => n.certname).join(', ')}.
-          Deactivate or purge them under Overview | Nodes if they should be gone.
+        <Alert color="yellow" title="Stale inventory records">
+          These names are still in PuppetDB but have no signed certificate,
+          so they cannot run Puppet. They are leftovers, not extra agents:{' '}
+          <Text span fw={600}>
+            {data.pdb_without_cert.map((n: any) => n.certname).join(', ')}
+          </Text>
+          . Remove them from Overview | Nodes if they should not appear in the fleet.
         </Alert>
       )}
 
@@ -316,7 +317,7 @@ export function CertAuditPage() {
             {showHealthy ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
           </ActionIcon>
           <Title order={4}>Healthy Certificates ({active.length})</Title>
-          <Text size="sm" c="dimmed">Signed certs with matching active PuppetDB nodes</Text>
+          <Text size="sm" c="dimmed">Signed and present in the live inventory</Text>
         </Group>
         <Collapse in={showHealthy}>
           <OpsTable<any>

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.45] - 2026-08-12 (fix — Cert Audit wording)
+
+### Changed
+- Certificate Audit labels: **Certificates in use** (not set notation) and
+  a plain-language **Stale inventory records** banner for PuppetDB leftovers.
+
 ## [3.11.0-alpha.44] - 2026-08-12 (fix — Cert Audit active count)
 
 ### Fixed
