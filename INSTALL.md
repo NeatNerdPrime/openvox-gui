@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.11.0-alpha.48**
+**OpenVox GUI Version 3.11.0-alpha.49**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -324,7 +324,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.11.0-alpha.48"}` if everything is working.
+You should see `{"status":"ok","version":"3.11.0-alpha.49"}` if everything is working.
 
 ---
 
@@ -732,6 +732,7 @@ When **Settings → Cluster** is set to **clustered**, OpenVox GUI can:
    - **Stage** code into a staging codedir on all targets (OpenBolt uploads `r10k-stage-activate.sh` into `/home/bolt/.bolt/tmp` — not `/tmp`, which CIS mounts `noexec` — and runs it as root on each FQDN). `install.sh` and `enable-console-orchestration.sh` create that directory on the console; compilers need the same path via `profiles::base::bolt_user` (or the one-shot `install -d` in TROUBLESHOOTING).  
    - **Activate** staged code to the live codedir so cutover is coordinated across the set.  
    - Compilers need r10k + `r10k.yaml` and SSH as `bolt@` (`profiles::base::bolt_user`). The console is not a compiler — Stage will not silently r10k the GUI host.  
+   - **First install (manual, until Puppet owns it):** on each compiler run `scripts/bootstrap-compiler.sh` (AIO `gem install r10k`, git, Bolt tmpdir). Copy `/etc/puppetlabs/r10k/r10k.yaml` from a working compiler — the script will not invent a control-repo URL. From a console after `bolt@` works: `bolt script run /opt/openvox-gui/scripts/bootstrap-compiler.sh --targets <compilers> --run-as root --no-tty`. `install.sh` also installs r10k on the console when AIO Ruby is present.
    - Single-host “Deploy Now” remains for classic r10k on the local box.
 
 4. **Classification segmentation**  

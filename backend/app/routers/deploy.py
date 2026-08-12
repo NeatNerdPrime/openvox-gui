@@ -453,9 +453,17 @@ _TMPDIR_HINT = (
 )
 
 # OpenBolt `mkdir -m 700 $tmpdir/<uuid>` (no -p). Created as root before script run.
+# Also fail-fast if r10k / r10k.yaml is missing — otherwise one compiler
+# runs a 5-minute deploy while the others die and the GUI just spins.
 _PREP_BOLT_TMPDIR = (
     "install -d -o bolt -g bolt -m 700 "
-    "/home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp"
+    "/home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp && "
+    "if [ -x /opt/puppetlabs/puppet/bin/r10k ]; then R10K=/opt/puppetlabs/puppet/bin/r10k; "
+    "elif command -v r10k >/dev/null 2>&1; then R10K=$(command -v r10k); "
+    "else echo MISSING_R10K host=$(hostname -f); exit 2; fi && "
+    "if [ ! -f /etc/puppetlabs/r10k/r10k.yaml ]; then "
+    "echo MISSING_R10K_YAML host=$(hostname -f) r10k=$R10K; exit 3; fi && "
+    "echo OK host=$(hostname -f) r10k=$R10K yaml=/etc/puppetlabs/r10k/r10k.yaml"
 )
 
 
@@ -655,8 +663,10 @@ async def _run_on_targets(
             "command", "run", _PREP_BOLT_TMPDIR,
             "--targets", ",".join(targets),
             "--run-as", "root",
+            "--no-tty",
             "--connect-timeout", "8",
             "--no-host-key-check",
+            "--format", "json",
         ]
         try:
             probe = await run_bolt_command(probe_args, timeout=_CLUSTER_SSH_PROBE_TIMEOUT)
@@ -670,19 +680,39 @@ async def _run_on_targets(
                 ],
                 [{"host": t, "success": False, "via": "bolt-probe", "exit_code": -1} for t in targets],
             )
-        probe_rc = probe.get("returncode")
-        probe_rc = -1 if probe_rc is None else int(probe_rc)
-        probe_out = ((probe.get("stdout") or "") + "\n" + (probe.get("stderr") or "")).splitlines()
+        probe_rc, probe_out, probe_hosts = _flatten_bolt_json(
+            probe, targets, via="bolt-probe"
+        )
         if probe_rc != 0:
-            hint = (
-                "OpenBolt cannot SSH to the code-deploy targets as bolt@. "
-                "Classify those hosts with profiles::base::bolt_user (same "
-                "id_bolt.pub as this console) and retry Stage."
-            )
+            blob = "\n".join(probe_out)
+            if "MISSING_R10K_YAML" in blob:
+                hint = (
+                    "r10k is installed but /etc/puppetlabs/r10k/r10k.yaml is "
+                    "missing on one or more compilers. Copy the working file "
+                    "from ovcompiler1.pdxc-it.corp.int-x.ai, or: "
+                    "sudo /opt/openvox-gui/scripts/bootstrap-compiler.sh "
+                    "--yaml /path/to/r10k.yaml"
+                )
+            elif "MISSING_R10K" in blob:
+                hint = (
+                    "r10k is not installed on one or more compilers. That is "
+                    "why Stage spins with no log (one host deploys, the rest "
+                    "die). On each compiler, or via bolt script run from the "
+                    "console: sudo /opt/openvox-gui/scripts/bootstrap-compiler.sh"
+                )
+            else:
+                hint = (
+                    "OpenBolt cannot prepare the code-deploy targets as bolt@. "
+                    "Classify those hosts with profiles::base::bolt_user (same "
+                    "id_bolt.pub as this console) and retry Stage."
+                )
             return _cluster_result(
                 mode, environment, targets, False, probe_rc or 1,
                 [hint, ""] + [ln for ln in probe_out if ln],
-                [{"host": t, "success": False, "via": "bolt-probe", "exit_code": probe_rc} for t in targets],
+                probe_hosts or [
+                    {"host": t, "success": False, "via": "bolt-probe", "exit_code": probe_rc}
+                    for t in targets
+                ],
             )
 
         # script run uploads the helper (compilers do not have /opt/openvox-gui).

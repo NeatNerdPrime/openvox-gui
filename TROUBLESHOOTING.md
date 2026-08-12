@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.48**
+**OpenVox GUI Version 3.11.0-alpha.49**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.48"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.49"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -728,6 +728,20 @@ to the browser).
    before `script run`. The inventory warning about `host-key-check` /
    `run-as` / `connect-timeout` is Bolt noise — those CLI flags overlap
    inventory keys; it does **not** mean a different SSH user.
+
+6. **Stage spinner, no log, only one compiler has r10k.** The GUI waits
+   for **every** target. A host with r10k can run for minutes; hosts
+   without it die immediately. After 3.11.0-alpha.49 Stage probes r10k +
+   `r10k.yaml` first and returns `MISSING_R10K` instead of hanging.
+   Bootstrap the other compilers:
+
+   ```bash
+   # On each compiler as root, or from the console via Bolt:
+   sudo /opt/openvox-gui/scripts/bootstrap-compiler.sh
+   # then copy yaml from the working compiler
+   scp ovcompiler1.pdxc-it.corp.int-x.ai:/etc/puppetlabs/r10k/r10k.yaml \
+     /etc/puppetlabs/r10k/r10k.yaml
+   ```
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 

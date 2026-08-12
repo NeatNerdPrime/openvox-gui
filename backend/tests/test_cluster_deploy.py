@@ -194,6 +194,37 @@ def test_run_on_targets_probe_auth_error_is_not_exception(tmp_path: Path):
     assert probe.call_count == 1
 
 
+def test_run_on_targets_probe_missing_r10k(tmp_path: Path):
+    d = _load_deploy()
+    script = tmp_path / "r10k-stage-activate.sh"
+    script.write_text("#!/bin/bash\n")
+    d.STAGE_ACTIVATE_SCRIPT = str(script)
+    payload = {
+        "items": [
+            {
+                "target": "ovcompiler2.example.com",
+                "status": "failure",
+                "value": {
+                    "stdout": "MISSING_R10K host=ovcompiler2.example.com\n",
+                    "stderr": "",
+                    "exit_code": 2,
+                },
+            }
+        ]
+    }
+    probe = AsyncMock(
+        return_value={"returncode": 2, "stdout": json.dumps(payload), "stderr": ""}
+    )
+    _seed_cluster_and_bolt(lambda: "/opt/puppetlabs/bin/bolt", probe)
+    result = asyncio.run(
+        d._run_on_targets("stage", None, ["ovcompiler2.example.com"])
+    )
+    assert result["success"] is False
+    assert any("MISSING_R10K" in line for line in result["output"])
+    assert any("bootstrap-compiler.sh" in line for line in result["output"])
+    assert probe.call_count == 1
+
+
 def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
     d = _load_deploy()
     script = tmp_path / "r10k-stage-activate.sh"
@@ -217,6 +248,7 @@ def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
     assert probe_argv[:2] == ["command", "run"]
     assert "install -d" in probe_argv[2]
     assert "/home/bolt/.bolt/tmp" in probe_argv[2]
+    assert "MISSING_R10K" in probe_argv[2]
     assert "--run-as" in probe_argv
     script_argv = run.call_args_list[1].args[0]
     assert script_argv[:2] == ["script", "run"]

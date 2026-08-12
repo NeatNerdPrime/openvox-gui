@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.49] - 2026-08-12 (fix — r10k on every compiler)
+
+### Fixed
+- Clustered Stage waited on all targets, so one compiler with r10k and
+  three without left both GUIs spinning with an empty log.
+- Stage now probes r10k + `/etc/puppetlabs/r10k/r10k.yaml` on every
+  target and returns `MISSING_R10K` / `MISSING_R10K_YAML` immediately.
+
+### Added
+- `scripts/bootstrap-compiler.sh` — first-install (git, AIO `gem install
+  r10k`, Bolt tmpdir). Does not invent a control-repo URL; copy
+  `r10k.yaml` from a working compiler. `install.sh` installs r10k on the
+  console when AIO Ruby is present. Puppet will own this later.
+
 ## [3.11.0-alpha.48] - 2026-08-12 (fix — Stage/Activate UI + silent script)
 
 ### Fixed

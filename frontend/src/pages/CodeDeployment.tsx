@@ -450,7 +450,8 @@ export function CodeDeploymentPage() {
               {clustered && (
                 <Text size="xs" c="dimmed" mt="sm">
                   Stage → r10k into code-staging on each target; Activate → promote to live codedir
-                  on all targets via OpenBolt (SSH as bolt@). Compilers need r10k + bolt_user.
+                  on all targets via OpenBolt (SSH as bolt@). Every compiler needs r10k +
+                  /etc/puppetlabs/r10k/r10k.yaml (bootstrap-compiler.sh until Puppet owns it).
                   Targets: {deployTargets.join(', ') || 'configure under Configuration tab / Settings → Cluster'}.
                 </Text>
               )}

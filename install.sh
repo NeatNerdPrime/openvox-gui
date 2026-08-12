@@ -721,7 +721,7 @@ echo "$BUILD_ID" > "${INSTALL_DIR}/VERSION.build"
 log_ok "Wrote initial build version: ${BUILD_ID}"
 
 # Copy scripts
-for script in enc.py manage_users.py deploy.sh r10k-deploy.sh r10k-stage-activate.sh update_local.sh sync-openvox-repo.sh generate_fleet_health_report.py ca-reject-csr.sh enable-console-orchestration.sh; do
+for script in enc.py manage_users.py deploy.sh r10k-deploy.sh r10k-stage-activate.sh update_local.sh sync-openvox-repo.sh generate_fleet_health_report.py ca-reject-csr.sh enable-console-orchestration.sh bootstrap-compiler.sh; do
     if [ -f "${SCRIPT_DIR}/scripts/${script}" ]; then
         cp "${SCRIPT_DIR}/scripts/${script}" "${INSTALL_DIR}/scripts/${script}"
         chmod +x "${INSTALL_DIR}/scripts/${script}"
@@ -1283,6 +1283,22 @@ if [ "$CONFIGURE_BOLT" = "true" ]; then
     # fail with TMPDIR_ERROR on first use.
     install -d -o bolt -g bolt -m 0700 /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
     log_ok "Created /home/bolt/.bolt/tmp (OpenBolt ssh.tmpdir)"
+
+    # Console / single-server Deploy Now also needs r10k. Compilers use
+    # scripts/bootstrap-compiler.sh (same gem) until Puppet owns it.
+    if [ -x /opt/puppetlabs/puppet/bin/gem ]; then
+        if [ ! -x /opt/puppetlabs/puppet/bin/r10k ]; then
+            log_info "Installing r10k via AIO gem..."
+            if /opt/puppetlabs/puppet/bin/gem install r10k --no-document; then
+                log_ok "Installed /opt/puppetlabs/puppet/bin/r10k"
+            else
+                log_warn "gem install r10k failed — install later or run scripts/bootstrap-compiler.sh"
+            fi
+        else
+            log_ok "r10k already present (/opt/puppetlabs/puppet/bin/r10k)"
+        fi
+        install -d -m 0755 /etc/puppetlabs/r10k
+    fi
 
     BOLT_DIR="/etc/puppetlabs/bolt"
     install -d -o root -g bolt -m 0750 "$BOLT_DIR"
