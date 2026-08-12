@@ -1240,34 +1240,18 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
             )
 
         elif family in ("debian", "ubuntu"):
-            dist_name = release  # e.g., "debian12", "ubuntu24.04"
-            # APT: mirror dists metadata + pool
-            for sub in (f"dists/{dist_name}/openvox{ver}/", f"pool/openvox{ver}/"):
-                dest = PKG_REPO_DIR / "apt" / sub.rstrip("/")
-                dest.mkdir(parents=True, exist_ok=True)
-                ok = await _rsync_or_curl(
-                    f"{RSYNC_APT}/{sub}",
-                    str(dest) + "/",
-                    f"{APT_BASE}/{sub}",
-                    use_rsync=use_rsync,
-                    https_fallback=https_fallback,
-                )
-                if not ok:
-                    success = False
-            # Dist-level release files
-            for relfile in ("InRelease", "Release", "Release.gpg"):
-                await _fetch_file(
-                    f"{APT_BASE}/dists/{dist_name}/{relfile}",
-                    str(PKG_REPO_DIR / "apt" / "dists" / dist_name / relfile),
-                )
-            # GPG key + keyring
-            apt_root = PKG_REPO_DIR / "apt"
-            apt_root.mkdir(parents=True, exist_ok=True)
-            for kf in ("GPG-KEY-openvox.pub", "openvox-keyring.gpg"):
-                await _fetch_file(
-                    f"{APT_BASE}/{kf}",
-                    str(apt_root / kf),
-                )
+            # Raw .debs from pool only — skip dists/ metadata (ephemeral / 404).
+            dest = PKG_REPO_DIR / "apt" / f"openvox{ver}"
+            dest.mkdir(parents=True, exist_ok=True)
+            ok = await _rsync_or_curl(
+                f"{RSYNC_APT}/pool/openvox{ver}/",
+                str(dest) + "/",
+                f"{APT_BASE}/pool/openvox{ver}/",
+                use_rsync=use_rsync,
+                https_fallback=https_fallback,
+            )
+            if not ok:
+                success = False
 
         elif family in ("windows", "mac"):
             rsync_root = RSYNC_WIN if family == "windows" else RSYNC_MAC

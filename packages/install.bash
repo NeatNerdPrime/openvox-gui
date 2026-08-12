@@ -564,59 +564,63 @@ apt_dist_suite() {
 }
 
 setup_apt_repo() {
-    local apt_base="${PKG_REPO_URL%/}/apt"
-    local list_file="/etc/apt/sources.list.d/openvox${OPENVOX_VERSION}.list"
-    local trust_dir="/etc/apt/trusted.gpg.d"
-    local dist
+    # Mirror is a raw .deb tree under /packages/apt/openvox{N}/ (pool walk).
+    # No dists/ InRelease/Packages — those 404 and are ephemeral.
+    local ver_url="${PKG_REPO_URL%/}/apt/openvox${OPENVOX_VERSION}"
+    local dist arch
     dist=$(apt_dist_suite)
+    case "$PLATFORM_ARCHITECTURE" in
+        x86_64|amd64) arch=amd64 ;;
+        aarch64|arm64) arch=arm64 ;;
+        *) arch="$PLATFORM_ARCHITECTURE" ;;
+    esac
     if [ -z "$dist" ]; then
         fail "Could not determine apt dist suite for ${PLATFORM_NAME} ${PLATFORM_RELEASE}"
     fi
 
-    info "Configuring apt repository at ${list_file}"
-    info "  base   : ${apt_base}"
-    info "  suite  : ${dist}"
-    info "  comp   : openvox${OPENVOX_VERSION}"
-
-    # The openvox repos are signed.  The keyring is published at the
-    # apt-mirror root.  We try to install it into trusted.gpg.d (which
-    # every modern apt honours) and only fall back to `[trusted=yes]`
-    # if the download fails -- which keeps the install working on
-    # disconnected internal networks.
-    #
-    # 3.3.5-24+: when the puppet CA install (CA_TRUSTED=true) succeeded
-    # earlier in the script, drop --insecure for the keyring fetch and
-    # drop Acquire::https::Verify-Peer=false from apt-get -- TLS now
-    # verifies properly against the just-installed CA, which is also
-    # what subsequent `apt-get update` / `dnf upgrade openvox-agent`
-    # invocations will see. When CA install failed, keep the band-aids
-    # so the install still completes.
     local curl_tls_args=""
-    local apt_tls_args=()
     if [ "${CA_TRUSTED:-false}" != "true" ]; then
         curl_tls_args="--insecure"
-        apt_tls_args=(-o Acquire::https::Verify-Peer=false)
     fi
 
-    local trusted_marker="[trusted=yes]"
+    info "Installing openvox-agent from raw .deb mirror"
+    info "  tree : ${ver_url}"
+    info "  match: ${dist} ${arch}"
+
+    local listing hrefs deb
     # shellcheck disable=SC2086
-    if cmd curl && curl -fsSL ${curl_tls_args} \
-        "${apt_base}/openvox-keyring.gpg" \
-        -o "${trust_dir}/openvox${OPENVOX_VERSION}.gpg" 2>/dev/null; then
-        trusted_marker=""
-        info "Installed openvox keyring into ${trust_dir}/"
-    else
-        warn "Could not fetch openvox-keyring.gpg; falling back to [trusted=yes]"
+    listing=$(curl -fsSL ${curl_tls_args} "${ver_url}/o/openvox-agent/" 2>/dev/null \
+        || curl -fsSL ${curl_tls_args} "${ver_url}/" 2>/dev/null || true)
+    hrefs=$(printf '%s\n' "$listing" | sed -n 's/.*href="\([^"]*\)".*/\1/p' | grep -vE '^\.\./|^/')
+    deb=$(printf '%s\n' "$hrefs" \
+        | grep -E 'openvox-agent_.*\.deb$' \
+        | grep -F "$arch" \
+        | grep -Fi "$dist" \
+        | sort -V | tail -1)
+    if [ -z "$deb" ]; then
+        deb=$(printf '%s\n' "$hrefs" \
+            | grep -E 'openvox-agent_.*\.deb$' \
+            | grep -F "$arch" \
+            | sort -V | tail -1)
     fi
+    [ -n "$deb" ] || fail "No openvox-agent .deb for ${dist}/${arch} under ${ver_url}"
 
-    cat > "$list_file" <<EOF
-deb ${trusted_marker} ${apt_base}/ ${dist} openvox${OPENVOX_VERSION}
-EOF
-
-    apt-get update -y "${apt_tls_args[@]}" || true
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        "${apt_tls_args[@]}" \
-        openvox-agent
+    local deb_url="${ver_url}/o/openvox-agent/${deb}"
+    case "$deb" in
+        http*|/*) ;;
+        *)
+            if ! curl -fsSIL ${curl_tls_args} "$deb_url" >/dev/null 2>&1; then
+                deb_url="${ver_url}/${deb}"
+            fi
+            ;;
+    esac
+    info "  deb  : ${deb_url}"
+    # shellcheck disable=SC2086
+    curl -fSL ${curl_tls_args} -o /tmp/openvox-agent.deb "$deb_url" \
+        || fail "Failed to download ${deb_url}"
+    DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/openvox-agent.deb \
+        || DEBIAN_FRONTEND=noninteractive apt-get install -y -f
+    rm -f /tmp/openvox-agent.deb
 }
 
 # Install the puppet CA into the system trust store BEFORE adding the

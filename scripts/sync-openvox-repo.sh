@@ -373,6 +373,34 @@ curl_fetch() {
     return 1
 }
 
+# Parse an nginx/apache autoindex listing. Prints hrefs, one per line.
+_curl_list_hrefs() {
+    local url="${1%/}/"
+    curl -fsSL -4 --connect-timeout 30 --max-time 60 "${CURL_PROXY_ARGS[@]}" "$url" 2>/dev/null \
+        | sed -n 's/.*href="\([^"]*\)".*/\1/p' \
+        | grep -vE '^\.\.|^/|^$|index\.html|robots\.txt' || true
+}
+
+# Fetch only *files* listed in a directory URL. Subdirs (href ending /)
+# are skipped so we do not invent names like binary-amd64/Release.
+_curl_fetch_listed_files() {
+    local url="${1%/}/"
+    local dest="$2"
+    local entries e
+    mkdir -p "$dest"
+    entries=$(_curl_list_hrefs "$url")
+    if [ -z "$entries" ]; then
+        return 1
+    fi
+    for e in $entries; do
+        case "$e" in
+            */) continue ;;
+        esac
+        curl_fetch "${url}${e}" "$dest" || true
+    done
+    return 0
+}
+
 # Mirror a remote directory tree into a local directory by parsing
 # the HTML directory listing (nginx autoindex format) and fetching
 # each file individually with curl_fetch. Recurses into subdirectories.
@@ -889,113 +917,18 @@ rsync_sync_apt() {
     done
 }
 
-# curl fallback for apt -- uses Packages-file parsing instead of
-# recursive directory mirroring. Fetches Packages.gz, extracts
-# Filename: fields to discover .deb URLs, then downloads each
-# individually with curl. This is how apt itself discovers packages.
+# Raw .deb download only. Do not fetch dists/ InRelease/Release/Packages —
+# those listings are ephemeral and 404. Walk pool/ and keep the files.
 curl_sync_apt() {
-    local v rel arch deb_a dist filename
-    local apt_root="${PKG_REPO_DIR}/apt"
-
-    # Root files
-    for f in GPG-KEY-openvox.pub openvox-keyring.gpg; do
-        curl_fetch "${APT_BASE}/${f}" "${apt_root}" \
-            || warn "Could not fetch ${f}"
-    done
-
+    local v url dest
     for v in $(echo "$VERSIONS" | tr ',' ' '); do
-        # ── Debian releases ──
-        for rel in $(echo "$DEB_RELEASES" | tr ',' ' '); do
-            dist="debian${rel}"
-            if [ "$DRY_RUN" != "true" ] && \
-               ! url_exists "${APT_BASE}/dists/${dist}/openvox${v}/"; then
-                info "  (openvox${v} not published for ${dist} -- skipping)"
-                continue
-            fi
-            for arch in $(echo "$ARCHES" | tr ',' ' '); do
-                deb_a=$(deb_arch "$arch")
-                local pkg_url="${APT_BASE}/dists/${dist}/openvox${v}/binary-${deb_a}/Packages.gz"
-                info "  -> parsing ${dist}/openvox${v}/binary-${deb_a}/Packages.gz for .deb URLs"
-                local deb_list
-                deb_list=$(curl -fsSL -4 --max-time 60 "${CURL_PROXY_ARGS[@]}" "$pkg_url" 2>/dev/null \
-                    | zcat 2>/dev/null \
-                    | awk '/^Filename:/ {print $2}')
-                if [ -z "$deb_list" ]; then
-                    warn "Could not parse Packages.gz from ${pkg_url}"
-                    SYNC_FAILURES=$((SYNC_FAILURES + 1))
-                    continue
-                fi
-                local deb_count=0
-                for filename in $deb_list; do
-                    local dest_dir="${apt_root}/$(dirname "$filename")"
-                    if curl_fetch "${APT_BASE}/${filename}" "$dest_dir"; then
-                        deb_count=$((deb_count + 1))
-                    fi
-                done
-                info "    fetched ${deb_count} .deb(s) for ${dist}/openvox${v}/${deb_a}"
-                # Metadata files
-                for f in Packages Packages.gz Release; do
-                    curl_fetch \
-                        "${APT_BASE}/dists/${dist}/openvox${v}/binary-${deb_a}/${f}" \
-                        "${apt_root}/dists/${dist}/openvox${v}/binary-${deb_a}"
-                done
-            done
-            # Dist-level Release files
-            for relfile in InRelease Release Release.gpg; do
-                curl_fetch "${APT_BASE}/dists/${dist}/${relfile}" \
-                    "${apt_root}/dists/${dist}" \
-                    || warn "Could not fetch dists/${dist}/${relfile}"
-            done
-            # Release DEB
-            curl_fetch "${APT_BASE}/openvox${v}-release-${dist}.deb" \
-                "${apt_root}" \
-                || warn "Could not fetch openvox${v}-release-${dist}.deb"
-        done
-
-        # ── Ubuntu releases ──
-        for rel in $(echo "$UBU_RELEASES" | tr ',' ' '); do
-            dist="ubuntu${rel}"
-            if [ "$DRY_RUN" != "true" ] && \
-               ! url_exists "${APT_BASE}/dists/${dist}/openvox${v}/"; then
-                info "  (openvox${v} not published for ${dist} -- skipping)"
-                continue
-            fi
-            for arch in $(echo "$ARCHES" | tr ',' ' '); do
-                deb_a=$(deb_arch "$arch")
-                local pkg_url="${APT_BASE}/dists/${dist}/openvox${v}/binary-${deb_a}/Packages.gz"
-                info "  -> parsing ${dist}/openvox${v}/binary-${deb_a}/Packages.gz for .deb URLs"
-                local deb_list
-                deb_list=$(curl -fsSL -4 --max-time 60 "${CURL_PROXY_ARGS[@]}" "$pkg_url" 2>/dev/null \
-                    | zcat 2>/dev/null \
-                    | awk '/^Filename:/ {print $2}')
-                if [ -z "$deb_list" ]; then
-                    warn "Could not parse Packages.gz from ${pkg_url}"
-                    SYNC_FAILURES=$((SYNC_FAILURES + 1))
-                    continue
-                fi
-                local deb_count=0
-                for filename in $deb_list; do
-                    local dest_dir="${apt_root}/$(dirname "$filename")"
-                    if curl_fetch "${APT_BASE}/${filename}" "$dest_dir"; then
-                        deb_count=$((deb_count + 1))
-                    fi
-                done
-                info "    fetched ${deb_count} .deb(s) for ${dist}/openvox${v}/${deb_a}"
-                for f in Packages Packages.gz Release; do
-                    curl_fetch \
-                        "${APT_BASE}/dists/${dist}/openvox${v}/binary-${deb_a}/${f}" \
-                        "${apt_root}/dists/${dist}/openvox${v}/binary-${deb_a}"
-                done
-            done
-            for relfile in InRelease Release Release.gpg; do
-                curl_fetch "${APT_BASE}/dists/${dist}/${relfile}" \
-                    "${apt_root}/dists/${dist}" \
-                    || warn "Could not fetch dists/${dist}/${relfile}"
-            done
-            curl_fetch "${APT_BASE}/openvox${v}-release-${dist}.deb" \
-                "${apt_root}" \
-                || warn "Could not fetch openvox${v}-release-${dist}.deb"
-        done
+        url="${APT_BASE}/pool/openvox${v}/"
+        dest="${PKG_REPO_DIR}/apt/openvox${v}"
+        info "  -> raw .deb from ${url}"
+        if ! curl_mirror "$url" "$dest" '\.deb$'; then
+            warn "Could not walk ${url}"
+            SYNC_FAILURES=$((SYNC_FAILURES + 1))
+        fi
     done
 }
 

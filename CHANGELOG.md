@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.43] - 2026-08-12 (fix — apt mirror is raw .debs only)
+
+### Changed
+- Apt sync no longer touches `dists/`, `Release`, or `Packages.gz`
+  (ephemeral / 404). It walks `https://apt.voxpupuli.org/pool/openvox{N}/`
+  and stores `.deb` files under `/opt/openvox-pkgs/apt/openvox{N}/`.
+  `install.bash` installs the matching `openvox-agent_*.deb` with
+  `dpkg -i`.
+
 ## [3.11.0-alpha.42] - 2026-08-12 (fix — HTTPS_PROXY may be http://)
 
 ### Fixed
