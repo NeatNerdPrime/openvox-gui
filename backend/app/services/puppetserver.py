@@ -186,22 +186,112 @@ class PuppetServerService:
             logger.warning("Compiler environment_modules HTTP failed: %s", e)
         return self.list_modules(environment)
 
-    async def fetch_environment_classes(self, environment: str = "production") -> List[str]:
-        """GET /puppet/v3/environment_classes on the compiler."""
+    def _compiler_hosts_for_api(self) -> List[str]:
+        """Hosts to try for Puppet Server v3 APIs (VIP first, then cluster compilers)."""
+        hosts: List[str] = []
+        primary = (settings.puppet_server_host or "").strip()
+        if primary:
+            hosts.append(primary)
         try:
-            client = await self._get_ps_client()
-            resp = await client.get(
-                "/puppet/v3/environment_classes",
-                params={"environment": environment},
-                headers={"Accept": "application/json"},
-            )
+            from .cluster_config import deploy_targets, is_clustered, load_cluster_config
+
+            if is_clustered():
+                cfg = load_cluster_config()
+                for h in (cfg.get("compilers") or []) + deploy_targets():
+                    h = str(h).strip()
+                    if h and h not in hosts:
+                        hosts.append(h)
+        except Exception:
+            pass
+        return hosts
+
+    async def _environment_classes_http(
+        self, host: str, environment: str
+    ) -> tuple[List[str], Optional[str]]:
+        """GET /puppet/v3/environment_classes on one host. Returns (names, error)."""
+        url = f"https://{host}:{settings.puppet_server_port}"
+        try:
+            ctx = self._create_ps_ssl_context()
+            # Short timeout: race several compilers; do not wait 20s each.
+            async with httpx.AsyncClient(
+                base_url=url, verify=ctx, timeout=8.0, trust_env=False
+            ) as client:
+                resp = await client.get(
+                    "/puppet/v3/environment_classes",
+                    params={"environment": environment},
+                    headers={"Accept": "application/json"},
+                )
             if resp.status_code == 200:
                 names = parse_environment_classes_payload(resp.json())
                 if names:
-                    return names
+                    return names, None
+                return [], f"{host}: HTTP 200 but no classes (empty env or parse miss)"
+            return [], f"{host}: HTTP {resp.status_code} {resp.text[:180]}"
         except Exception as e:
-            logger.warning("Compiler environment_classes HTTP failed: %s", e)
-        return [c["name"] for c in self.list_available_classes(environment)]
+            return [], f"{host}: {e}"
+
+    async def fetch_environment_classes(
+        self, environment: str = "production"
+    ) -> tuple[List[str], Dict[str, Any]]:
+        """Discover classes via compiler HTTP (parallel race), then local disk.
+
+        Returns (class_names, meta) where meta has source/host/errors for the UI.
+        First successful host wins; remaining requests are cancelled.
+        """
+        import asyncio
+
+        hosts = self._compiler_hosts_for_api()
+        errors: List[str] = []
+        if hosts:
+            tasks = {
+                asyncio.create_task(
+                    self._environment_classes_http(h, environment), name=h
+                ): h
+                for h in hosts[:8]
+            }
+            pending = set(tasks.keys())
+            try:
+                while pending:
+                    done, pending = await asyncio.wait(
+                        pending, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    for task in done:
+                        host = tasks[task]
+                        try:
+                            names, err = task.result()
+                        except Exception as e:
+                            errors.append(f"{host}: {e}")
+                            continue
+                        if names:
+                            for p in pending:
+                                p.cancel()
+                            if pending:
+                                await asyncio.gather(*pending, return_exceptions=True)
+                            return names, {
+                                "source": "puppet-server-api",
+                                "host": host,
+                                "environment": environment,
+                            }
+                        if err:
+                            errors.append(err)
+                            logger.warning("environment_classes: %s", err)
+            finally:
+                for t in pending:
+                    t.cancel()
+
+        local = [c["name"] for c in self.list_available_classes(environment)]
+        if local:
+            return local, {
+                "source": "local-codedir",
+                "host": "localhost",
+                "environment": environment,
+            }
+        return [], {
+            "source": "none",
+            "host": None,
+            "environment": environment,
+            "errors": errors,
+        }
 
     async def get_remote_health(self) -> Dict[str, Any]:
         """Compiler health via /status/v1/simple (localhost or VIP)."""

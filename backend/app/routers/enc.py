@@ -169,57 +169,132 @@ async def get_hierarchy(db: AsyncSession = Depends(get_db)):
 
 # ─── Available Classes (from filesystem) ───────────────────
 
+# Short TTL cache — class lists rarely change; picker opens often.
+_CLASSES_CACHE: Dict[str, Any] = {}
+_CLASSES_CACHE_TS: Dict[str, float] = {}
+_CLASSES_CACHE_TTL = 90.0
+
+
 @router.get("/available-classes")
 async def get_available_classes(environment: str = "production"):
     """
-    Discover available Puppet classes from the compiler HTTP API
-    (``/puppet/v3/environment_classes``), then local codedir.
-    Returns categorized classes: roles, profiles, and module classes.
+    Discover available Puppet classes for the ENC class picker.
+
+    API-first order:
+      1. Puppet Server ``/puppet/v3/environment_classes`` (parallel race of VIP + compilers)
+      2. Bolt script walk of the live codedir on the first code-deploy target
+      3. Local codedir (single-box only)
+
+    Consoles have no control-repo tree; empty dropdown meant step 1 failed
+    and step 3 found nothing. Results cached ~90s for snappy re-open.
     """
+    import time
     from pathlib import Path
+    import json
+
+    from ..services.cluster_config import deploy_targets, is_clustered
     from ..services.puppetserver import puppetserver_service
 
-    all_classes = await puppetserver_service.fetch_environment_classes(environment)
-    if not all_classes:
-        codedir = Path("/etc/puppetlabs/code/environments") / environment
+    env = (environment or "production").strip() or "production"
+    now = time.time()
+    cached = _CLASSES_CACHE.get(env)
+    if cached is not None and (now - _CLASSES_CACHE_TS.get(env, 0)) < _CLASSES_CACHE_TTL:
+        return cached
 
-        def discover_classes(modules_dir: Path) -> list:
-            """Walk module manifests to build class names."""
-            classes = []
-            if not modules_dir.exists():
-                return classes
-            for module_dir in sorted(modules_dir.iterdir()):
-                if not module_dir.is_dir():
-                    continue
-                manifests = module_dir / "manifests"
-                if not manifests.exists():
-                    continue
-                module_name = module_dir.name
-                for pp_file in sorted(manifests.rglob("*.pp")):
-                    rel = pp_file.relative_to(manifests)
-                    parts = list(rel.parts)
-                    parts[-1] = parts[-1].rsplit(".", 1)[0]
-                    if parts == ["init"]:
-                        classes.append(module_name)
-                    else:
-                        classes.append(f"{module_name}::{('::'.join(parts))}")
-            return classes
+    all_classes, meta = await puppetserver_service.fetch_environment_classes(env)
+    errors = list(meta.get("errors") or [])
 
-        all_classes.extend(discover_classes(codedir / "modules"))
-        all_classes.extend(discover_classes(codedir / "site-modules"))
-        all_classes.extend(discover_classes(codedir / "site"))
+    # Bolt: scan modules on a compiler when HTTP returned nothing
+    if not all_classes and is_clustered():
+        targets = deploy_targets()
+        script = Path("/opt/openvox-gui/scripts/list-classes-remote.py")
+        if targets and script.is_file():
+            host = targets[0]
+            try:
+                from ..routers.bolt_runtime import run_bolt_command
+                from ..routers.deploy import _extract_bolt_json, _script_body
 
-    # Categorize
-    roles = sorted([c for c in all_classes if c.startswith("roles::")])
-    profiles = sorted([c for c in all_classes if c.startswith("profiles::")])
-    modules = sorted([c for c in all_classes if not c.startswith("roles::") and not c.startswith("profiles::")])
+                # script run uploads the helper (compilers have no /opt/openvox-gui)
+                bolt = await run_bolt_command(
+                    [
+                        "script", "run", str(script), env,
+                        "--targets", host,
+                        "--run-as", "root",
+                        "--no-tty",
+                        "--format", "json",
+                    ],
+                    timeout=90,
+                )
+                data = _extract_bolt_json(bolt.get("stdout") or "")
+                item = {}
+                if isinstance(data, dict) and data.get("items"):
+                    item = data["items"][0] if isinstance(data["items"][0], dict) else {}
+                body = _script_body(item.get("value") or {})
+                body = (body or "").strip()
+                if body.startswith("{"):
+                    parsed = json.loads(body)
+                    names = parsed.get("classes") or []
+                    if names:
+                        all_classes = list(names)
+                        meta = {
+                            "source": "bolt-codedir-scan",
+                            "host": host,
+                            "environment": env,
+                            "codedir": parsed.get("codedir"),
+                        }
+                if not all_classes:
+                    err = (item.get("value") or {}).get("_error") or {}
+                    errors.append(
+                        f"bolt@{host}: {err.get('msg') or body[:200] or 'no classes'}"
+                    )
+            except Exception as e:
+                logger.warning("available-classes bolt fallback failed: %s", e)
+                errors.append(f"bolt: {e}")
+        elif not script.is_file():
+            errors.append(f"Missing {script} — run update_local.sh on the console")
+        elif not targets:
+            errors.append("Clustered mode has no code_deploy_targets")
 
-    return {
+    # Categorize (support both roles:: and role:: naming)
+    uniq = sorted(set(all_classes))
+    roles = sorted(
+        c for c in uniq if c.startswith("roles::") or c.startswith("role::")
+    )
+    profiles = sorted(
+        c for c in uniq if c.startswith("profiles::") or c.startswith("profile::")
+    )
+    modules = sorted(
+        c for c in uniq
+        if not c.startswith("roles::")
+        and not c.startswith("role::")
+        and not c.startswith("profiles::")
+        and not c.startswith("profile::")
+    )
+
+    result = {
         "roles": roles,
         "profiles": profiles,
         "modules": modules,
-        "all": sorted(set(all_classes)),
+        "all": uniq,
+        "source": meta.get("source"),
+        "host": meta.get("host"),
+        "environment": env,
+        "errors": errors,
+        "message": (
+            None
+            if uniq
+            else (
+                "No classes found. On a dedicated console this needs a working "
+                "compiler API (OPENVOX_GUI_PUPPET_SERVER_HOST → VIP) or Bolt to "
+                "a code-deploy target with a Staged environment. "
+                + ("; ".join(errors[:3]) if errors else "")
+            )
+        ),
     }
+    if uniq:
+        _CLASSES_CACHE[env] = result
+        _CLASSES_CACHE_TS[env] = time.time()
+    return result
 
 # ─── Common (Layer 1) ─────────────────────────────────────
 

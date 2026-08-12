@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.2] - 2026-08-12 (fix — ENC class picker from compilers)
+
+### Fixed
+- **Classification | Common Classes** dropdown empty on dedicated consoles
+  (no local codedir). Discovery is API-first:
+  1. Parallel race of `/puppet/v3/environment_classes` on VIP + compilers
+  2. Bolt scan of live modules (`list-classes-remote.py`) if HTTP fails
+  3. Local codedir only as last resort
+- ~90s TTL cache on available-classes for fast re-open of the picker
+- Manual "Add class by name" when discovery is empty; errors shown in UI
+
 ## [3.11.1-alpha.1] - 2026-08-12 (feat — metric host scopes)
 
 ### Added

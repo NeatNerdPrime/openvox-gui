@@ -69,34 +69,94 @@ function ClassPicker({
   label?: string;
   description?: string;
 }) {
-  const [available, setAvailable] = useState<any>({ roles: [], profiles: [], modules: [] });
+  const [available, setAvailable] = useState<any>({
+    roles: [], profiles: [], modules: [], all: [], message: null, source: null, host: null,
+  });
   const [loaded, setLoaded] = useState(false);
+  const [manual, setManual] = useState('');
 
   useEffect(() => {
+    setLoaded(false);
     enc.getAvailableClasses(environment)
-      .then((d) => { setAvailable(d); setLoaded(true); })
-      .catch(() => setLoaded(true));
+      .then((d) => { setAvailable(d || {}); setLoaded(true); })
+      .catch((e: any) => {
+        setAvailable({
+          roles: [], profiles: [], modules: [], all: [],
+          message: e?.message || 'Failed to load classes',
+        });
+        setLoaded(true);
+      });
   }, [environment]);
 
+  // Keep selected values visible even if not in the remote list yet
+  const selectedExtra = (value || []).filter(
+    (c) => !(available.all || []).includes(c)
+      && !(available.roles || []).includes(c)
+      && !(available.profiles || []).includes(c)
+      && !(available.modules || []).includes(c),
+  );
+
   const selectData = [
-    ...(available.roles.length > 0 ? [{ group: 'Roles', items: available.roles.map((c: string) => ({ value: c, label: c })) }] : []),
-    ...(available.profiles.length > 0 ? [{ group: 'Profiles', items: available.profiles.map((c: string) => ({ value: c, label: c })) }] : []),
-    ...(available.modules.length > 0 ? [{ group: 'Modules', items: available.modules.map((c: string) => ({ value: c, label: c })) }] : []),
+    ...(selectedExtra.length > 0
+      ? [{ group: 'Selected', items: selectedExtra.map((c: string) => ({ value: c, label: c })) }]
+      : []),
+    ...((available.roles || []).length > 0
+      ? [{ group: 'Roles', items: available.roles.map((c: string) => ({ value: c, label: c })) }]
+      : []),
+    ...((available.profiles || []).length > 0
+      ? [{ group: 'Profiles', items: available.profiles.map((c: string) => ({ value: c, label: c })) }]
+      : []),
+    ...((available.modules || []).length > 0
+      ? [{ group: 'Modules', items: available.modules.map((c: string) => ({ value: c, label: c })) }]
+      : []),
   ];
 
+  const empty = loaded && (available.all || []).length === 0;
+
+  const addManual = () => {
+    const name = manual.trim();
+    if (!name) return;
+    if (!value.includes(name)) onChange([...value, name]);
+    setManual('');
+  };
+
   return (
-    <MultiSelect
-      label={label}
-      description={description}
-      data={selectData}
-      value={value}
-      onChange={onChange}
-      searchable
-      clearable
-      placeholder={loaded ? 'Search and select classes...' : 'Loading classes...'}
-      nothingFoundMessage="No matching classes"
-      maxDropdownHeight={300}
-    />
+    <Stack gap="xs">
+      <MultiSelect
+        label={label}
+        description={
+          available.host
+            ? `${description || ''} (from ${available.source || 'compiler'}: ${available.host})`.trim()
+            : description
+        }
+        data={selectData}
+        value={value}
+        onChange={onChange}
+        searchable
+        clearable
+        placeholder={loaded ? (empty ? 'No classes from compiler — type below' : 'Search and select classes...') : 'Loading classes...'}
+        nothingFoundMessage="No matching classes"
+        maxDropdownHeight={300}
+      />
+      {empty && available.message && (
+        <Alert color="yellow" variant="light">
+          {available.message}
+        </Alert>
+      )}
+      <Group align="flex-end" grow>
+        <TextInput
+          label="Add class by name"
+          description="Works even when discovery is empty (e.g. profiles::base)"
+          placeholder="profiles::base::linux"
+          value={manual}
+          onChange={(e) => setManual(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addManual(); } }}
+        />
+        <Button variant="light" onClick={addManual} disabled={!manual.trim()} style={{ flex: '0 0 auto' }}>
+          Add
+        </Button>
+      </Group>
+    </Stack>
   );
 }
 
