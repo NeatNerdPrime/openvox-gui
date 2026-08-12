@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.45**
+**OpenVox GUI Version 3.11.0-alpha.46**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.45"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.46"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -696,6 +696,25 @@ to the browser).
 4. **r10k lives on the compilers**, not on the GUI host. `bolt script run`
    uploads `r10k-stage-activate.sh`. Each compiler still needs r10k +
    `/etc/puppetlabs/r10k/r10k.yaml`.
+
+5. **Stage says exit code 1 on every compiler, but `r10k` and Bolt
+   `command run` work.** That is not a second Bolt identity. The SSH probe
+   (`bolt command run true`) already succeeded as `bolt@`. Stage then uses
+   `bolt script run`, which **uploads the helper to the target tmpdir and
+   executes it**. CIS (`cisecurity::partitions`) mounts `/tmp` `noexec`, so
+   the kernel refuses the uploaded script. Confirm on a compiler:
+
+   ```bash
+   findmnt -no OPTIONS /tmp
+   # expect: defaults,rw,nosuid,nodev,noexec,...
+   ```
+
+   After 3.11.0-alpha.46 the GUI inventory sets
+   `ssh.tmpdir: /home/bolt/.bolt/tmp` (home is executable) and Stage uses
+   `--format json` so the log pane shows the script's real stderr instead of
+   only `The command failed with exit code 1`. The inventory warning about
+   `host-key-check` / `run-as` / `connect-timeout` is Bolt noise — those CLI
+   flags overlap inventory keys; it does **not** mean a different SSH user.
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 

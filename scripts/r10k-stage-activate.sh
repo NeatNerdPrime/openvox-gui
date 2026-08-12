@@ -59,20 +59,51 @@ case "$MODE" in
     fi
 
     mkdir -p "$STAGING/environments"
-    # Temporary r10k config: same sources as production, basedir -> staging
-    TMP_CFG=$(mktemp /tmp/r10k-staging.XXXXXX.yaml)
+    # Temporary r10k config: same sources as production, basedir -> staging.
+    # Prefer AIO Ruby — compilers always have it. python3+PyYAML often does not.
+    # Do not use /tmp for the tempfile if we can help it (CIS /tmp noexec is
+    # about execution, but keep config next to staging anyway).
+    TMP_CFG=$(mktemp "$STAGING/.r10k-staging.XXXXXX.yaml")
     trap 'rm -f "$TMP_CFG"' EXIT
     if [ ! -f "$R10K_YAML" ]; then
       echo "r10k-stage-activate.sh: missing $R10K_YAML" >&2
       exit 1
     fi
-    # Rewrite basedir lines under sources to staging (simple YAML-safe approach via python)
-    python3 - "$R10K_YAML" "$TMP_CFG" "$STAGING/environments" <<'PY'
+    echo "r10k-stage-activate.sh: uid=$(id -u) user=$(id -un) r10k=$R10K_BIN yaml=$R10K_YAML" >&2
+    RUBY_BIN=""
+    if [ -x /opt/puppetlabs/puppet/bin/ruby ]; then
+      RUBY_BIN=/opt/puppetlabs/puppet/bin/ruby
+    elif command -v ruby >/dev/null 2>&1; then
+      RUBY_BIN=$(command -v ruby)
+    fi
+    if [ -n "$RUBY_BIN" ]; then
+      "$RUBY_BIN" - "$R10K_YAML" "$TMP_CFG" "$STAGING/environments" <<'RB'
+require 'yaml'
+src, dst, basedir = ARGV
+cfg = YAML.load_file(src)
+abort "r10k-stage-activate.sh: empty r10k config" if cfg.nil? || cfg.empty?
+sources = cfg['sources'] || cfg[:sources]
+abort "r10k-stage-activate.sh: r10k config has no sources" unless sources.is_a?(Hash)
+sources.each_value do |srcdef|
+  next unless srcdef.is_a?(Hash)
+  if srcdef.key?(:basedir)
+    srcdef[:basedir] = basedir
+  else
+    srcdef['basedir'] = basedir
+  end
+end
+File.write(dst, YAML.dump(cfg))
+warn "r10k-stage-activate.sh: wrote staging config basedir=#{basedir}"
+RB
+    else
+      python3 - "$R10K_YAML" "$TMP_CFG" "$STAGING/environments" <<'PY'
 import sys, yaml
 src, dst, basedir = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(src) as f:
     cfg = yaml.safe_load(f) or {}
-sources = cfg.get("sources") or {}
+sources = cfg.get("sources") or cfg.get(":sources") or {}
+if not sources:
+    raise SystemExit("r10k-stage-activate.sh: r10k config has no sources")
 for name, srcdef in sources.items():
     if isinstance(srcdef, dict):
         srcdef["basedir"] = basedir
@@ -80,6 +111,7 @@ with open(dst, "w") as f:
     yaml.safe_dump(cfg, f, default_flow_style=False)
 print(f"r10k-stage-activate.sh: wrote staging config basedir={basedir}", file=sys.stderr)
 PY
+    fi
 
     echo "r10k-stage-activate.sh: staging to $STAGING/environments host=$(hostname -f)" >&2
     if [ -n "$ENV_NAME" ]; then

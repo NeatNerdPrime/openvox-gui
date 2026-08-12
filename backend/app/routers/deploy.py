@@ -1,6 +1,7 @@
 """
 Code Deployment API - Interface with r10k for Puppet code deployment.
 """
+import json
 import logging
 import re
 import socket
@@ -435,6 +436,97 @@ class ClusterDeployRequest(BaseModel):
     targets: Optional[List[str]] = None  # override configured deploy targets
 
 
+_NOEXEC_HINT = (
+    "OpenBolt uploaded the helper under /tmp (or another noexec mount) and "
+    "the kernel refused to execute it. CIS on this estate mounts /tmp "
+    "noexec. GUI inventory must use ssh.tmpdir=/home/bolt/.bolt/tmp. "
+    "On a compiler: findmnt -no OPTIONS /tmp"
+)
+
+
+def _flatten_bolt_json(
+    result: Dict[str, Any],
+    targets: List[str],
+    via: str = "bolt",
+) -> tuple:
+    """Turn ``bolt --format json`` into log lines + per-host rows.
+
+    Human format only prints ``The command failed with exit code 1`` and
+    hides the script's stderr (r10k, Permission denied, missing yaml).
+    """
+    rc = result.get("returncode")
+    rc = -1 if rc is None else int(rc)
+    stdout = result.get("stdout") or ""
+    stderr = result.get("stderr") or ""
+    lines: List[str] = [ln for ln in stderr.splitlines() if ln]
+    hosts: List[dict] = []
+
+    data = None
+    blob = stdout.strip()
+    if blob.startswith("{") or blob.startswith("["):
+        try:
+            data = json.loads(blob)
+        except json.JSONDecodeError:
+            data = None
+
+    if not isinstance(data, dict):
+        lines.extend(ln for ln in stdout.splitlines() if ln)
+        return rc, lines, [
+            {"host": t, "success": rc == 0, "via": via, "exit_code": rc}
+            for t in targets
+        ]
+
+    items = data.get("items") or []
+    saw_noexec = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        target = item.get("target") or "unknown"
+        status = item.get("status")
+        value = item.get("value") if isinstance(item.get("value"), dict) else {}
+        exit_code = value.get("exit_code")
+        err = value.get("_error") if isinstance(value.get("_error"), dict) else {}
+        if exit_code is None:
+            details = err.get("details") if isinstance(err.get("details"), dict) else {}
+            exit_code = details.get("exit_code")
+        if exit_code is None:
+            exit_code = 0 if status == "success" else rc
+        ok = status == "success"
+        hosts.append({
+            "host": target,
+            "success": ok,
+            "via": via,
+            "exit_code": exit_code,
+        })
+        so = (value.get("stdout") or "").rstrip()
+        se = (value.get("stderr") or "").rstrip()
+        if so:
+            for ln in so.splitlines():
+                lines.append(f"[{target}] {ln}")
+        if se:
+            for ln in se.splitlines():
+                lines.append(f"[{target}] {ln}")
+        msg = (err.get("msg") or "").strip()
+        if msg and msg not in se:
+            lines.append(f"[{target}] {msg}")
+        combined = f"{so}\n{se}\n{msg}".lower()
+        if (
+            "permission denied" in combined
+            or "noexec" in combined
+            or exit_code in (126, 13)
+        ):
+            saw_noexec = True
+
+    if not hosts:
+        hosts = [
+            {"host": t, "success": rc == 0, "via": via, "exit_code": rc}
+            for t in targets
+        ]
+    if saw_noexec:
+        lines.append(_NOEXEC_HINT)
+    return rc, lines, hosts
+
+
 def _cluster_env_args(mode: str, environment: Optional[str]) -> List[str]:
     """Build [mode] or [mode, env]. Treat All Environments as no env name."""
     args = [mode]
@@ -568,6 +660,8 @@ async def _run_on_targets(
 
         # script run uploads the helper (compilers do not have /opt/openvox-gui).
         # --run-as root uses bolt@ passwordless sudo once bolt_user is applied.
+        # --format json is required: human format hides script stderr behind
+        # "The command failed with exit code 1".
         # run_bolt_command appends -i / --project after these args.
         script_args = [
             "script", "run", str(script),
@@ -576,6 +670,7 @@ async def _run_on_targets(
             "--run-as", "root",
             "--connect-timeout", "15",
             "--no-host-key-check",
+            "--format", "json",
         ]
         try:
             result = await run_bolt_command(script_args, timeout=timeout)
@@ -586,13 +681,11 @@ async def _run_on_targets(
                 [f"OpenBolt {mode} raised: {e}"],
                 [{"host": t, "success": False, "via": "bolt", "exit_code": -1} for t in targets],
             )
-        rc = result.get("returncode")
-        rc = -1 if rc is None else int(rc)
-        out = ((result.get("stdout") or "") + "\n" + (result.get("stderr") or "")).splitlines()
+        rc, out, hosts = _flatten_bolt_json(result, targets, via="bolt")
         return _cluster_result(
             mode, environment, targets, rc == 0, 0 if rc == 0 else 1,
-            [ln for ln in out if ln is not None],
-            [{"host": t, "success": rc == 0, "via": "bolt", "exit_code": rc} for t in targets],
+            out,
+            hosts,
         )
 
     # Local-only target (console is also the compiler): run the helper here.

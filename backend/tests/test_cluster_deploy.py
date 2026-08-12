@@ -7,6 +7,7 @@ structured failure instead of raising.
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import types
 from pathlib import Path
@@ -215,6 +216,35 @@ def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
     script_argv = run.call_args_list[1].args[0]
     assert script_argv[:2] == ["script", "run"]
     assert "stage" in script_argv
+    assert "--format" in script_argv
+    assert "json" in script_argv
+
+
+def test_flatten_bolt_json_surfaces_script_stderr():
+    d = _load_deploy()
+    payload = {
+        "items": [
+            {
+                "target": "ovcompiler1.pdxc-it.corp.int-x.ai",
+                "status": "failure",
+                "value": {
+                    "exit_code": 126,
+                    "stdout": "",
+                    "stderr": "/bin/bash: /tmp/boltuXXXX/r10k-stage-activate.sh: Permission denied",
+                    "_error": {"msg": "The command failed with exit code 126"},
+                },
+            }
+        ]
+    }
+    result = {"returncode": 2, "stdout": json.dumps(payload), "stderr": ""}
+    rc, lines, hosts = d._flatten_bolt_json(
+        result, ["ovcompiler1.pdxc-it.corp.int-x.ai"]
+    )
+    assert rc == 2
+    assert hosts[0]["exit_code"] == 126
+    assert hosts[0]["success"] is False
+    assert any("Permission denied" in ln for ln in lines)
+    assert any("noexec" in ln.lower() for ln in lines)
 
 
 def test_cluster_deploy_swallows_unexpected_exception():

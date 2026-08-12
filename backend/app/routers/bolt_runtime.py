@@ -69,6 +69,8 @@ def find_bolt() -> Optional[str]:
 _SINGLETON_INVENTORY = """---
 # Same shape as openvox.pdxc-it.twitter.biz (working singleton).
 # OpenVoxDB is used by the GUI (resolve_targets), not Bolt's puppetdb plugin.
+# tmpdir is NOT /tmp: CIS mounts /tmp (and often /var/tmp) noexec, which
+# breaks `bolt script run` / task upload. /home/bolt is executable.
 config:
   ssh:
     user: bolt
@@ -76,6 +78,7 @@ config:
     host-key-check: false
     tty: true
     connect-timeout: 10
+    tmpdir: /home/bolt/.bolt/tmp
 groups:
   - name: enc
     targets:

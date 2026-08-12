@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.46] - 2026-08-12 (fix — clustered Stage /tmp noexec)
+
+### Fixed
+- Clustered **Stage** was not a second Bolt identity. SSH as `bolt@` already
+  worked (`command run true`); `bolt script run` then uploaded
+  `r10k-stage-activate.sh` to `/tmp` and CIS `noexec` killed it on every
+  compiler in ~4s with only `The command failed with exit code 1`.
+- GUI inventory now sets `ssh.tmpdir: /home/bolt/.bolt/tmp` (home is
+  executable). Stage uses `--format json` so the log pane shows script
+  stderr, not just Bolt's wrapper message.
+- Stage helper rewrites `r10k.yaml` basedir with AIO Ruby first.
+  Compilers do not have PyYAML.
+
 ## [3.11.0-alpha.45] - 2026-08-12 (fix — Cert Audit wording)
 
 ### Changed
