@@ -467,33 +467,108 @@ _PREP_BOLT_TMPDIR = (
 )
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]|\x1b\][^\x07]*\x07|\x00")
+_CLI_OVERRIDE_RE = re.compile(r"CLI arguments .* might be overridden", re.I)
+_SKIP_BODY = (
+    "error during concurrent deploy of a module",
+    "the command failed with exit code",
+)
+
+
+def _strip_ctrl(text: str) -> str:
+    return _ANSI_RE.sub("", text or "").replace("\x00", "")
+
+
+def _extract_bolt_json(blob: str) -> Optional[dict]:
+    """Bolt --format json is often prefixed with ANSI / cli_overrides warnings."""
+    cleaned = _strip_ctrl(blob).strip()
+    if "{" in cleaned:
+        cleaned = cleaned[cleaned.find("{") :]
+    if not cleaned.startswith("{"):
+        return None
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _script_body(value: dict) -> str:
+    for key in ("merged_output", "stderr", "stdout"):
+        text = value.get(key) or ""
+        if str(text).strip():
+            return str(text)
+    err = value.get("_error") if isinstance(value.get("_error"), dict) else {}
+    return str(err.get("msg") or "")
+
+
+def _clean_script_lines(text: str) -> List[str]:
+    out: List[str] = []
+    seen_err: set = set()
+    for raw in _strip_ctrl(text).splitlines():
+        ln = raw.replace("\t", " ").strip()
+        if not ln:
+            continue
+        if _CLI_OVERRIDE_RE.search(ln):
+            continue
+        low = ln.lower()
+        if any(skip in low for skip in _SKIP_BODY):
+            continue
+        if "failed to synchronize" in low or "unable to connect to https://forgeapi" in low:
+            if ln in seen_err:
+                continue
+            seen_err.add(ln)
+        if out and out[-1] == ln:
+            continue
+        out.append(ln)
+    return out
+
+
+def _host_headline(target: str, ok: bool, exit_code: Any, body: str) -> str:
+    mark = "ok" if ok else "FAIL"
+    reason = ""
+    low = body.lower()
+    if "github.com" in low and (
+        "could not connect" in low or "unable to access" in low or "failed to connect" in low
+    ):
+        reason = " — github.com:443 (git fetch; root needs https.proxy)"
+    elif "forgeapi.puppet.com" in low:
+        reason = (
+            " — forgeapi.puppet.com:443 (Puppetfile; r10k uses HTTPS_PROXY, "
+            "not gitconfig)"
+        )
+    elif "missing_r10k_yaml" in low:
+        reason = " — missing /etc/puppetlabs/r10k/r10k.yaml"
+    elif "missing_r10k" in low:
+        reason = " — r10k not installed"
+    return f"── {target}  {mark}  exit {exit_code}{reason}"
+
+
 def _flatten_bolt_json(
     result: Dict[str, Any],
     targets: List[str],
     via: str = "bolt",
 ) -> tuple:
-    """Turn ``bolt --format json`` into log lines + per-host rows.
+    """Turn ``bolt --format json`` into per-host headlines + cleaned log lines.
 
-    Human format only prints ``The command failed with exit code 1`` and
-    hides the script's stderr (r10k, Permission denied, missing yaml).
+    Never dump the raw JSON blob. Bolt prefixes JSON with ANSI / warnings;
+    extract the object. Prefer merged_output once (stdout+stderr are copies).
     """
     rc = result.get("returncode")
     rc = -1 if rc is None else int(rc)
     stdout = result.get("stdout") or ""
     stderr = result.get("stderr") or ""
-    lines: List[str] = [ln for ln in stderr.splitlines() if ln]
+    lines: List[str] = []
+    for ln in _strip_ctrl(stderr).splitlines():
+        ln = ln.strip()
+        if ln and not _CLI_OVERRIDE_RE.search(ln):
+            lines.append(ln)
     hosts: List[dict] = []
 
-    data = None
-    blob = stdout.strip()
-    if blob.startswith("{") or blob.startswith("["):
-        try:
-            data = json.loads(blob)
-        except json.JSONDecodeError:
-            data = None
-
-    if not isinstance(data, dict):
-        lines.extend(ln for ln in stdout.splitlines() if ln)
+    data = _extract_bolt_json(stdout)
+    if data is None:
+        for ln in _clean_script_lines(stdout):
+            lines.append(ln)
         return rc, lines, [
             {"host": t, "success": rc == 0, "via": via, "exit_code": rc}
             for t in targets
@@ -502,6 +577,7 @@ def _flatten_bolt_json(
     items = data.get("items") or []
     saw_noexec = False
     saw_tmpdir = False
+    summaries: List[str] = []
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -522,20 +598,12 @@ def _flatten_bolt_json(
             "via": via,
             "exit_code": exit_code,
         })
-        so = (value.get("stdout") or "").rstrip()
-        se = (value.get("stderr") or "").rstrip()
-        if so:
-            for ln in so.splitlines():
-                lines.append(f"[{target}] {ln}")
-        if se:
-            for ln in se.splitlines():
-                lines.append(f"[{target}] {ln}")
-        msg = (err.get("msg") or "").strip()
-        if msg and msg not in se:
-            lines.append(f"[{target}] {msg}")
+        body = _script_body(value)
+        summaries.append(_host_headline(target, ok, exit_code, body))
+        for ln in _clean_script_lines(body):
+            lines.append(f"[{target}] {ln}")
         issue = str(err.get("issue_code") or "")
-        kind = str(err.get("kind") or "")
-        combined = f"{so}\n{se}\n{msg}\n{issue}\n{kind}".lower()
+        combined = f"{body}\n{issue}".lower()
         if (
             "permission denied" in combined
             or "noexec" in combined
@@ -550,6 +618,8 @@ def _flatten_bolt_json(
             {"host": t, "success": rc == 0, "via": via, "exit_code": rc}
             for t in targets
         ]
+    if summaries:
+        lines = summaries + [""] + lines
     if saw_tmpdir:
         lines.append(_TMPDIR_HINT)
     elif saw_noexec:

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.49**
+**OpenVox GUI Version 3.11.0-alpha.50**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.49"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.50"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -741,6 +741,22 @@ to the browser).
    # then copy yaml from the working compiler
    scp ovcompiler1.pdxc-it.corp.int-x.ai:/etc/puppetlabs/r10k/r10k.yaml \
      /etc/puppetlabs/r10k/r10k.yaml
+   ```
+
+7. **Stage reaches r10k then dies on github.com:443 or forgeapi.puppet.com:443.**
+   Same corp proxy gap, two clients:
+   - **git** (control repo) reads root `git config http.proxy`
+   - **Forge** (Puppetfile modules) reads only `HTTPS_PROXY` / `https_proxy`
+
+   Interactive `r10k` in a login shell can work while Stage fails. After
+   3.11.0-alpha.50 the helper copies git's proxy into `HTTPS_PROXY`. Still
+   set both on every compiler (and later in Puppet):
+
+   ```bash
+   sudo git config --global http.proxy  http://httpproxy.atlc.twitter.com:3128
+   sudo git config --global https.proxy http://httpproxy.atlc.twitter.com:3128
+   echo 'export HTTPS_PROXY=http://httpproxy.atlc.twitter.com:3128' \
+     | sudo tee /etc/profile.d/https_proxy.sh
    ```
 
 ### Problem: Overview | Nodes play button shows `API Error 500`

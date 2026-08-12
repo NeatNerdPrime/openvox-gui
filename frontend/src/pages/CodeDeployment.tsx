@@ -292,15 +292,18 @@ export function CodeDeploymentPage() {
   const environments = envsData?.environments || [];
 
   const appendResult = (result: any, label: string) => {
-    const lines = result.output || [];
+    const lines: string[] = Array.isArray(result.output) ? result.output : [];
+    const hostLines: string[] = Array.isArray(result.hosts)
+      ? result.hosts.map((h: any) =>
+          `  ${h.success ? 'ok  ' : 'FAIL'}  ${h.host}  exit ${h.exit_code ?? '?'}`
+        )
+      : [];
     setOutputLog((prev) => [
       ...prev,
       ...lines,
       '',
-      result.hosts
-        ? `── Hosts: ${JSON.stringify(result.hosts)} ──`
-        : '',
-      `── ${label} exit ${result.exit_code} (${result.success ? 'SUCCESS' : 'FAILED'}) ──`,
+      ...(hostLines.length ? ['── Hosts ──', ...hostLines] : []),
+      `── ${label} ${result.success ? 'SUCCESS' : 'FAILED'} (exit ${result.exit_code}) ──`,
       '',
     ]);
     setLastExitCode(result.exit_code);

@@ -18,13 +18,27 @@ export HOME=/root
 export USER=root
 export PATH="/opt/puppetlabs/puppet/bin:/opt/puppetlabs/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+# Git honors root's gitconfig; the Forge client (Puppetfile) does not.
+# Load compiler proxy snippets, then fall back to git http.proxy.
+for f in /etc/profile.d/*proxy*.sh /etc/profile.d/noproxy.sh; do
+  # shellcheck disable=SC1090
+  [ -r "$f" ] && . "$f" 2>/dev/null || true
+done
+if [ -z "${HTTPS_PROXY:-${https_proxy:-}}" ]; then
+  _gp=$(git config --global --get https.proxy 2>/dev/null || true)
+  [ -z "$_gp" ] && _gp=$(git config --global --get http.proxy 2>/dev/null || true)
+  if [ -n "$_gp" ]; then
+    export HTTP_PROXY="$_gp" HTTPS_PROXY="$_gp" http_proxy="$_gp" https_proxy="$_gp"
+  fi
+fi
+
 LOG="${OPENVOX_STAGE_LOG:-/var/tmp/r10k-stage-activate.log}"
 _log() {
   # stdout+stderr so Bolt captures it; copy to a file if the PTY eats it.
   printf 'r10k-stage-activate.sh: %s\n' "$*" | tee -a "$LOG" >&2
 }
 
-_log "start uid=$(id -u) user=$(id -un) host=$(hostname -f 2>/dev/null || hostname) args=$*"
+_log "start uid=$(id -u) user=$(id -un) host=$(hostname -f 2>/dev/null || hostname) args=$* proxy=${HTTPS_PROXY:-${https_proxy:-none}}"
 
 MODE="${1:-}"
 shift || true

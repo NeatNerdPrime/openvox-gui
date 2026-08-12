@@ -285,6 +285,48 @@ def test_flatten_bolt_json_surfaces_script_stderr():
     assert any("noexec" in ln.lower() for ln in lines)
 
 
+def test_flatten_bolt_json_strips_ansi_and_raw_blob():
+    d = _load_deploy()
+    payload = {
+        "items": [
+            {
+                "target": "ovcompiler1.example.com",
+                "status": "failure",
+                "value": {
+                    "exit_code": 1,
+                    "stdout": "",
+                    "stderr": (
+                        "r10k-stage-activate.sh: start\n"
+                        "ERROR -> Unable to connect to https://forgeapi.puppet.com\n"
+                        "ERROR -> Unable to connect to https://forgeapi.puppet.com\n"
+                    ),
+                    "merged_output": (
+                        "r10k-stage-activate.sh: start\n"
+                        "ERROR -> Unable to connect to https://forgeapi.puppet.com\n"
+                    ),
+                    "_error": {"msg": "The command failed with exit code 1"},
+                },
+            }
+        ]
+    }
+    raw = (
+        '\x1b[33mCLI arguments ["tty"] might be overridden by Inventory: '
+        "/opt/openvox-gui/data/bolt-inventory.sanitized.yaml [ID: cli_overrides]\x1b[0m\n"
+        + json.dumps(payload)
+    )
+    rc, lines, hosts = d._flatten_bolt_json(
+        {"returncode": 2, "stdout": raw, "stderr": ""},
+        ["ovcompiler1.example.com"],
+    )
+    blob = "\n".join(lines)
+    assert rc == 2
+    assert hosts[0]["success"] is False
+    assert '"items"' not in blob
+    assert "cli_overrides" not in blob.lower()
+    assert blob.count("ERROR -> Unable to connect") == 1
+    assert any("FAIL" in ln and "ovcompiler1.example.com" in ln for ln in lines)
+
+
 def test_flatten_bolt_json_surfaces_tmpdir_error():
     d = _load_deploy()
     payload = {

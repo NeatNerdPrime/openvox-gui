@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.50] - 2026-08-12 (fix — readable Stage log + Forge proxy)
+
+### Fixed
+- Stage log dumped raw Bolt JSON (ANSI `cli_overrides` sat in front of
+  `{`, so flatten never parsed). It now extracts the JSON, prints a
+  one-line verdict per compiler, and drops duplicate Forge errors.
+- Stage helper exports `HTTPS_PROXY` from `profile.d` or root
+  `git config http.proxy`. Git uses gitconfig; the Puppetfile Forge
+  client does not — that was `forgeapi.puppet.com:443` execution expired.
+
 ## [3.11.0-alpha.49] - 2026-08-12 (fix — r10k on every compiler)
 
 ### Fixed
