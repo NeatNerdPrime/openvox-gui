@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.36] - 2026-08-12 (fix — rsync trees, no packages module)
+
+### Fixed
+- Mirror rsync targets are the real trees, **not** a `packages` module:
+  `rsync://rsync.voxpupuli.org/yum/`, `/apt/`, `/downloads/mac/`,
+  `/downloads/windows/`. HTTPS fallback remains `yum.voxpupuli.org`,
+  `apt.voxpupuli.org`, and `downloads.voxpupuli.org`.
+
 ## [3.11.0-alpha.35] - 2026-08-12 (fix — rsync host is rsync.voxpupuli.org)
 
 ### Fixed

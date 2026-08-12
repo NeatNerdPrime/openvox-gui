@@ -709,8 +709,10 @@ async def get_disk_info() -> dict:
 YUM_BASE      = os.environ.get("YUM_BASE",       "https://yum.voxpupuli.org")
 APT_BASE      = os.environ.get("APT_BASE",       "https://apt.voxpupuli.org")
 DOWNLOADS_BASE = os.environ.get("DOWNLOADS_BASE", "https://downloads.voxpupuli.org")
-RSYNC_HOST    = os.environ.get("RSYNC_HOST",      "rsync.voxpupuli.org")
-RSYNC_MODULE  = os.environ.get("RSYNC_MODULE",    "packages")
+RSYNC_YUM     = os.environ.get("RSYNC_YUM",      "rsync://rsync.voxpupuli.org/yum")
+RSYNC_APT     = os.environ.get("RSYNC_APT",      "rsync://rsync.voxpupuli.org/apt")
+RSYNC_MAC     = os.environ.get("RSYNC_MAC",      "rsync://rsync.voxpupuli.org/downloads/mac")
+RSYNC_WIN     = os.environ.get("RSYNC_WIN",      "rsync://rsync.voxpupuli.org/downloads/windows")
 
 UPSTREAM_CACHE   = PKG_REPO_DIR / ".upstream-cache.json"
 SELECTIONS_FILE  = PKG_REPO_DIR / ".mirror-selections.json"
@@ -1102,7 +1104,6 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
     family = parts[0]
     release = parts[1] if len(parts) > 1 else family
 
-    rsync_base = f"rsync://{RSYNC_HOST}/{RSYNC_MODULE}"
     loop = asyncio.get_event_loop()
     success = True
 
@@ -1111,8 +1112,8 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
             logger.info("Skipping OpenVox %s (not published; mirror 8 and 9 only)", ver)
             continue
         if family in _YUM_FAMILY_LABELS:
-            # Yum: mirror the entire release directory for all arches
-            src = f"{rsync_base}/yum/openvox{ver}/{family}/{release}/"
+            # Yum: rsync://rsync.voxpupuli.org/yum/  HTTPS: yum.voxpupuli.org
+            src = f"{RSYNC_YUM}/openvox{ver}/{family}/{release}/"
             dest = PKG_REPO_DIR / "yum" / f"openvox{ver}" / family / release
             dest.mkdir(parents=True, exist_ok=True)
             ok = await _rsync_or_curl(
@@ -1133,7 +1134,7 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
             dist_name = release  # e.g., "debian12", "ubuntu24.04"
             # APT: mirror dists metadata + pool
             for sub in (f"dists/{dist_name}/openvox{ver}/", f"pool/openvox{ver}/"):
-                src = f"{rsync_base}/apt/{sub}"
+                src = f"{RSYNC_APT}/{sub}"
                 dest = PKG_REPO_DIR / "apt" / sub.rstrip("/")
                 dest.mkdir(parents=True, exist_ok=True)
                 ok = await _rsync_or_curl(
@@ -1158,15 +1159,13 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
                 )
 
         elif family in ("windows", "mac"):
-            # HTTPS only. These trees are on downloads.voxpupuli.org, not
-            # rsync://apt.voxpupuli.org/packages/downloads/{windows,mac}/.
+            rsync_root = RSYNC_WIN if family == "windows" else RSYNC_MAC
             dest = PKG_REPO_DIR / family / f"openvox{ver}"
             dest.mkdir(parents=True, exist_ok=True)
             ok = await _rsync_or_curl(
-                "",
+                f"{rsync_root}/openvox{ver}/",
                 str(dest) + "/",
                 f"{DOWNLOADS_BASE}/{family}/openvox{ver}/",
-                use_rsync=False,
             )
             if not ok:
                 success = False

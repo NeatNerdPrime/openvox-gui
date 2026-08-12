@@ -39,8 +39,8 @@
 #     │   └── 13/, 14/, 15/                  (per-macOS-major sub-trees)
 #     └── .last-sync                        (UTC timestamp of last successful sync)
 #
-# Transport: rsync is the preferred transport (uses rsync://RSYNC_HOST/
-# RSYNC_MODULE). When rsync is unavailable or blocked, each platform
+# Transport: rsync per tree (rsync.voxpupuli.org/{yum,apt,downloads/...}).
+# When rsync is unavailable or blocked, each platform
 # falls back to curl (yum/windows/mac parse HTML directory listings to
 # discover file URLs; apt parses Packages.gz metadata to discover
 # .deb URLs).
@@ -64,8 +64,10 @@
 #   YUM_BASE            yum.voxpupuli.org URL (default upstream)
 #   APT_BASE            apt.voxpupuli.org URL (default upstream)
 #   DOWNLOADS_BASE      downloads.voxpupuli.org URL (default upstream)
-#   RSYNC_HOST          rsync host (default: rsync.voxpupuli.org)
-#   RSYNC_MODULE        rsync module name (default: packages)
+#   RSYNC_YUM           rsync://rsync.voxpupuli.org/yum
+#   RSYNC_APT           rsync://rsync.voxpupuli.org/apt
+#   RSYNC_MAC           rsync://rsync.voxpupuli.org/downloads/mac
+#   RSYNC_WIN           rsync://rsync.voxpupuli.org/downloads/windows
 #
 # Exit codes:
 #   0  Success (or nothing to do)
@@ -84,10 +86,12 @@ YUM_BASE="${YUM_BASE:-https://yum.voxpupuli.org}"
 APT_BASE="${APT_BASE:-https://apt.voxpupuli.org}"
 DOWNLOADS_BASE="${DOWNLOADS_BASE:-https://downloads.voxpupuli.org}"
 
-# Official Vox Pupuli rsync (not apt.voxpupuli.org):
-#   rsync://rsync.voxpupuli.org/packages
-RSYNC_HOST="${RSYNC_HOST:-rsync.voxpupuli.org}"
-RSYNC_MODULE="${RSYNC_MODULE:-packages}"
+# rsync.voxpupuli.org trees (there is no "packages" module in this layout).
+# HTTPS clients stay on yum. / apt. / downloads.voxpupuli.org.
+RSYNC_YUM="${RSYNC_YUM:-rsync://rsync.voxpupuli.org/yum}"
+RSYNC_APT="${RSYNC_APT:-rsync://rsync.voxpupuli.org/apt}"
+RSYNC_MAC="${RSYNC_MAC:-rsync://rsync.voxpupuli.org/downloads/mac}"
+RSYNC_WIN="${RSYNC_WIN:-rsync://rsync.voxpupuli.org/downloads/windows}"
 
 # ─── Proxy support ─────────────────────────────────────────────────────────────
 # If the openvox-gui .env has OPENVOX_GUI_HTTP_PROXY / OPENVOX_GUI_HTTPS_PROXY
@@ -571,7 +575,10 @@ info "  Platforms  : ${PLATFORMS}"
 info "  Versions   : ${VERSIONS}"
 info "  Arches     : ${ARCHES}"
 if [ "$HAVE_RSYNC" = "true" ]; then
-    info "  Transport  : rsync://${RSYNC_HOST}/${RSYNC_MODULE} (yum/apt); HTTPS for mac/windows"
+    info "  Rsync yum  : ${RSYNC_YUM}"
+    info "  Rsync apt  : ${RSYNC_APT}"
+    info "  Rsync mac  : ${RSYNC_MAC}"
+    info "  Rsync win  : ${RSYNC_WIN}"
 else
     info "  Transport  : HTTPS only (rsync not installed)"
 fi
@@ -592,7 +599,7 @@ SYNC_FAILURES=0
 # Supported families: el, amazon, fedora, sles, redhatfips
 # Controlled by YUM_FAMILIES + per-family release variables.
 #
-# rsync: rsync://RSYNC_HOST/RSYNC_MODULE/yum/...
+# rsync: rsync://rsync.voxpupuli.org/yum/...
 #
 
 # Return the releases list for a given yum family.
@@ -609,19 +616,18 @@ _yum_family_releases() {
 }
 
 rsync_sync_yum() {
-    local rsync_base="rsync://${RSYNC_HOST}/${RSYNC_MODULE}"
     local v rel arch fam releases
     local yum_root="${PKG_REPO_DIR}/yum"
 
     if [ "$DRY_RUN" != "true" ]; then
         if ! rsync -4 --timeout=10 --contimeout=5 --list-only \
-                "${rsync_base}/yum/" >/dev/null 2>&1; then
-            warn "Cannot reach rsync server at ${RSYNC_HOST} for yum"
+                "${RSYNC_YUM}/" >/dev/null 2>&1; then
+            warn "Cannot reach rsync ${RSYNC_YUM}"
             return 1
         fi
     fi
 
-    rsync_tree "${rsync_base}/yum/GPG-KEY-openvox.pub" "${yum_root}/" \
+    rsync_tree "${RSYNC_YUM}/GPG-KEY-openvox.pub" "${yum_root}/" \
         || warn "Could not rsync GPG-KEY-openvox.pub"
 
     for fam in $(echo "$YUM_FAMILIES" | tr ',' ' '); do
@@ -631,12 +637,12 @@ rsync_sync_yum() {
             for rel in $(echo "$releases" | tr ',' ' '); do
                 # Mirror the entire release tree (all arches inside)
                 info "  -> yum/openvox${v}/${fam}/${rel}"
-                if ! rsync_tree "${rsync_base}/yum/openvox${v}/${fam}/${rel}/" \
+                if ! rsync_tree "${RSYNC_YUM}/openvox${v}/${fam}/${rel}/" \
                         "${yum_root}/openvox${v}/${fam}/${rel}/"; then
                     SYNC_FAILURES=$((SYNC_FAILURES + 1))
                 fi
                 # Release RPM at root
-                rsync_tree "${rsync_base}/yum/openvox${v}-release-${fam}-${rel}.noarch.rpm" \
+                rsync_tree "${RSYNC_YUM}/openvox${v}-release-${fam}-${rel}.noarch.rpm" \
                     "${yum_root}/" \
                     || warn "Could not rsync openvox${v}-release-${fam}-${rel}.noarch.rpm"
             done
@@ -692,7 +698,8 @@ sync_yum() {
 #
 # Where {numeric} is e.g. debian12, ubuntu24.04 (NOT codenames).
 #
-# rsync: rsync://RSYNC_HOST/RSYNC_MODULE/apt/...
+# rsync: rsync://rsync.voxpupuli.org/apt/...
+# HTTPS: https://apt.voxpupuli.org/...
 #
 # IMPORTANT: recursive mirroring (wget --mirror or curl_mirror) is the
 # WRONG approach for APT repos. APT's two-tree layout (dists/ metadata
@@ -702,22 +709,21 @@ sync_yum() {
 #
 
 rsync_sync_apt() {
-    local rsync_base="rsync://${RSYNC_HOST}/${RSYNC_MODULE}"
     local v rel arch deb_a dist
     local apt_root="${PKG_REPO_DIR}/apt"
 
     # Quick connectivity probe (skip in DRY_RUN)
     if [ "$DRY_RUN" != "true" ]; then
         if ! rsync -4 --timeout=10 --contimeout=5 --list-only \
-                "${rsync_base}/apt/" >/dev/null 2>&1; then
-            warn "Cannot reach rsync server at ${RSYNC_HOST} for apt"
+                "${RSYNC_APT}/" >/dev/null 2>&1; then
+            warn "Cannot reach rsync ${RSYNC_APT}"
             return 1
         fi
     fi
 
     # GPG key + keyring
     for f in GPG-KEY-openvox.pub openvox-keyring.gpg; do
-        rsync_tree "${rsync_base}/apt/${f}" "${apt_root}/" \
+        rsync_tree "${RSYNC_APT}/${f}" "${apt_root}/" \
             || warn "Could not rsync ${f}"
     done
 
@@ -728,26 +734,26 @@ rsync_sync_apt() {
             # Probe: does this openvox version exist for this dist?
             if [ "$DRY_RUN" != "true" ] && \
                ! rsync -4 --timeout=10 --contimeout=5 --list-only \
-                    "${rsync_base}/apt/dists/${dist}/openvox${v}/" >/dev/null 2>&1; then
+                    "${RSYNC_APT}/dists/${dist}/openvox${v}/" >/dev/null 2>&1; then
                 info "  (openvox${v} not published for ${dist} -- skipping)"
                 continue
             fi
             for arch in $(echo "$ARCHES" | tr ',' ' '); do
                 deb_a=$(deb_arch "$arch")
                 info "  -> apt/dists/${dist}/openvox${v}/binary-${deb_a}"
-                if ! rsync_tree "${rsync_base}/apt/dists/${dist}/openvox${v}/binary-${deb_a}/" \
+                if ! rsync_tree "${RSYNC_APT}/dists/${dist}/openvox${v}/binary-${deb_a}/" \
                         "${apt_root}/dists/${dist}/openvox${v}/binary-${deb_a}/"; then
                     SYNC_FAILURES=$((SYNC_FAILURES + 1))
                 fi
             done
             # Dist-level Release files
             for relfile in InRelease Release Release.gpg; do
-                rsync_tree "${rsync_base}/apt/dists/${dist}/${relfile}" \
+                rsync_tree "${RSYNC_APT}/dists/${dist}/${relfile}" \
                     "${apt_root}/dists/${dist}/" \
                     || warn "Could not rsync dists/${dist}/${relfile}"
             done
             # Release DEB
-            rsync_tree "${rsync_base}/apt/openvox${v}-release-${dist}.deb" \
+            rsync_tree "${RSYNC_APT}/openvox${v}-release-${dist}.deb" \
                 "${apt_root}/" \
                 || warn "Could not rsync openvox${v}-release-${dist}.deb"
         done
@@ -757,31 +763,31 @@ rsync_sync_apt() {
             dist="ubuntu${rel}"
             if [ "$DRY_RUN" != "true" ] && \
                ! rsync -4 --timeout=10 --contimeout=5 --list-only \
-                    "${rsync_base}/apt/dists/${dist}/openvox${v}/" >/dev/null 2>&1; then
+                    "${RSYNC_APT}/dists/${dist}/openvox${v}/" >/dev/null 2>&1; then
                 info "  (openvox${v} not published for ${dist} -- skipping)"
                 continue
             fi
             for arch in $(echo "$ARCHES" | tr ',' ' '); do
                 deb_a=$(deb_arch "$arch")
                 info "  -> apt/dists/${dist}/openvox${v}/binary-${deb_a}"
-                if ! rsync_tree "${rsync_base}/apt/dists/${dist}/openvox${v}/binary-${deb_a}/" \
+                if ! rsync_tree "${RSYNC_APT}/dists/${dist}/openvox${v}/binary-${deb_a}/" \
                         "${apt_root}/dists/${dist}/openvox${v}/binary-${deb_a}/"; then
                     SYNC_FAILURES=$((SYNC_FAILURES + 1))
                 fi
             done
             for relfile in InRelease Release Release.gpg; do
-                rsync_tree "${rsync_base}/apt/dists/${dist}/${relfile}" \
+                rsync_tree "${RSYNC_APT}/dists/${dist}/${relfile}" \
                     "${apt_root}/dists/${dist}/" \
                     || warn "Could not rsync dists/${dist}/${relfile}"
             done
-            rsync_tree "${rsync_base}/apt/openvox${v}-release-${dist}.deb" \
+            rsync_tree "${RSYNC_APT}/openvox${v}-release-${dist}.deb" \
                 "${apt_root}/" \
                 || warn "Could not rsync openvox${v}-release-${dist}.deb"
         done
 
         # ── Pool (shared across all releases for this version) ──
         info "  -> apt/pool/openvox${v}"
-        if ! rsync_tree "${rsync_base}/apt/pool/openvox${v}/" \
+        if ! rsync_tree "${RSYNC_APT}/pool/openvox${v}/" \
                 "${apt_root}/pool/openvox${v}/"; then
             SYNC_FAILURES=$((SYNC_FAILURES + 1))
         fi
@@ -915,9 +921,28 @@ sync_apt() {
 #   downloads.voxpupuli.org/windows/openvox{N}/openvox-agent-{ver}-x64.msi
 #   downloads.voxpupuli.org/windows/openvox{N}/unsigned/...
 #
-# HTTPS only: https://downloads.voxpupuli.org/windows/openvox{N}/
-# Do not rsync via apt.voxpupuli.org/packages/downloads/windows/.
+# rsync: rsync://rsync.voxpupuli.org/downloads/windows/openvox{N}/
+# HTTPS: https://downloads.voxpupuli.org/windows/openvox{N}/
 #
+
+rsync_sync_windows() {
+    local v
+    if [ "$DRY_RUN" != "true" ]; then
+        if ! rsync -4 --timeout=10 --contimeout=5 --list-only \
+                "${RSYNC_WIN}/" >/dev/null 2>&1; then
+            warn "Cannot reach rsync ${RSYNC_WIN}"
+            return 1
+        fi
+    fi
+    for v in $(echo "$VERSIONS" | tr ',' ' '); do
+        info "  -> windows/openvox${v}"
+        if ! rsync_tree "${RSYNC_WIN}/openvox${v}/" \
+                "${PKG_REPO_DIR}/windows/openvox${v}/"; then
+            SYNC_FAILURES=$((SYNC_FAILURES + 1))
+        fi
+    done
+}
+
 # install.ps1 needs a stable URL, so after mirroring we copy the
 # highest-version MSI to "openvox-agent-x64.msi" (a real copy, not a
 # symlink, because the puppetserver static-content mount does not
@@ -939,8 +964,17 @@ curl_sync_windows() {
 }
 
 sync_windows() {
-    info "Syncing windows packages -> ${PKG_REPO_DIR}/windows/ (HTTPS ${DOWNLOADS_BASE}/windows/)"
-    curl_sync_windows
+    info "Syncing windows packages -> ${PKG_REPO_DIR}/windows/ (${RSYNC_WIN})"
+    if [ "$HAVE_RSYNC" = "true" ]; then
+        if rsync_sync_windows; then
+            :
+        else
+            warn "rsync failed for windows; falling back to HTTPS ${DOWNLOADS_BASE}/windows/"
+            curl_sync_windows
+        fi
+    else
+        curl_sync_windows
+    fi
 
     # Post-sync: pick the newest stable (non-rc) MSI per version and
     # copy it to the predictable path install.ps1 fetches.
@@ -976,9 +1010,28 @@ sync_windows() {
 #   downloads.voxpupuli.org/mac/openvox{N}/{macos-major}/{arch}/...    (per-major
 #                                                                       subtrees)
 #
-# HTTPS only: https://downloads.voxpupuli.org/mac/openvox{N}/
-# Do not rsync via apt.voxpupuli.org/packages/downloads/mac/.
+# rsync: rsync://rsync.voxpupuli.org/downloads/mac/openvox{N}/
+# HTTPS: https://downloads.voxpupuli.org/mac/openvox{N}/
 #
+
+rsync_sync_mac() {
+    local v
+    if [ "$DRY_RUN" != "true" ]; then
+        if ! rsync -4 --timeout=10 --contimeout=5 --list-only \
+                "${RSYNC_MAC}/" >/dev/null 2>&1; then
+            warn "Cannot reach rsync ${RSYNC_MAC}"
+            return 1
+        fi
+    fi
+    for v in $(echo "$VERSIONS" | tr ',' ' '); do
+        info "  -> mac/openvox${v}"
+        if ! rsync_tree "${RSYNC_MAC}/openvox${v}/" \
+                "${PKG_REPO_DIR}/mac/openvox${v}/"; then
+            SYNC_FAILURES=$((SYNC_FAILURES + 1))
+        fi
+    done
+}
+
 # Same "latest copy" trick as windows for the per-arch DMGs.
 #
 
@@ -997,8 +1050,17 @@ curl_sync_mac() {
 }
 
 sync_mac() {
-    info "Syncing mac packages -> ${PKG_REPO_DIR}/mac/ (HTTPS ${DOWNLOADS_BASE}/mac/)"
-    curl_sync_mac
+    info "Syncing mac packages -> ${PKG_REPO_DIR}/mac/ (${RSYNC_MAC})"
+    if [ "$HAVE_RSYNC" = "true" ]; then
+        if rsync_sync_mac; then
+            :
+        else
+            warn "rsync failed for mac; falling back to HTTPS ${DOWNLOADS_BASE}/mac/"
+            curl_sync_mac
+        fi
+    else
+        curl_sync_mac
+    fi
 
     # Post-sync: pick the newest DMG per arch and copy to a stable name
     if [ "$DRY_RUN" != "true" ]; then
