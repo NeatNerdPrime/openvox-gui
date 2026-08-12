@@ -162,6 +162,7 @@ if [ -n "${OPENVOX_GUI_NO_PROXY:-}" ]; then
     export NO_PROXY="$OPENVOX_GUI_NO_PROXY"
 fi
 
+# HTTPS_PROXY is normally an HTTP CONNECT URL (http://proxy:3128), not https://.
 # Always force -x. --noproxy '' so a broad NO_PROXY cannot skip voxpupuli.org.
 _CURL_PROXY="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}"
 if [ -n "$_CURL_PROXY" ]; then

@@ -909,7 +909,8 @@ async def _discover_upstream() -> UpstreamInfo:
         except Exception:
             pass
 
-    proxy_url = settings.https_proxy or settings.http_proxy
+    # HTTPS_PROXY is often an *http://* CONNECT proxy (e.g. Squid :3128).
+    proxy_url = _outbound_proxy()
     logger.info("Upstream discovery starting (proxy: %s)",
                 proxy_url or "none")
 
