@@ -709,7 +709,7 @@ async def get_disk_info() -> dict:
 YUM_BASE      = os.environ.get("YUM_BASE",       "https://yum.voxpupuli.org")
 APT_BASE      = os.environ.get("APT_BASE",       "https://apt.voxpupuli.org")
 DOWNLOADS_BASE = os.environ.get("DOWNLOADS_BASE", "https://downloads.voxpupuli.org")
-RSYNC_HOST    = os.environ.get("RSYNC_HOST",      "apt.voxpupuli.org")
+RSYNC_HOST    = os.environ.get("RSYNC_HOST",      "rsync.voxpupuli.org")
 RSYNC_MODULE  = os.environ.get("RSYNC_MODULE",    "packages")
 
 UPSTREAM_CACHE   = PKG_REPO_DIR / ".upstream-cache.json"

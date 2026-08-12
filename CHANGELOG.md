@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.35] - 2026-08-12 (fix — rsync host is rsync.voxpupuli.org)
+
+### Fixed
+- Package mirror rsync default is **`rsync://rsync.voxpupuli.org/packages`**,
+  not `apt.voxpupuli.org`. That was why apt sync logged
+  `Cannot reach rsync server at apt.voxpupuli.org`. yum/apt still use
+  HTTPS `yum.` / `apt.voxpupuli.org` as curl fallback; Mac/Windows stay
+  on `https://downloads.voxpupuli.org`.
+
 ## [3.11.0-alpha.34] - 2026-08-12 (fix — Mac/Windows from downloads.voxpupuli.org)
 
 ### Fixed

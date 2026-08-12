@@ -64,7 +64,7 @@
 #   YUM_BASE            yum.voxpupuli.org URL (default upstream)
 #   APT_BASE            apt.voxpupuli.org URL (default upstream)
 #   DOWNLOADS_BASE      downloads.voxpupuli.org URL (default upstream)
-#   RSYNC_HOST          rsync host for mirroring (default: apt.voxpupuli.org)
+#   RSYNC_HOST          rsync host (default: rsync.voxpupuli.org)
 #   RSYNC_MODULE        rsync module name (default: packages)
 #
 # Exit codes:
@@ -84,7 +84,9 @@ YUM_BASE="${YUM_BASE:-https://yum.voxpupuli.org}"
 APT_BASE="${APT_BASE:-https://apt.voxpupuli.org}"
 DOWNLOADS_BASE="${DOWNLOADS_BASE:-https://downloads.voxpupuli.org}"
 
-RSYNC_HOST="${RSYNC_HOST:-apt.voxpupuli.org}"
+# Official Vox Pupuli rsync (not apt.voxpupuli.org):
+#   rsync://rsync.voxpupuli.org/packages
+RSYNC_HOST="${RSYNC_HOST:-rsync.voxpupuli.org}"
 RSYNC_MODULE="${RSYNC_MODULE:-packages}"
 
 # ─── Proxy support ─────────────────────────────────────────────────────────────
@@ -275,7 +277,7 @@ curl_fetch() {
     fi
 
     local dest_path="${dest_dir}/${filename}"
-    local curl_args=(-fSL --connect-timeout 15 --max-time 600 -o "$dest_path")
+    local curl_args=(-fSL -4 --connect-timeout 30 --max-time 600 -o "$dest_path")
 
     # Conditional GET: only download if the remote file is newer
     # than our local copy (sends If-Modified-Since). If the file
@@ -569,9 +571,9 @@ info "  Platforms  : ${PLATFORMS}"
 info "  Versions   : ${VERSIONS}"
 info "  Arches     : ${ARCHES}"
 if [ "$HAVE_RSYNC" = "true" ]; then
-    info "  Transport  : rsync (preferred) with curl fallback"
+    info "  Transport  : rsync://${RSYNC_HOST}/${RSYNC_MODULE} (yum/apt); HTTPS for mac/windows"
 else
-    info "  Transport  : curl only (rsync not installed)"
+    info "  Transport  : HTTPS only (rsync not installed)"
 fi
 [ "$DRY_RUN" = "true" ] && info "  Mode       : DRY RUN (no files will be written)"
 
