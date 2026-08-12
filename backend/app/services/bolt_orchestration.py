@@ -8,6 +8,7 @@ execution-history bookends. Actual Bolt CLI argv assembly stays in routers.bolt
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import ExecutionHistory
 from ..utils.validation import strip_ansi
+
+logger = logging.getLogger(__name__)
 
 # Puppet agent -t wait for daemon/cron run lock (seconds). Avoids exit 1
 # "agent_catalog_run.lock exists" when the agent service is mid-run.
@@ -317,34 +320,47 @@ async def start_execution_history(
     plan_name: Optional[str] = None,
     result_format: Optional[str] = None,
     parameters: Optional[Dict[str, Any]] = None,
-) -> ExecutionHistory:
-    """Insert running ExecutionHistory row and commit."""
-    history_entry = ExecutionHistory(
-        execution_type=execution_type,
-        node_name=node_name,
-        command_name=command_name,
-        task_name=task_name,
-        plan_name=plan_name,
-        result_format=result_format,
-        status="running",
-        executed_by=executed_by,
-        parameters=parameters,
-    )
-    db.add(history_entry)
-    await db.commit()
-    await db.refresh(history_entry)
-    return history_entry
+) -> Optional[ExecutionHistory]:
+    """Insert running ExecutionHistory row and commit.
+
+    Best-effort: a missing table or locked SQLite must not 500 the Run button.
+    """
+    try:
+        history_entry = ExecutionHistory(
+            execution_type=execution_type,
+            node_name=node_name,
+            command_name=command_name,
+            task_name=task_name,
+            plan_name=plan_name,
+            result_format=result_format,
+            status="running",
+            executed_by=executed_by,
+            parameters=parameters,
+        )
+        db.add(history_entry)
+        await db.commit()
+        await db.refresh(history_entry)
+        return history_entry
+    except Exception as e:
+        logger.warning("execution_history start failed: %s", e, exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return None
 
 
 async def finish_execution_history(
     db: AsyncSession,
-    history_entry: ExecutionHistory,
+    history_entry: Optional[ExecutionHistory],
     result: Dict[str, Any],
     start_time: float,
     *,
     original_command: Optional[str] = None,
 ) -> None:
     """Update history from bolt result dict (returncode/stdout/stderr)."""
+    if history_entry is None:
+        return
     duration_ms = int((time.time() - start_time) * 1000)
     ok = (
         puppet_agent_run_succeeded(result, original_command)
@@ -365,7 +381,14 @@ async def finish_execution_history(
     if not ok:
         history_entry.error_message = stderr[:500] if stderr else None
     history_entry.result_preview = stdout[:500] if stdout else None
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception as e:
+        logger.warning("execution_history finish failed: %s", e, exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 def sanitize_bolt_result(result: Dict[str, Any]) -> BoltRunResultModel:

@@ -262,11 +262,12 @@ export function NodesPage() {
       });
       const ok = r.returncode === 0 || r.returncode === 2;
       end(actId, ok ? 'done' : 'error', `exit ${r.returncode}`);
+      const failDetail = (r.error || r.output || `Exit code ${r.returncode} on ${certname}`).slice(0, 280);
       notifications.show({
         title: ok ? 'OpenVox Run Complete' : 'OpenVox Run Failed',
         message: ok
           ? (r.returncode === 2 ? `Changes applied on ${certname}` : `No changes on ${certname}`)
-          : `Exit code ${r.returncode} on ${certname}`,
+          : failDetail,
         color: ok ? 'green' : 'red',
       });
     } catch (e: any) {

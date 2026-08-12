@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.0-alpha.30**
+**OpenVox GUI Version 3.11.0-alpha.31**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.0-alpha.30"}
+   # Should return: {"status":"ok","version":"3.11.0-alpha.31"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -696,6 +696,28 @@ to the browser).
 4. **r10k lives on the compilers**, not on the GUI host. `bolt script run`
    uploads `r10k-stage-activate.sh`. Each compiler still needs r10k +
    `/etc/puppetlabs/r10k/r10k.yaml`.
+
+### Problem: Overview | Nodes play button shows `API Error 500`
+
+The play button is `POST /api/bolt/run/command` (`puppet agent -t` via
+OpenBolt). Production uvicorn hides the traceback as a generic 500.
+
+**Solutions:**
+
+1. **After 3.11.0-alpha.31** the endpoint returns the real Bolt/`error`
+   string in the toast. Update the console and click play again.
+
+2. **Check the console journal** (before or after the update):
+
+   ```bash
+   journalctl -u openvox-gui -n 120 --no-pager
+   ```
+
+   Look for `execution_history start failed` or `POST /bolt/run/command failed`.
+
+3. **AUTH_ERROR / publickey** means `bolt@` is missing on that target (see
+   `profiles::base::bolt_user`). That is not a GUI 500 once alpha.31 is on
+   the console.
 
 ### Problem: Orchestration (OpenBolt) Not Working
 

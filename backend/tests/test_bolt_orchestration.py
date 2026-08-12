@@ -17,6 +17,8 @@ def test_module_exports_expected_symbols():
     assert "class BoltRunResultModel" in SRC
     assert "async def start_execution_history" in SRC
     assert "def sanitize_bolt_result" in SRC
+    assert "history_entry is None" in SRC
+    assert "execution_history start failed" in SRC
 
 
 def test_normalize_puppet_agent_adds_env():

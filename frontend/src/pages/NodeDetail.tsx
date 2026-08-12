@@ -162,7 +162,11 @@ export function NodeDetailPage() {
       } else if (r.returncode === 2) {
         notifications.show({ title: 'OpenVox Run Complete', message: `Changes applied successfully on ${certname}`, color: 'green' });
       } else {
-        notifications.show({ title: 'OpenVox Run Failed', message: `Agent run failed with exit code ${r.returncode}`, color: 'red' });
+        notifications.show({
+          title: 'OpenVox Run Failed',
+          message: (r.error || r.output || `Agent run failed with exit code ${r.returncode}`).slice(0, 280),
+          color: 'red',
+        });
       }
     } catch (e: any) {
       end(actId, 'error', e.message);

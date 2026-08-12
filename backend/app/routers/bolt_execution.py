@@ -173,57 +173,67 @@ async def run_command(
         raise HTTPException(status_code=400, detail=str(e))
 
     fmt = req.format if req.format in ("human", "json", "rainbow") else "human"
-    resolved_targets = await resolve_targets(req.targets, db)
+    try:
+        resolved_targets = await resolve_targets(req.targets, db)
 
-    history_entry = await bolt_orch.start_execution_history(
-        db,
-        execution_type="command",
-        node_name=req.targets,
-        command_name=req.command,
-        result_format=fmt,
-        executed_by=current_user,
-        parameters={"run_as": req.run_as} if req.run_as else None,
-    )
+        history_entry = await bolt_orch.start_execution_history(
+            db,
+            execution_type="command",
+            node_name=req.targets,
+            command_name=req.command,
+            result_format=fmt,
+            executed_by=current_user,
+            parameters={"run_as": req.run_as} if req.run_as else None,
+        )
 
-    start_time = time.time()
-    normalized = bolt_orch.normalize_command_for_gui(req.command)
-    # Approved safe prefixes always escalate (P0); else heuristic / explicit run_as.
-    if _is_approved_safe_command(req.command) or _is_approved_safe_command(normalized):
-        command, escalate = "sudo " + normalized, True
-    else:
-        command, escalate = bolt_orch.apply_escalation(normalized, req.run_as)
+        start_time = time.time()
+        normalized = bolt_orch.normalize_command_for_gui(req.command)
+        # Approved safe prefixes always escalate (P0); else heuristic / explicit run_as.
+        if _is_approved_safe_command(req.command) or _is_approved_safe_command(normalized):
+            command, escalate = "sudo " + normalized, True
+        else:
+            command, escalate = bolt_orch.apply_escalation(normalized, req.run_as)
 
-    args = ["command", "run", command, "--targets", resolved_targets, "--format", fmt]
-    if req.run_as and req.run_as != "root":
-        args.extend(["--run-as", req.run_as])
+        args = ["command", "run", command, "--targets", resolved_targets, "--format", fmt]
+        if req.run_as and req.run_as != "root":
+            args.extend(["--run-as", req.run_as])
 
-    # Puppet agent may wait on lock; allow full waitforlock window + apply time
-    cmd_timeout = 600 if bolt_orch._is_puppet_agent_invocation(command) else 300
-    result = await run_bolt_command(args, timeout=cmd_timeout)
-    result = bolt_orch.reinterpret_puppet_agent_bolt_result(
-        result, original_command=req.command
-    )
-    await bolt_orch.finish_execution_history(
-        db, history_entry, result, start_time, original_command=req.command
-    )
+        # Puppet agent may wait on lock; allow full waitforlock window + apply time
+        cmd_timeout = 600 if bolt_orch._is_puppet_agent_invocation(command) else 300
+        result = await run_bolt_command(args, timeout=cmd_timeout)
+        result = bolt_orch.reinterpret_puppet_agent_bolt_result(
+            result, original_command=req.command
+        )
+        await bolt_orch.finish_execution_history(
+            db, history_entry, result, start_time, original_command=req.command
+        )
 
-    ok = bolt_orch.puppet_agent_run_succeeded(result, req.command)
-    if not ok:
-        try:
-            ok = int(result.get("returncode") if result.get("returncode") is not None else -1) == 0
-        except (TypeError, ValueError):
-            ok = False
-    audit_event(
-        "bolt_command",
-        user=current_user,
-        targets=resolved_targets,
-        detail=req.command[:120],
-        rc=result.get("returncode"),
-        success=ok,
-        format=fmt,
-        escalate=escalate,
-    )
-    return bolt_orch.sanitize_bolt_result(result)
+        ok = bolt_orch.puppet_agent_run_succeeded(result, req.command)
+        if not ok:
+            try:
+                ok = int(result.get("returncode") if result.get("returncode") is not None else -1) == 0
+            except (TypeError, ValueError):
+                ok = False
+        audit_event(
+            "bolt_command",
+            user=current_user,
+            targets=resolved_targets,
+            detail=req.command[:120],
+            rc=result.get("returncode"),
+            success=ok,
+            format=fmt,
+            escalate=escalate,
+        )
+        return bolt_orch.sanitize_bolt_result(result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("POST /bolt/run/command failed: %s", e, exc_info=True)
+        return BoltRunResultModel(
+            returncode=-1,
+            output="",
+            error=f"Run failed: {e}. See journalctl -u openvox-gui.",
+        )
 
 
 @router.post("/run/task", response_model=BoltRunResultModel)

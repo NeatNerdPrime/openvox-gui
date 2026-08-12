@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.31] - 2026-08-12 (fix — Nodes play button 500)
+
+### Fixed
+- **Overview | Nodes play button** (`POST /api/bolt/run/command`) no longer
+  returns a generic uvicorn 500 when execution_history insert fails (missing
+  table / SQLite lock) or Bolt raises. History writes are best-effort; the
+  agent run still proceeds. Failures return `returncode` + `error` so the
+  toast shows AUTH_ERROR / the real exception instead of
+  `API Error 500: Internal Server Error`.
+
 ## [3.11.0-alpha.30] - 2026-08-11 (fix — clustered Stage 500)
 
 ### Fixed
