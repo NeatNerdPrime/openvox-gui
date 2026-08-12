@@ -46,7 +46,10 @@ def test_normalize_puppet_agent_adds_env():
     out = normalize_command_for_gui("puppet agent -t")
     assert "/opt/puppetlabs/bin/puppet" in out
     assert "PUPPET_CONFDIR" in out
+    assert "--config /etc/puppetlabs/puppet/puppet.conf" in out
     assert "--waitforlock" in out
+    assert "PUPPET_SSLDIR" not in out
+    assert "--ssldir" not in out
     assert command_needs_root("systemctl restart foo")
     assert not command_needs_root("whoami")
     cmd, esc = apply_escalation("whoami", None)

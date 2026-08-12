@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.32] - 2026-08-12 (fix — do not force default ssldir)
+
+### Fixed
+- **Run OpenVox / play button** no longer injects
+  `PUPPET_SSLDIR` / `--ssldir /etc/puppetlabs/puppet/ssl`. That leftover
+  tree is not the live ssldir on CA compilers (`/mnt/openvox-ca/ssl`), so
+  the agent tried to mint a new host key and exited 1. GUI now uses the
+  full `puppet` path (sudo `secure_path`) plus `--config` so `puppet.conf`
+  on the target wins.
+
 ## [3.11.0-alpha.31] - 2026-08-12 (fix — Nodes play button 500)
 
 ### Fixed

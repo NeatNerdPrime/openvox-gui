@@ -52,10 +52,13 @@ def normalize_command_for_gui(command: str) -> str:
     """
     Make common commands more reliable when invoked from the GUI.
 
-    Guarantees for Puppet agent invocations: full binary path and system
-    PUPPET_* env + config/ssldir/vardir flags so runs as `bolt` use system dirs.
-    Also adds ``--waitforlock`` so a concurrent agent daemon run does not
-    immediately fail with agent_catalog_run.lock (Orchestration vs SSH).
+    For Puppet agent: full binary path (sudo ``secure_path`` has no
+    ``/opt/puppetlabs/bin``), ``--config`` so *this host's* puppet.conf
+    wins (CA nodes use ``ssldir=/mnt/openvox-ca/ssl``), and
+    ``--waitforlock``. Do **not** hard-code ``--ssldir`` /
+    ``PUPPET_SSLDIR`` to ``/etc/puppetlabs/puppet/ssl`` — that leftover
+    tree on ovca* is not the live DRBD CA ssldir and makes the agent
+    mint a new key.
     """
     cmd = command.strip()
     if not cmd:
@@ -74,26 +77,11 @@ def normalize_command_for_gui(command: str) -> str:
         is_puppet_command = True
 
     if is_puppet_command:
-        env_prefix = (
-            "env PUPPET_CONFDIR=/etc/puppetlabs/puppet "
-            "PUPPET_SSLDIR=/etc/puppetlabs/puppet/ssl "
-            "PUPPET_VARDIR=/opt/puppetlabs/puppet/cache "
-        )
-        system_flags = (
-            " --config /etc/puppetlabs/puppet/puppet.conf"
-            " --ssldir /etc/puppetlabs/puppet/ssl"
-            " --vardir /opt/puppetlabs/puppet/cache"
-        )
         if not cmd.startswith("env "):
-            cmd = env_prefix + cmd
+            cmd = "env PUPPET_CONFDIR=/etc/puppetlabs/puppet " + cmd
         if "puppet agent" in cmd or "puppet-agent" in cmd:
-            if "--ssldir" not in cmd:
-                if "--config" not in cmd:
-                    cmd += system_flags
-                else:
-                    cmd += " --ssldir /etc/puppetlabs/puppet/ssl --vardir /opt/puppetlabs/puppet/cache"
-            # Wait for in-progress agent runs (daemon/cron) instead of failing fast.
-            # Operators can pass their own --waitforlock N or --no-waitforlock (if ever added).
+            if "--config" not in cmd:
+                cmd += " --config /etc/puppetlabs/puppet/puppet.conf"
             if "--waitforlock" not in cmd.lower() and "agent_catalog_run.lock" not in cmd:
                 cmd += f" --waitforlock {PUPPET_AGENT_WAITFORLOCK_SECS}"
 
