@@ -10,19 +10,14 @@
  *   2. The state of the local OpenVox package mirror at
  *      /opt/openvox-pkgs/ (per-platform breakdown, last-sync time,
  *      disk usage) and a manual "Sync now" trigger.
- *   3. The list of pending certificate signing requests waiting to
- *      be approved -- moved here from Certificate Authority in
- *      3.3.5-20 because CSR approval is part of the agent-bring-up
- *      workflow, not part of CA maintenance.
- *
- * Layout (3.3.5-20):
+ * Layout:
  *   - Header
  *   - "Install Commands" Card with Tabs:
- *       Linux | Windows | Direct URLs | Mirror Status | Sync Log
- *   - "Pending Certificate Requests" Card
+ *       Linux | Windows | Direct URLs | Mirror | Sync Log
+ *
+ * Pending CSRs live on Infrastructure | Certificate Authority, not here.
  *
  * Backend contract: /api/installer/{info,sync,log,diskinfo,files}
- *                   /api/certificates/{list,sign,clean}
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -36,16 +31,15 @@ import {
   IconDownload, IconRefresh, IconCheck, IconCopy, IconBrandWindows,
   IconBrandUbuntu, IconBrandRedhat, IconBrandDebian, IconBrandApple,
   IconAlertCircle, IconCloudDownload, IconClipboard, IconFolder,
-  IconExternalLink, IconClock, IconServer, IconCertificate, IconTrash,
+  IconExternalLink, IconClock, IconServer,
   IconDeviceFloppy, IconPackage,
 } from '@tabler/icons-react';
 import {
-  installer, certificates,
+  installer,
   InstallerInfo, InstallerDiskInfo,
   UpstreamInfo, UpstreamFamily, MirrorSelections, MirrorTransport,
 } from '../services/api';
 import { useAuth } from '../hooks/AuthContext';
-import { ConfirmModal } from '../components/ConfirmModal';
 
 /**
  * Format a byte count as a human-friendly string (B / KB / MB / GB / TB).
@@ -213,10 +207,6 @@ export function InstallerPage() {
   const [tail, setTail]           = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>('linux');
 
-  // Pending CSRs (moved here from Certificate Authority in 3.3.5-20).
-  const [pendingCerts, setPendingCerts] = useState<any[]>([]);
-  const [pendingCertsErr, setPendingCertsErr] = useState<string | null>(null);
-
   // Distribution selector state
   const [upstream, setUpstream]           = useState<UpstreamInfo | null>(null);
   const [savedSelections, setSavedSelections] = useState<MirrorSelections>({ openvox_versions: ['8'], distributions: [], transport: 'https' });
@@ -227,8 +217,6 @@ export function InstallerPage() {
 
   // Operators and admins can trigger syncs and sign certs; viewers cannot.
   const canManage = user && (user.role === 'admin' || user.role === 'operator');
-  const [pendingCertAction, setPendingCertAction] = useState<null | { type: 'sign' | 'reject'; certname: string }>(null);
-  const [certActionLoading, setCertActionLoading] = useState(false);
 
   /**
    * Fetch installer info + disk info + log tail + pending certs in parallel.
@@ -236,19 +224,16 @@ export function InstallerPage() {
    */
   const refresh = useCallback(async () => {
     try {
-      const [i, d, l, c, u, s] = await Promise.all([
+      const [i, d, l, u, s] = await Promise.all([
         installer.getInfo(),
         installer.getDiskInfo().catch(() => null),
         installer.getLog(50).catch(() => ({ lines: [] as string[] })),
-        certificates.list().catch((e: any) => ({ requested: [], _err: e?.message })),
         installer.getUpstream().catch(() => null),
         installer.getSelections().catch(() => ({ openvox_versions: ['8'], distributions: [], transport: 'https' } as MirrorSelections)),
       ]);
       setInfo(i);
       setDiskInfo(d);
       setTail(l.lines || []);
-      setPendingCerts((c as any).requested || []);
-      setPendingCertsErr((c as any)._err || (c as any).error || null);
       if (u) setUpstream(u);
       setSavedSelections(s);
       const vers = (s.openvox_versions || ['8', '9']).filter((v) => v !== '7');
@@ -298,52 +283,6 @@ export function InstallerPage() {
     } finally {
       setSyncing(false);
     }
-  };
-
-  /** Sign a pending CSR. Operator/admin only — ConfirmModal gates the action. */
-  const handleSignCert = async (certname: string) => {
-    if (!canManage) return;
-    setCertActionLoading(true);
-    try {
-      await certificates.sign(certname);
-      notifications.show({
-        title: 'Signed',
-        message: `Certificate signed for ${certname}`,
-        color: 'green',
-      });
-      setPendingCertAction(null);
-      await refresh();
-    } catch (e: any) {
-      notifications.show({
-        title: 'Sign failed',
-        message: e.message || String(e),
-        color: 'red',
-      });
-    }
-    setCertActionLoading(false);
-  };
-
-  /** Reject a pending CSR by cleaning it. Operator/admin only. */
-  const handleRejectCert = async (certname: string) => {
-    if (!canManage) return;
-    setCertActionLoading(true);
-    try {
-      await certificates.reject(certname);
-      notifications.show({
-        title: 'Rejected',
-        message: `Certificate request for ${certname} rejected`,
-        color: 'yellow',
-      });
-      setPendingCertAction(null);
-      await refresh();
-    } catch (e: any) {
-      notifications.show({
-        title: 'Reject failed',
-        message: e.message || String(e),
-        color: 'red',
-      });
-    }
-    setCertActionLoading(false);
   };
 
   // ── Distribution selection helpers ──────────────────────────────────────
@@ -799,101 +738,6 @@ export function InstallerPage() {
           </Tabs.Panel>
         </Tabs>
       </Card>
-
-      {/* ── Pending Certificate Requests (moved from Certificate Authority,
-             3.3.5-20). Sits with Install Commands because CSR approval is
-             part of agent bring-up: install agent → agent generates CSR →
-             operator signs here → first puppet run succeeds. ─────────── */}
-      <Card withBorder shadow="sm">
-        <Group justify="space-between" mb="xs">
-          <Group gap="xs">
-            <IconCertificate size={20} />
-            <Title order={4}>Pending Certificate Requests</Title>
-            <Badge color={pendingCerts.length > 0 ? 'yellow' : 'green'}>
-              {pendingCerts.length}
-            </Badge>
-          </Group>
-          <Text size="xs" c="dimmed">
-            Approve agents that have just installed and submitted their CSR
-          </Text>
-        </Group>
-        {pendingCertsErr ? (
-          <Alert color="orange" icon={<IconAlertCircle size={14} />}>
-            Could not load CSR list: {pendingCertsErr}
-          </Alert>
-        ) : pendingCerts.length === 0 ? (
-          <Text c="dimmed" ta="center" py="lg" size="sm">
-            No pending certificate requests. Newly installed agents that have
-            checked in for the first time will appear here, ready to sign.
-          </Text>
-        ) : (
-          <ScrollArea mah={350} type="auto" offsetScrollbars scrollbarSize={6}>
-            <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Certname</Table.Th>
-                <Table.Th>Fingerprint</Table.Th>
-                <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {pendingCerts.map((cert: any) => (
-                <Table.Tr key={cert.name}>
-                  <Table.Td><Text fw={500}>{cert.name}</Text></Table.Td>
-                  <Table.Td><Code>{cert.fingerprint || 'N/A'}</Code></Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" justify="flex-end">
-                      <Button
-                        size="xs"
-                        color="green"
-                        leftSection={<IconCheck size={14} />}
-                        onClick={() => setPendingCertAction({ type: 'sign', certname: cert.name })}
-                        disabled={!canManage}
-                        title={canManage ? '' : 'Requires admin or operator role'}
-                      >
-                        Sign
-                      </Button>
-                      <Button
-                        size="xs"
-                        color="red"
-                        variant="outline"
-                        leftSection={<IconTrash size={14} />}
-                        onClick={() => setPendingCertAction({ type: 'reject', certname: cert.name })}
-                        disabled={!canManage}
-                        title={canManage ? '' : 'Requires admin or operator role'}
-                      >
-                        Reject
-                      </Button>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          </ScrollArea>
-        )}
-      </Card>
-
-      <ConfirmModal
-        opened={!!pendingCertAction}
-        onClose={() => !certActionLoading && setPendingCertAction(null)}
-        onConfirm={() => {
-          if (!pendingCertAction) return;
-          if (pendingCertAction.type === 'sign') handleSignCert(pendingCertAction.certname);
-          else handleRejectCert(pendingCertAction.certname);
-        }}
-        title={pendingCertAction?.type === 'sign' ? 'Sign certificate?' : 'Reject certificate request?'}
-        body={
-          pendingCertAction?.type === 'sign'
-            ? `Sign certificate for "${pendingCertAction?.certname}"?`
-            : `Reject (clean) certificate request for "${pendingCertAction?.certname}"?`
-        }
-        details={pendingCertAction ? [pendingCertAction.certname] : undefined}
-        confirmLabel={pendingCertAction?.type === 'sign' ? 'Sign' : 'Reject'}
-        confirmColor={pendingCertAction?.type === 'sign' ? 'green' : 'red'}
-        danger={pendingCertAction?.type === 'reject'}
-        loading={certActionLoading}
-      />
     </Stack>
   );
 }

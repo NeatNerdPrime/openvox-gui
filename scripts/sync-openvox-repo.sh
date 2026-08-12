@@ -94,10 +94,48 @@ RSYNC_MAC="${RSYNC_MAC:-rsync://rsync.voxpupuli.org/downloads/mac}"
 RSYNC_WIN="${RSYNC_WIN:-rsync://rsync.voxpupuli.org/downloads/windows}"
 
 # ─── Proxy support ─────────────────────────────────────────────────────────────
-# If the openvox-gui .env has OPENVOX_GUI_HTTP_PROXY / OPENVOX_GUI_HTTPS_PROXY
-# set (loaded via EnvironmentFile in the systemd unit), export them as the
-# standard environment variables that curl respects.  This is the bridge
-# between the GUI's Proxy Configuration page and the sync script.
+# GUI "Sync now" runs this script via sudo, which env_reset's the service
+# environment. Always re-read /opt/openvox-gui/config/.env so curl sees
+# the same proxy the operator set under Settings. Then pass -x explicitly
+# — relying on env alone is not enough if sudo or a wrapper stripped it.
+GUI_ENV_FILE="${OPENVOX_GUI_ENV:-/opt/openvox-gui/config/.env}"
+CURL_PROXY_ARGS=()
+
+_env_file_value() {
+    local key="$1" line=""
+    [ -r "$GUI_ENV_FILE" ] || return 0
+    line=$(grep -E "^${key}=" "$GUI_ENV_FILE" 2>/dev/null | tail -1) || return 0
+    line="${line#*=}"
+    line="${line%$'\r'}"
+    case "$line" in
+        \"*\") line="${line#\"}"; line="${line%\"}" ;;
+        \'*\') line="${line#\'}"; line="${line%\'}" ;;
+    esac
+    printf '%s' "$line"
+}
+
+_redact_proxy_url() {
+    printf '%s' "$1" | sed -E 's#(://)[^/@:]+:[^/@]+@#\1***:***@#'
+}
+
+_load_proxy_from_gui_env() {
+    local v
+    if [ -z "${OPENVOX_GUI_HTTPS_PROXY:-}" ]; then
+        v=$(_env_file_value OPENVOX_GUI_HTTPS_PROXY)
+        [ -n "$v" ] && OPENVOX_GUI_HTTPS_PROXY="$v"
+    fi
+    if [ -z "${OPENVOX_GUI_HTTP_PROXY:-}" ]; then
+        v=$(_env_file_value OPENVOX_GUI_HTTP_PROXY)
+        [ -n "$v" ] && OPENVOX_GUI_HTTP_PROXY="$v"
+    fi
+    if [ -z "${OPENVOX_GUI_NO_PROXY:-}" ]; then
+        v=$(_env_file_value OPENVOX_GUI_NO_PROXY)
+        [ -n "$v" ] && OPENVOX_GUI_NO_PROXY="$v"
+    fi
+}
+
+_load_proxy_from_gui_env
+
 if [ -n "${OPENVOX_GUI_HTTPS_PROXY:-}" ]; then
     export https_proxy="$OPENVOX_GUI_HTTPS_PROXY"
     export HTTPS_PROXY="$OPENVOX_GUI_HTTPS_PROXY"
@@ -109,6 +147,11 @@ fi
 if [ -n "${OPENVOX_GUI_NO_PROXY:-}" ]; then
     export no_proxy="$OPENVOX_GUI_NO_PROXY"
     export NO_PROXY="$OPENVOX_GUI_NO_PROXY"
+fi
+
+_CURL_PROXY="${https_proxy:-${HTTPS_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}}"
+if [ -n "$_CURL_PROXY" ]; then
+    CURL_PROXY_ARGS=(-x "$_CURL_PROXY")
 fi
 
 # Defaults reflect "latest two only" as chosen at design time. Override
@@ -186,7 +229,7 @@ url_exists() {
     local url="$1"
     local code
     code=$(curl -s -o /dev/null -w '%{http_code}' \
-               --head --max-time 15 "$url" 2>/dev/null) || code="000"
+               --head -4 --max-time 15 "${CURL_PROXY_ARGS[@]}" "$url" 2>/dev/null) || code="000"
     [ "$code" = "200" ]
 }
 
@@ -281,7 +324,7 @@ curl_fetch() {
     fi
 
     local dest_path="${dest_dir}/${filename}"
-    local curl_args=(-fSL -4 --connect-timeout 30 --max-time 600 -o "$dest_path")
+    local curl_args=(-fSL -4 --connect-timeout 30 --max-time 600 "${CURL_PROXY_ARGS[@]}" -o "$dest_path")
 
     # Conditional GET: only download if the remote file is newer
     # than our local copy (sends If-Modified-Since). If the file
@@ -350,7 +393,8 @@ curl_mirror() {
     #   <a href="repodata/">repodata/</a>                 17-Apr-2026 22:51  -
     #   <a href="openvox-agent-8.26.1-1.el9.x86_64.rpm">...
     local listing
-    listing=$(curl -fsSL --connect-timeout 15 --max-time 30 "$url" 2>/dev/null) || {
+    listing=$(curl -fsSL -4 --connect-timeout 30 --max-time 60 \
+        "${CURL_PROXY_ARGS[@]}" "$url" 2>/dev/null) || {
         warn "Could not fetch directory listing from ${url}"
         return 1
     }
@@ -601,6 +645,11 @@ info "  Target dir : ${PKG_REPO_DIR}"
 info "  Platforms  : ${PLATFORMS}"
 info "  Versions   : ${VERSIONS}"
 info "  Arches     : ${ARCHES}"
+if [ -n "$_CURL_PROXY" ]; then
+    info "  HTTPS proxy: $(_redact_proxy_url "$_CURL_PROXY")"
+else
+    info "  HTTPS proxy: (none — set Settings → Application proxy or OPENVOX_GUI_HTTPS_PROXY)"
+fi
 info "  Transport  : ${MIRROR_TRANSPORT}"
 if [ "$HAVE_RSYNC" = "true" ]; then
     info "  Rsync yum  : ${RSYNC_YUM}"
@@ -853,7 +902,7 @@ curl_sync_apt() {
                 local pkg_url="${APT_BASE}/dists/${dist}/openvox${v}/binary-${deb_a}/Packages.gz"
                 info "  -> parsing ${dist}/openvox${v}/binary-${deb_a}/Packages.gz for .deb URLs"
                 local deb_list
-                deb_list=$(curl -fsSL --max-time 60 "$pkg_url" 2>/dev/null \
+                deb_list=$(curl -fsSL -4 --max-time 60 "${CURL_PROXY_ARGS[@]}" "$pkg_url" 2>/dev/null \
                     | zcat 2>/dev/null \
                     | awk '/^Filename:/ {print $2}')
                 if [ -z "$deb_list" ]; then
@@ -901,7 +950,7 @@ curl_sync_apt() {
                 local pkg_url="${APT_BASE}/dists/${dist}/openvox${v}/binary-${deb_a}/Packages.gz"
                 info "  -> parsing ${dist}/openvox${v}/binary-${deb_a}/Packages.gz for .deb URLs"
                 local deb_list
-                deb_list=$(curl -fsSL --max-time 60 "$pkg_url" 2>/dev/null \
+                deb_list=$(curl -fsSL -4 --max-time 60 "${CURL_PROXY_ARGS[@]}" "$pkg_url" 2>/dev/null \
                     | zcat 2>/dev/null \
                     | awk '/^Filename:/ {print $2}')
                 if [ -z "$deb_list" ]; then

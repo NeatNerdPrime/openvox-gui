@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.0-alpha.40] - 2026-08-12 (fix — mirror curl uses GUI proxy; CSRs on CA)
+
+### Fixed
+- **Mirror sync curl** now reads `OPENVOX_GUI_HTTP(S)_PROXY` from
+  `/opt/openvox-gui/config/.env` (sudo Sync now was env_reset) and
+  passes `-x` on every curl. Sync log prints the proxy (password redacted).
+- **Pending Certificate Requests** removed from Agent Install. They are
+  only on Infrastructure | Certificate Authority.
+
 ## [3.11.0-alpha.39] - 2026-08-12 (feat — pick mirror transport in the GUI)
 
 ### Added

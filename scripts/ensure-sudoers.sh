@@ -237,6 +237,8 @@ ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/puppetlabs/bin/puppet lookup --explain
 # Package mirror sync script (Agent Installer feature)
 # Method: only the specific sync wrapper.
 ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/openvox-gui/scripts/sync-openvox-repo.sh
+# Keep GUI proxy settings when Sync now runs via sudo (env_reset).
+Defaults:${SERVICE_USER} env_keep += "OPENVOX_GUI_HTTP_PROXY OPENVOX_GUI_HTTPS_PROXY OPENVOX_GUI_NO_PROXY http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY"
 
 # Log Viewer — restricted to specific units and files only
 # Method: journalctl / tail argv must match backend/app/routers/logs.py exactly.

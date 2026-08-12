@@ -548,6 +548,20 @@ async def trigger_sync(
     cmd = ["sudo", "-n", str(SYNC_SCRIPT), "--quiet"]
     logger.info("User %s triggered repo sync: %s", user, " ".join(cmd))
 
+    child_env = os.environ.copy()
+    if settings.https_proxy:
+        child_env["OPENVOX_GUI_HTTPS_PROXY"] = settings.https_proxy
+        child_env["HTTPS_PROXY"] = settings.https_proxy
+        child_env["https_proxy"] = settings.https_proxy
+    if settings.http_proxy:
+        child_env["OPENVOX_GUI_HTTP_PROXY"] = settings.http_proxy
+        child_env["HTTP_PROXY"] = settings.http_proxy
+        child_env["http_proxy"] = settings.http_proxy
+    if settings.no_proxy:
+        child_env["OPENVOX_GUI_NO_PROXY"] = settings.no_proxy
+        child_env["NO_PROXY"] = settings.no_proxy
+        child_env["no_proxy"] = settings.no_proxy
+
     loop = asyncio.get_event_loop()
     def _run() -> tuple[int, str, str]:
         try:
@@ -556,6 +570,7 @@ async def trigger_sync(
                 capture_output=True,
                 text=True,
                 timeout=2 * 60 * 60,
+                env=child_env,
             )
             return proc.returncode, proc.stdout, proc.stderr
         except subprocess.TimeoutExpired:

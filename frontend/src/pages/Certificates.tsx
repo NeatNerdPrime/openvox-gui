@@ -4,6 +4,7 @@
  * Infrastructure | Certificate Authority
  * - CA health / expiry summary
  * - Trusted Facts (certificate extension requests → $trusted['extensions'])
+ * - Pending CSRs (sign / reject)
  * - Signed certificate list (revoke / clean / detail)
  */
 import { useState, useCallback, useEffect, useMemo } from 'react';
@@ -15,7 +16,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
-  IconCertificate, IconX, IconTrash, IconRefresh, IconInfoCircle,
+  IconCertificate, IconX, IconTrash, IconRefresh, IconInfoCircle, IconCheck,
   IconShield, IconClock, IconKey, IconFingerprint, IconCalendar,
   IconLock, IconSearch,
 } from '@tabler/icons-react';
@@ -158,7 +159,7 @@ export function CertificatesPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [pendingAction, setPendingAction] = useState<null | { type: 'revoke' | 'clean'; certname: string }>(null);
+  const [pendingAction, setPendingAction] = useState<null | { type: 'revoke' | 'clean' | 'sign' | 'reject'; certname: string }>(null);
   const [actionLoading, setActionLoading] = useState(false);
   // Client-side filters for the Trusted Facts pane (server already returns the fleet scan)
   const [tfSearch, setTfSearch] = useState('');
@@ -232,20 +233,23 @@ export function CertificatesPage() {
     });
   }, [trustedFacts, tfSearch, tfKey]);
 
-  // NB: Pending-CSR signing UI lives on the Agent Install page now
-  // (3.3.5-20+). This page only handles already-signed certs:
-  // info / revoke / clean. The handleSign helper used to live here
-  // and was removed at the same time as the Pending Requests Card.
-
   const requestRevoke = (certname: string) => setPendingAction({ type: 'revoke', certname });
   const requestClean = (certname: string) => setPendingAction({ type: 'clean', certname });
+  const requestSign = (certname: string) => setPendingAction({ type: 'sign', certname });
+  const requestReject = (certname: string) => setPendingAction({ type: 'reject', certname });
 
   const executePendingAction = async () => {
     if (!pendingAction) return;
     const { type, certname } = pendingAction;
     setActionLoading(true);
     try {
-      if (type === 'revoke') {
+      if (type === 'sign') {
+        await certificates.sign(certname);
+        notifications.show({ title: 'Signed', message: `Certificate signed for ${certname}`, color: 'green' });
+      } else if (type === 'reject') {
+        await certificates.reject(certname);
+        notifications.show({ title: 'Rejected', message: `Certificate request for ${certname} rejected`, color: 'yellow' });
+      } else if (type === 'revoke') {
         await certificates.revoke(certname);
         notifications.show({ title: 'Revoked', message: `Certificate revoked for ${certname}`, color: 'yellow' });
       } else {
@@ -296,8 +300,8 @@ export function CertificatesPage() {
   if (loading) return <LoadingState label="Loading certificates…" />;
   if (error && !data) return <ErrorState title="Failed to load certificates" message={error} onRetry={load} />;
 
-  // requested/pending CSRs are surfaced on the Agent Install page
   const signed = data?.signed || [];
+  const requested = data?.requested || [];
 
   return (
     <Stack>
@@ -666,8 +670,62 @@ export function CertificatesPage() {
         </Card>
       )}
 
-      {/* Pending CSR signing has moved to Infrastructure -> Agent Install
-          (3.3.5-20+) so cert workflow stays grouped with agent provisioning. */}
+      <Card withBorder shadow="sm" padding="md">
+        <Group mb="md" justify="space-between">
+          <Group>
+            <Title order={4}>Pending Certificate Requests</Title>
+            <Badge color={requested.length > 0 ? 'yellow' : 'green'} size="lg">{requested.length}</Badge>
+          </Group>
+        </Group>
+        {requested.length === 0 ? (
+          <Text c="dimmed" ta="center" py="lg" size="sm">
+            No pending certificate requests.
+          </Text>
+        ) : (
+          <ScrollArea mah={350} type="auto" offsetScrollbars scrollbarSize={6}>
+            <Table striped highlightOnHover withTableBorder>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Certname</Table.Th>
+                  <Table.Th>Fingerprint</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {requested.map((cert: any) => (
+                  <Table.Tr key={cert.name}>
+                    <Table.Td><Text fw={500}>{cert.name}</Text></Table.Td>
+                    <Table.Td><Code>{cert.fingerprint || 'N/A'}</Code></Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" justify="flex-end">
+                        <Button
+                          size="xs"
+                          color="green"
+                          leftSection={<IconCheck size={14} />}
+                          onClick={() => requestSign(cert.name)}
+                          disabled={!canMutateCerts}
+                        >
+                          Sign
+                        </Button>
+                        <Button
+                          size="xs"
+                          color="red"
+                          variant="outline"
+                          leftSection={<IconTrash size={14} />}
+                          onClick={() => requestReject(cert.name)}
+                          disabled={!canMutateCerts}
+                        >
+                          Reject
+                        </Button>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </ScrollArea>
+        )}
+      </Card>
 
       {/* Signed Certificates */}
       <Card withBorder shadow="sm" padding="md" style={{ overflow: 'hidden' }}>
@@ -775,15 +833,30 @@ export function CertificatesPage() {
         opened={!!pendingAction}
         onClose={() => !actionLoading && setPendingAction(null)}
         onConfirm={executePendingAction}
-        title={pendingAction?.type === 'revoke' ? 'Revoke certificate?' : 'Clean certificate?'}
+        title={
+          pendingAction?.type === 'sign' ? 'Sign certificate?'
+            : pendingAction?.type === 'reject' ? 'Reject certificate request?'
+            : pendingAction?.type === 'revoke' ? 'Revoke certificate?'
+            : 'Clean certificate?'
+        }
         body={
-          pendingAction?.type === 'revoke'
-            ? `Revoke certificate for "${pendingAction?.certname}"? This cannot be undone.`
-            : `Permanently delete certificate for "${pendingAction?.certname}"?`
+          pendingAction?.type === 'sign'
+            ? `Sign certificate for "${pendingAction?.certname}"?`
+            : pendingAction?.type === 'reject'
+              ? `Reject (clean) certificate request for "${pendingAction?.certname}"?`
+              : pendingAction?.type === 'revoke'
+                ? `Revoke certificate for "${pendingAction?.certname}"? This cannot be undone.`
+                : `Permanently delete certificate for "${pendingAction?.certname}"?`
         }
         details={pendingAction ? [pendingAction.certname] : undefined}
-        confirmLabel={pendingAction?.type === 'revoke' ? 'Revoke' : 'Clean'}
-        danger
+        confirmLabel={
+          pendingAction?.type === 'sign' ? 'Sign'
+            : pendingAction?.type === 'reject' ? 'Reject'
+            : pendingAction?.type === 'revoke' ? 'Revoke'
+            : 'Clean'
+        }
+        confirmColor={pendingAction?.type === 'sign' ? 'green' : undefined}
+        danger={pendingAction?.type === 'revoke' || pendingAction?.type === 'clean' || pendingAction?.type === 'reject'}
         loading={actionLoading}
       />
     </Stack>
