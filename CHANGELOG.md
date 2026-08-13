@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.26] - 2026-08-13 (fix — Reports group badge uses latest status only)
+
+### Fixed
+- **Insights | Reports group badge:** group header could show **Failed** while
+  every node row (and Overview | Nodes) showed **Unchanged**, because the
+  badge scanned *all* reports in the fetch window (including old failures).
+  Group status now uses only each node's current status
+  (`latest_report_status` / latest report), same as the row display.
+
 ## [3.11.1-alpha.25] - 2026-08-13 (fix — Reports status from PuppetDB nodes)
 
 ### Fixed

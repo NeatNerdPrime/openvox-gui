@@ -279,18 +279,29 @@ interface GroupedReports {
 }
 
 function effectiveStatus(row: { report?: any; node_status?: string | null }): string {
-  const s = (row.report?.status || row.node_status || '').toString().toLowerCase();
+  // Prefer PuppetDB node latest_report_status (authoritative "now") over a
+  // report document that may be from an older fetch window row.
+  const s = (row.node_status || row.report?.status || '').toString().toLowerCase();
   return s || 'unreported';
 }
 
-function getGroupStatus(
-  reports: any[],
-  nodeStatuses: Array<string | null | undefined> = [],
+/**
+ * Group badge = worst *current* node status only.
+ * Do NOT scan the full historical report list — any old "failed" in the
+ * fetch window would paint the whole group Failed while every node row
+ * correctly shows Unchanged (Overview | Nodes / per-row status).
+ */
+function getGroupStatusFromLatest(
+  certnames: string[],
+  latestReportByNode: Record<string, any>,
+  nodeStatusByCert: Record<string, { status: string | null; ts: string | null }>,
 ): 'unchanged' | 'changed' | 'failed' | 'unreported' {
-  const statuses: string[] = [
-    ...reports.map((r) => (r?.status || '').toString().toLowerCase()).filter(Boolean),
-    ...nodeStatuses.map((s) => (s || '').toString().toLowerCase()).filter(Boolean),
-  ];
+  const statuses = certnames.map((cn) =>
+    effectiveStatus({
+      report: latestReportByNode[cn],
+      node_status: nodeStatusByCert[cn.toLowerCase()]?.status,
+    }),
+  );
   if (statuses.length === 0) return 'unreported';
   if (statuses.some((s) => s === 'failed')) return 'failed';
   if (statuses.some((s) => s === 'changed')) return 'changed';
@@ -453,15 +464,15 @@ export function ReportsPage() {
         }
       }
 
-      const nodeStatuses = sortedNodeList.map(
-        (cn) => nodeStatusByCert[cn.toLowerCase()]?.status,
-      );
-
       groups[groupName] = {
         nodes: sortedNodeList,
         reports: groupReports,
         latestReportByNode,
-        status: getGroupStatus(groupReports, nodeStatuses),
+        status: getGroupStatusFromLatest(
+          sortedNodeList,
+          latestReportByNode,
+          nodeStatusByCert,
+        ),
       };
     });
 
