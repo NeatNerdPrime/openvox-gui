@@ -116,28 +116,44 @@ def load_cluster_config() -> Dict[str, Any]:
         return dict(DEFAULT_CONFIG)
 
 
-def save_cluster_config(data: Dict[str, Any]) -> Dict[str, Any]:
+def save_cluster_config(
+    data: Dict[str, Any],
+    *,
+    require_postgres_url: bool = False,
+) -> Dict[str, Any]:
+    """Persist cluster_config.json.
+
+    When deployment_mode is clustered, database_backend is forced to
+    postgresql. If require_postgres_url is True (config API when enabling
+    clustered), the running settings.database_url must already be Postgres
+    or the caller must be writing a postgres URL in the same request.
+    """
     normalized = _normalize(data)
-    if (
-        normalized.get("deployment_mode") == "clustered"
-        and len(normalized.get("consoles") or []) > 1
-        and normalized.get("database_backend") != "postgresql"
-    ):
-        raise ValueError(
-            "More than one GUI console requires database_backend=postgresql "
-            "and a shared OPENVOX_GUI_DATABASE_URL. SQLite cannot be shared."
-        )
+    if normalized.get("deployment_mode") == "clustered":
+        normalized["database_backend"] = "postgresql"
+        if require_postgres_url:
+            url = (settings.database_url or "").strip().lower()
+            if not url.startswith(("postgresql", "postgres")):
+                raise ValueError(
+                    "Clustered mode requires a PostgreSQL application database "
+                    "(OPENVOX_GUI_DATABASE_URL=postgresql+asyncpg://…/openvox_gui). "
+                    "Provide database_url in this request, or run "
+                    "scripts/bootstrap-openvox-gui-db.sh / install with "
+                    "OPENVOX_GUI_DB_BACKEND=postgresql first. SQLite cannot "
+                    "support a second console or durable multi-host DR."
+                )
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(normalized, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
     logger.info(
-        "Saved cluster config mode=%s compilers=%s puppetdb=%s deploy=%s",
+        "Saved cluster config mode=%s compilers=%s puppetdb=%s deploy=%s backend=%s",
         normalized["deployment_mode"],
         len(normalized["compilers"]),
         len(normalized["puppetdb_nodes"]),
         len(normalized["code_deploy_targets"]),
+        normalized.get("database_backend"),
     )
     return normalized
 

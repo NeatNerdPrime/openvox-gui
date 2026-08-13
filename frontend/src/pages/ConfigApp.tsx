@@ -589,6 +589,10 @@ function ClusterTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      if (mode === 'clustered' && !databaseUrl.trim()) {
+        // Allow save only if server already on Postgres (API validates).
+        // Still prefer sending URL when operator filled it.
+      }
       const result = await config.updateCluster({
         deployment_mode: mode,
         compilers: lines(compilers),
@@ -597,7 +601,7 @@ function ClusterTab() {
         ca_vips: lines(caVips),
         code_deploy_targets: lines(deployTargets),
         consoles: lines(consoles),
-        database_backend: dbBackend,
+        database_backend: mode === 'clustered' ? 'postgresql' : dbBackend,
         enc_api_urls: lines(encUrls),
         database_url: databaseUrl || undefined,
         shared_secret_key: sharedSecret || undefined,
@@ -635,22 +639,30 @@ function ClusterTab() {
   return (
     <Stack>
       <Alert variant="light" color="blue">
-        Default installs are <strong>single-server</strong> (one host for GUI, server, and DB).
-        Enable <strong>clustered</strong> only for multi-compiler / multi-OpenVoxDB estates.
-        Cluster features (multi-target code deploy, infrastructure ENC groups, FQDN health checks)
-        stay hidden until this is set to clustered.
+        <strong>Single server</strong> = one GUI process (optionally behind a VIP).
+        <strong> Clustered</strong> = multi-compiler / multi-OpenVoxDB estate awareness
+        (Stage/Activate, FQDN health, infrastructure ENC groups).
+        Classification and GUI state should live in PostgreSQL database{' '}
+        <Code>openvox_gui</Code> for both modes so a second console can join later
+        without migrating SQLite.
       </Alert>
       <Card withBorder padding="md">
         <Stack>
           <Select
             label="Deployment mode"
-            description="Production lab may stay on 3.10.x single-server until the new cluster is ready."
+            description="Clustered requires PostgreSQL for the GUI application database."
             data={[
-              { value: 'single', label: 'Single server (default)' },
-              { value: 'clustered', label: 'Clustered (multiple compilers / OpenVoxDB)' },
+              { value: 'single', label: 'Single server (one GUI)' },
+              { value: 'clustered', label: 'Clustered (multi-compiler / multi-OpenVoxDB)' },
             ]}
             value={mode}
-            onChange={(v) => setMode((v as 'single' | 'clustered') || 'single')}
+            onChange={(v) => {
+              const next = (v as 'single' | 'clustered') || 'single';
+              setMode(next);
+              if (next === 'clustered') {
+                setDbBackend('postgresql');
+              }
+            }}
           />
           {mode === 'clustered' && (
             <>
@@ -693,55 +705,48 @@ function ClusterTab() {
                 value={deployTargets}
                 onChange={(e) => setDeployTargets(e.currentTarget.value)}
               />
-              <Divider label="Consoles and shared ENC database" labelPosition="left" />
+              <Divider label="GUI application database (required)" labelPosition="left" />
               <Alert variant="light" color="orange">
-                Two GUIs cannot share SQLite. More than one console FQDN requires PostgreSQL
-                (same instance as OpenVoxDB is fine — <strong>separate database</strong> named
-                openvox_gui, never tables inside puppetdb). Both consoles must use the same
-                OPENVOX_GUI_SECRET_KEY or encrypted secrets will not decrypt.
+                Clustered mode always uses PostgreSQL database <Code>openvox_gui</Code> (not
+                SQLite, not tables inside <Code>puppetdb</Code>). Install with{' '}
+                <Code>OPENVOX_GUI_DB_BACKEND=postgresql</Code> /{' '}
+                <Code>bootstrap-openvox-gui-db.sh</Code>, or set the URL below. Any future
+                second console must use the <strong>same</strong> URL and SECRET_KEY.
               </Alert>
-              <Textarea
-                label="GUI console FQDNs (one per line)"
-                description="openvox.pdxc… and openvox.atlc… — required when both classify nodes"
-                minRows={2}
-                value={consoles}
-                onChange={(e) => setConsoles(e.currentTarget.value)}
-                placeholder={"openvox.pdxc-it.corp.int-x.ai\nopenvox.atlc-it.corp.int-x.ai"}
-              />
-              <Select
-                label="GUI database backend"
-                description="sqlite = this host only. postgresql = shared ENC/users across consoles."
-                data={[
-                  { value: 'sqlite', label: 'SQLite (single console)' },
-                  { value: 'postgresql', label: 'PostgreSQL (shared — required for 2+ consoles)' },
-                ]}
-                value={dbBackend}
-                onChange={(v) => setDbBackend((v as 'sqlite' | 'postgresql') || 'sqlite')}
-              />
-              <Textarea
-                label="ENC API URLs for compilers (one per line)"
-                description="Put these in OPENVOX_GUI_API_BASE on every compiler (comma-separated). enc.py tries each in order."
-                minRows={2}
-                value={encUrls}
-                onChange={(e) => setEncUrls(e.currentTarget.value)}
-                placeholder={"https://openvox.pdxc-it.corp.int-x.ai:4567\nhttps://openvox.atlc-it.corp.int-x.ai:4567"}
-              />
               <TextInput
-                label="Shared PostgreSQL URL (writes .env — restart required)"
-                description="postgresql+asyncpg://openvox_gui:PASSWORD@ovdb-primary:5432/openvox_gui"
+                label="PostgreSQL URL (writes .env — restart required)"
+                description="postgresql+asyncpg://openvox_gui:PASSWORD@ovdb-primary-or-vip:5432/openvox_gui"
+                required
                 value={databaseUrl}
                 onChange={(e) => setDatabaseUrl(e.currentTarget.value)}
+                placeholder="postgresql+asyncpg://openvox_gui:…@ovdb1.example.com:5432/openvox_gui"
               />
               <PasswordInput
-                label="Shared SECRET_KEY (optional — writes .env on both consoles must match)"
-                description="Leave blank to keep the current key. Set the same value on the peer console."
+                label="SECRET_KEY (optional write to .env)"
+                description="Leave blank to keep current key. Back this up — required identical on any additional console."
                 value={sharedSecret}
                 onChange={(e) => setSharedSecret(e.currentTarget.value)}
               />
-              <Divider label="Cluster secrets (stored encrypted in the shared DB)" labelPosition="left" />
+              <Textarea
+                label="GUI console FQDNs (optional, one per line)"
+                description="This console and any future consoles. Compilers can use a VIP or these URLs for enc.py."
+                minRows={2}
+                value={consoles}
+                onChange={(e) => setConsoles(e.currentTarget.value)}
+                placeholder="openvox.corp.int-x.ai"
+              />
+              <Textarea
+                label="ENC API base URLs for compilers (optional)"
+                description="Put in OPENVOX_GUI_API_BASE on compilers (comma-separated). Prefer console VIP."
+                minRows={2}
+                value={encUrls}
+                onChange={(e) => setEncUrls(e.currentTarget.value)}
+                placeholder="https://openvox.corp.int-x.ai:4567"
+              />
+              <Divider label="Cluster secrets (encrypted in openvox_gui DB)" labelPosition="left" />
               <Text size="sm" c="dimmed">
-                Use for PDB app password, GUI DB password, Bolt, etc. Names only are listed;
-                values are Fernet-encrypted with SECRET_KEY.
+                Optional named secrets (PDB password, GUI DB password, Bolt, etc.). Values are
+                Fernet-encrypted with SECRET_KEY in the application database.
               </Text>
               {(secretList?.secrets || []).length > 0 && (
                 <Table>

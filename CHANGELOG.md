@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.8] - 2026-08-13 (feat — clustered requires openvox_gui Postgres)
+
+### Changed
+- **Product policy:** GUI application data (`openvox_gui`) is PostgreSQL for
+  production — singleton or clustered — so a second console can join later
+  without SQLite migration.
+- **Settings → Cluster:** enabling **Clustered** forces `database_backend=postgresql`,
+  requires a Postgres `database_url` (or existing Postgres `.env`), and documents
+  same URL + SECRET_KEY for any future console. SQLite is rejected for clustered.
+- **install.conf.example** recommends `OPENVOX_GUI_DB_BACKEND=postgresql` by default.
+
 ## [3.11.1-alpha.7] - 2026-08-13 (feat — installer provisions openvox_gui Postgres)
 
 ### Added

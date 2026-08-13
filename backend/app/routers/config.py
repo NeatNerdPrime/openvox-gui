@@ -402,8 +402,40 @@ async def update_cluster_config(
     seed = data.pop("seed_infrastructure_groups", True)
     database_url = (data.pop("database_url", None) or "").strip()
     shared_secret = (data.pop("shared_secret_key", None) or "").strip()
+
+    # Clustered always uses Postgres for the GUI app DB (openvox_gui).
+    if (data.get("deployment_mode") or "").strip() == "clustered":
+        data["database_backend"] = "postgresql"
+        from ..config import settings as _settings
+
+        effective_url = database_url or (_settings.database_url or "")
+        if not effective_url.lower().startswith(("postgresql", "postgres")):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Clustered mode requires PostgreSQL for classification and GUI "
+                    "state (database openvox_gui). Provide database_url "
+                    "(postgresql+asyncpg://openvox_gui:…@ovdb…/openvox_gui), or "
+                    "install/bootstrap with OPENVOX_GUI_DB_BACKEND=postgresql first. "
+                    "SQLite cannot be shared across consoles or survive console loss."
+                ),
+            )
+        if database_url and not database_url.startswith(
+            ("postgresql+asyncpg://", "postgresql://", "postgres://")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="database_url must be postgresql+asyncpg://…/openvox_gui",
+            )
+
     try:
-        saved = save_cluster_config(data)
+        # If this request supplies a postgres URL, we will write .env below —
+        # do not require settings.database_url to already be postgres.
+        require_pg = (
+            (data.get("deployment_mode") or "").strip() == "clustered"
+            and not database_url
+        )
+        saved = save_cluster_config(data, require_postgres_url=require_pg)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OSError as e:
@@ -436,17 +468,23 @@ async def update_cluster_config(
         if not database_url.startswith(("postgresql+asyncpg://", "postgresql://", "postgres://")):
             raise HTTPException(
                 status_code=400,
-                detail="database_url must be postgresql+asyncpg://… (clustered shared DB)",
+                detail="database_url must be postgresql+asyncpg://…/openvox_gui",
             )
         if database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         _upsert_env_key("OPENVOX_GUI_DATABASE_URL", database_url)
-        env_notes.append("DATABASE_URL written to .env — restart openvox-gui")
+        env_notes.append(
+            "DATABASE_URL written to .env — restart openvox-gui "
+            "(any additional console must use this same URL)"
+        )
     if shared_secret:
         if len(shared_secret) < 16:
             raise HTTPException(status_code=400, detail="shared_secret_key must be at least 16 characters")
         _upsert_env_key("OPENVOX_GUI_SECRET_KEY", shared_secret)
-        env_notes.append("SECRET_KEY written to .env — restart both consoles with the SAME key")
+        env_notes.append(
+            "SECRET_KEY written to .env — restart openvox-gui; "
+            "any additional console must use the SAME SECRET_KEY"
+        )
 
     audit_event(
         "cluster_config_update",
