@@ -14,6 +14,11 @@ from datetime import datetime, timezone
 from ..database import Base
 
 
+def _utc_naive() -> datetime:
+    """UTC now without tzinfo — asyncpg rejects aware datetimes for TIMESTAMP WITHOUT TIME ZONE."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 # ─── Association tables ─────────────────────────────────────
 
 node_group_membership = Table(
@@ -33,8 +38,7 @@ class EncCommon(Base):
     id = Column(Integer, primary_key=True, default=1)
     classes = Column(JSON, default=dict)
     parameters = Column(JSON, default=dict)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
 
 
 # ─── Layer 2: Environment ──────────────────────────────────
@@ -47,9 +51,8 @@ class EncEnvironment(Base):
     description = Column(Text, default="")
     classes = Column(JSON, default=dict)
     parameters = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
 
     # Back-references
     groups = relationship("EncGroup", back_populates="environment_obj")
@@ -68,9 +71,8 @@ class EncGroup(Base):
     environment = Column(String(255), ForeignKey("enc_environments.name"), nullable=False)
     classes = Column(JSON, default=dict)
     parameters = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
 
     environment_obj = relationship("EncEnvironment", back_populates="groups")
     nodes = relationship("EncNode", secondary=node_group_membership,
@@ -87,9 +89,8 @@ class EncNode(Base):
     environment = Column(String(255), ForeignKey("enc_environments.name"), nullable=False)
     classes = Column(JSON, default=dict)       # node-specific overrides
     parameters = Column(JSON, default=dict)    # node-specific parameters
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
 
     environment_obj = relationship("EncEnvironment", back_populates="nodes")
     groups = relationship("EncGroup", secondary=node_group_membership,
@@ -109,8 +110,8 @@ class NodeGroup(Base):
     classes = Column(JSON, default=dict)
     parameters = Column(JSON, default=dict)
     rule = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
     parent = relationship("NodeGroup", remote_side=[id], backref="children")
 
 
@@ -122,8 +123,8 @@ class NodeClassification(Base):
     classes = Column(JSON, default=dict)
     parameters = Column(JSON, default=dict)
     is_pinned = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
 
 
 class ClassificationRule(Base):
@@ -136,5 +137,5 @@ class ClassificationRule(Base):
     fact_match = Column(JSON, nullable=False)
     group_id = Column(Integer, nullable=False)
     enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)

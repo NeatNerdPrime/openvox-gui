@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.22] - 2026-08-13 (fix — ENC group create datetime on Postgres)
+
+### Fixed
+- **Classification | Groups (and all ENC layers):** creating a group failed on
+  PostgreSQL with `can't subtract offset-naive and offset-aware datetimes`
+  because `created_at`/`updated_at` defaults used timezone-aware UTC while
+  columns are `TIMESTAMP WITHOUT TIME ZONE`. All ENC models now use naive UTC
+  (same pattern as users and execution_history).
+
 ## [3.11.1-alpha.21] - 2026-08-13 (fix — Environments table never blank after load)
 
 ### Fixed
