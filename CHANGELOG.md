@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.31] - 2026-08-13 (feat — clustered Log Viewer host picker)
+
+### Added
+- **Insights | Log Viewer:** in clustered mode, OpenVox Server / OpenVoxDB /
+  OpenVox GUI tabs list hosts from cluster config (compilers, puppetdb_nodes,
+  peer consoles). One host per request via Bolt `read-logs-remote.py`
+  (`--run-as root`); this console stays local journalctl. 15s cache; last
+  host persisted. Singleton UI unchanged.
+
 ## [3.11.1-alpha.30] - 2026-08-13 (fix — CLI output noise + stale Failed badge)
 
 ### Fixed

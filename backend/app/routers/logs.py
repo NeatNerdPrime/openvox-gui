@@ -12,7 +12,9 @@ Tab labels depend on stack flavor (OpenVox packages vs Puppet OSS).
 from __future__ import annotations
 
 import logging
+import socket
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -26,6 +28,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
 _ADMIN_ONLY = require_role("admin")
+
+# Short TTL so host-picker refresh / auto-refresh does not SSH every 5s
+_REMOTE_CACHE: Dict[str, Any] = {}
+_REMOTE_CACHE_TS: Dict[str, float] = {}
+_REMOTE_CACHE_TTL = 15.0
+
+_SCRIPT = Path("/opt/openvox-gui/scripts/read-logs-remote.py")
 
 # Log sources: journalctl unit(s) AND/OR log file(s) on disk.
 # PuppetDB / PuppetServer often prefer file logs; agent is primarily journal.
@@ -406,6 +415,143 @@ async def _collect_source_lines(
     return log_lines, used_unit, used_file, hard_errors, used_mode
 
 
+def _local_host_names() -> set:
+    names: set = set()
+    try:
+        n = socket.gethostname()
+    except OSError:
+        n = ""
+    if n:
+        names.add(n.lower())
+        names.add(n.split(".")[0].lower())
+    return names
+
+
+def _is_local_host(host: str) -> bool:
+    h = (host or "").strip().lower()
+    if not h or h in ("local", "localhost", "this", "127.0.0.1"):
+        return True
+    locals_ = _local_host_names()
+    if h in locals_:
+        return True
+    short = h.split(".")[0]
+    return short in locals_ or any(h == n or n.startswith(short + ".") for n in locals_)
+
+
+def _hosts_by_source() -> Tuple[bool, Dict[str, List[Dict[str, str]]]]:
+    """Build per-tab host lists from cluster_config. Singleton → empty lists."""
+    from ..services.cluster_config import is_clustered, load_cluster_config
+
+    clustered = is_clustered()
+    local_label = socket.gethostname() or "this console"
+    local_entry = {
+        "fqdn": "local",
+        "label": f"{local_label} (this console)",
+        "transport": "local",
+    }
+    by_src: Dict[str, List[Dict[str, str]]] = {
+        "puppet": [local_entry],
+        "syslog": [local_entry],
+        "openvox-gui": [dict(local_entry)],
+        "puppetserver": [],
+        "puppetdb": [],
+    }
+    if not clustered:
+        return False, by_src
+
+    cfg = load_cluster_config()
+    for fqdn in cfg.get("compilers") or []:
+        by_src["puppetserver"].append(
+            {"fqdn": fqdn, "label": fqdn, "transport": "bolt"}
+        )
+    for fqdn in cfg.get("ca_nodes") or []:
+        if fqdn not in {h["fqdn"] for h in by_src["puppetserver"]}:
+            by_src["puppetserver"].append(
+                {"fqdn": fqdn, "label": f"{fqdn} (CA)", "transport": "bolt"}
+            )
+    for fqdn in cfg.get("puppetdb_nodes") or []:
+        by_src["puppetdb"].append(
+            {"fqdn": fqdn, "label": fqdn, "transport": "bolt"}
+        )
+    locals_ = _local_host_names()
+    for fqdn in cfg.get("consoles") or []:
+        if fqdn.lower() in locals_ or fqdn.split(".")[0].lower() in locals_:
+            continue
+        by_src["openvox-gui"].append(
+            {"fqdn": fqdn, "label": f"{fqdn} (peer console)", "transport": "bolt"}
+        )
+    return True, by_src
+
+
+def _allowed_hosts_for_source(source: str) -> Dict[str, Dict[str, str]]:
+    _clustered, by_src = _hosts_by_source()
+    return {h["fqdn"].lower(): h for h in (by_src.get(source) or [])}
+
+
+def _cache_key(source: str, host: str, lines: int, since: Optional[str], grep: Optional[str]) -> str:
+    return f"{source}|{host}|{lines}|{since or ''}|{grep or ''}"
+
+
+async def _fetch_remote_logs(
+    source: str,
+    host: str,
+    lines: int,
+    since: Optional[str],
+    grep: Optional[str],
+) -> Dict[str, Any]:
+    from .bolt_runtime import run_bolt_command
+    from .deploy import _extract_bolt_json, _script_body
+
+    if not _SCRIPT.is_file():
+        raise HTTPException(status_code=500, detail=f"Missing {_SCRIPT}")
+
+    args = [
+        "script",
+        "run",
+        str(_SCRIPT),
+        source,
+        "--lines",
+        str(lines),
+    ]
+    if since:
+        args.extend(["--since", since])
+    if grep:
+        args.extend(["--grep", grep])
+    args.extend([
+        "--targets",
+        host,
+        "--run-as",
+        "root",
+        "--format",
+        "json",
+    ])
+
+    bolt = await run_bolt_command(args, timeout=45)
+    data = _extract_bolt_json(bolt.get("stdout") or "")
+    item: Dict[str, Any] = {}
+    if isinstance(data, dict) and data.get("items"):
+        first = data["items"][0]
+        item = first if isinstance(first, dict) else {}
+    body = (_script_body(item.get("value") or {}) or "").strip()
+    parsed: Dict[str, Any] = {}
+    if body.startswith("{"):
+        import json as _json
+
+        try:
+            parsed = _json.loads(body)
+        except Exception:
+            parsed = {}
+    if not parsed:
+        err = (bolt.get("stderr") or item.get("value", {}) or {})
+        if isinstance(err, dict):
+            err = err.get("_error", {}).get("msg") or bolt.get("stderr") or "Bolt returned no log JSON"
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not read logs on {host}: {err}",
+        )
+    return parsed
+
+
 @router.get("/sources")
 async def list_sources(_user: str = Depends(_ADMIN_ONLY)):
     """Return available log sources with stack-aware display labels."""
@@ -417,11 +563,14 @@ async def list_sources(_user: str = Depends(_ADMIN_ONLY)):
             "id": key,
             "label": labels.get(key, key),
         })
+    clustered, hosts_by_source = _hosts_by_source()
     return {
         "stack": flavor,
         "sources": [s["id"] for s in sources],
         "source_meta": sources,
         "labels": labels,
+        "clustered": clustered,
+        "hosts_by_source": hosts_by_source,
     }
 
 
@@ -431,6 +580,7 @@ async def get_logs(
     lines: int = Query(200, ge=1, le=5000, description="Number of lines to return"),
     since: Optional[str] = Query(None, description="Time filter, e.g. '1h ago', '30m ago', 'today'"),
     grep: Optional[str] = Query(None, description="Filter lines containing this string"),
+    host: Optional[str] = Query(None, description="local or allowlisted FQDN (clustered)"),
     _user: str = Depends(_ADMIN_ONLY),
 ):
     """Fetch recent log lines from journalctl and/or service log files."""
@@ -441,6 +591,53 @@ async def get_logs(
         )
 
     src_config = _LOG_SOURCES[source]
+    host_raw = (host or "local").strip()
+    use_remote = bool(host_raw) and not _is_local_host(host_raw)
+
+    if use_remote:
+        allowed = _allowed_hosts_for_source(source)
+        key = host_raw.lower()
+        if key not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Host {host_raw!r} is not allowed for source '{source}'",
+            )
+        ck = _cache_key(source, key, lines, since, grep)
+        now = time.time()
+        hit = _REMOTE_CACHE.get(ck)
+        if hit is not None and (now - _REMOTE_CACHE_TS.get(ck, 0)) < _REMOTE_CACHE_TTL:
+            return {**hit, "cached": True}
+        flavor = detect_stack_flavor()
+        labels = stack_labels(flavor)
+        try:
+            remote = await _fetch_remote_logs(source, host_raw, lines, since, grep)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Remote log fetch failed: {e}")
+        payload: Dict[str, Any] = {
+            "source": source,
+            "label": labels.get(source, source),
+            "stack": flavor,
+            "host": host_raw,
+            "transport": "bolt",
+            "unit": remote.get("unit"),
+            "file": remote.get("file"),
+            "mode": remote.get("mode"),
+            "count": len(remote.get("lines") or []),
+            "lines": remote.get("lines") or [],
+            "cached": False,
+        }
+        if not payload["lines"] and remote.get("error"):
+            payload["error"] = remote["error"]
+        elif not payload["lines"]:
+            payload["error"] = (
+                f"No {labels.get(source, source)} log lines on {host_raw}. "
+                "Check journal unit / file path and that bolt can run as root there."
+            )
+        _REMOTE_CACHE[ck] = payload
+        _REMOTE_CACHE_TS[ck] = now
+        return payload
 
     try:
         log_lines, used_unit, used_file, hard_errors, used_mode = await _collect_source_lines(
@@ -474,11 +671,14 @@ async def get_logs(
             "source": source,
             "label": labels.get(source, source),
             "stack": flavor,
+            "host": "local",
+            "transport": "local",
             "unit": used_unit,
             "file": used_file,
             "mode": used_mode,
             "count": len(log_lines),
             "lines": log_lines,
+            "cached": False,
         }
         if since_relaxed:
             payload["warning"] = (

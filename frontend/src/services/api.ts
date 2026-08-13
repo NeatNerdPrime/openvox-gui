@@ -654,11 +654,12 @@ export const metrics = {
 
 export const logs = {
   getSources: () => fetchJSON<any>('/logs/sources'),
-  get: (source: string, params?: { lines?: number; since?: string; grep?: string }) => {
+  get: (source: string, params?: { lines?: number; since?: string; grep?: string; host?: string }) => {
     const qs = new URLSearchParams();
     if (params?.lines) qs.set('lines', params.lines.toString());
     if (params?.since) qs.set('since', params.since);
     if (params?.grep) qs.set('grep', params.grep);
+    if (params?.host) qs.set('host', params.host);
     const query = qs.toString();
     return fetchJSON<any>(`/logs/${source}${query ? '?' + query : ''}`);
   },

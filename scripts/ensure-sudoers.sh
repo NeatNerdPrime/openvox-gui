@@ -241,6 +241,10 @@ ${SERVICE_USER} ALL=(root) NOPASSWD: /opt/openvox-gui/scripts/sync-openvox-repo.
 Defaults:${SERVICE_USER} env_keep += "OPENVOX_GUI_HTTP_PROXY OPENVOX_GUI_HTTPS_PROXY OPENVOX_GUI_NO_PROXY http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY"
 
 # Log Viewer — restricted to specific units and files only
+# Clustered Log Viewer reads compilers / OpenVoxDB / peer consoles via
+# Bolt script run --run-as root of scripts/read-logs-remote.py (root journalctl/tail
+# on the target). Local console still uses the SERVICE_USER rules below.
+#
 # Method: journalctl / tail argv must match backend/app/routers/logs.py exactly.
 # Rationale: The Logs page lets operators view the main components
 #            without granting general log access. Prior rules only allowed

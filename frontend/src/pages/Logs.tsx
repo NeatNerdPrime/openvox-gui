@@ -4,7 +4,7 @@
  * Log viewer page — browse Puppet, PuppetDB, openvox-gui, and system
  * logs without shell access. Fetches from journalctl via the backend.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Title, Card, Stack, Group, Text, Alert, Loader, Center,
   Tabs, ScrollArea, Code, Select, TextInput, Button, Badge,
@@ -32,6 +32,21 @@ const SOURCE_COLORS: Record<string, string> = {
   syslog: 'gray',
 };
 
+const HOST_STORAGE_KEY = 'openvox-logs-host-v1';
+
+type LogHost = { fqdn: string; label: string; transport: string };
+
+function loadStoredHosts(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(HOST_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export function LogsPage() {
   const [activeTab, setActiveTab] = useState<string>('openvox-gui');
   const [logSources, setLogSources] = useState(DEFAULT_LOG_SOURCES);
@@ -42,8 +57,18 @@ export function LogsPage() {
   const [grepFilter, setGrepFilter] = useState('');
   const [sinceFilter, setSinceFilter] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [clustered, setClustered] = useState(false);
+  const [hostsBySource, setHostsBySource] = useState<Record<string, LogHost[]>>({});
+  const [hostByTab, setHostByTab] = useState<Record<string, string>>(loadStoredHosts);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const hostsForTab = useMemo(
+    () => hostsBySource[activeTab] || [],
+    [hostsBySource, activeTab],
+  );
+  const selectedHost = hostByTab[activeTab] || hostsForTab[0]?.fqdn || 'local';
+  const showHostPicker = hostsForTab.length > 1 || (clustered && ['puppetserver', 'puppetdb', 'openvox-gui'].includes(activeTab));
 
   // Stack-aware tab labels (OpenVox vs Puppet OSS) from backend package detection
   useEffect(() => {
@@ -67,14 +92,37 @@ export function LogsPage() {
             }))
           );
         }
+        setClustered(!!res?.clustered);
+        const bySrc = res?.hosts_by_source || {};
+        setHostsBySource(bySrc);
+        setHostByTab((prev) => {
+          const next = { ...prev };
+          Object.entries(bySrc as Record<string, LogHost[]>).forEach(([src, hosts]) => {
+            if (!hosts?.length) return;
+            const allowed = new Set(hosts.map((h) => h.fqdn));
+            if (!next[src] || !allowed.has(next[src])) {
+              next[src] = hosts[0].fqdn;
+            }
+          });
+          return next;
+        });
       })
       .catch(() => {
         /* keep defaults */
       });
   }, []);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(HOST_STORAGE_KEY, JSON.stringify(hostByTab));
+    } catch {
+      /* ignore */
+    }
+  }, [hostByTab]);
+
   const fetchLogs = useCallback(async (source?: string) => {
     const src = source || activeTab;
+    const host = hostByTab[src] || (hostsBySource[src] || [])[0]?.fqdn || 'local';
     setLoading(true);
     setError(null);
     try {
@@ -82,6 +130,7 @@ export function LogsPage() {
         lines: parseInt(lineCount) || 200,
         since: sinceFilter || undefined,
         grep: grepFilter || undefined,
+        host: host && host !== 'local' ? host : undefined,
       });
       setLogData(prev => ({ ...prev, [src]: result }));
       // Auto-scroll to bottom
@@ -94,12 +143,12 @@ export function LogsPage() {
       setError(e.message);
     }
     setLoading(false);
-  }, [activeTab, lineCount, sinceFilter, grepFilter]);
+  }, [activeTab, lineCount, sinceFilter, grepFilter, hostByTab, hostsBySource]);
 
-  // Fetch on tab change
+  // Fetch on tab or host change
   useEffect(() => {
     fetchLogs();
-  }, [activeTab]);
+  }, [activeTab, selectedHost]);
 
   // Auto-refresh
   useEffect(() => {
@@ -310,6 +359,21 @@ export function LogsPage() {
 
         {/* Controls */}
         <Group mt="md" gap="sm" wrap="wrap">
+          {showHostPicker && (
+            <Select
+              size="xs"
+              label="Host"
+              data={hostsForTab.map((h) => ({ value: h.fqdn, label: h.label }))}
+              value={selectedHost}
+              onChange={(v) => {
+                if (!v) return;
+                setHostByTab((prev) => ({ ...prev, [activeTab]: v }));
+              }}
+              style={{ minWidth: 280 }}
+              searchable
+              allowDeselect={false}
+            />
+          )}
           <Select
             size="xs"
             label="Lines"
@@ -367,6 +431,12 @@ export function LogsPage() {
           </Group>
         </Group>
 
+        {clustered && ['puppetserver', 'puppetdb'].includes(activeTab) && hostsForTab.length === 0 && (
+          <Alert color="yellow" mt="sm">
+            No hosts configured for this source. Add compilers / OpenVoxDB nodes under
+            Settings → Cluster, then refresh.
+          </Alert>
+        )}
         {error && <Alert color="red" mt="sm" withCloseButton onClose={() => setError(null)}>{error}</Alert>}
         {backendWarning && (
           <Alert color="yellow" mt="sm" title="Since filter relaxed">
@@ -375,6 +445,15 @@ export function LogsPage() {
         )}
 
         {/* Log output */}
+        {currentData?.host && currentData.host !== 'local' && (
+          <Text size="xs" c="dimmed" mt="xs">
+            {currentData.transport === 'bolt' ? 'Via Bolt on ' : ''}
+            {currentData.host}
+            {currentData.cached ? ' (cached ~15s)' : ''}
+            {currentData.mode ? ` · ${currentData.mode}` : ''}
+          </Text>
+        )}
+
         <ScrollArea h="calc(100vh - 340px)" mih={300} mah={800} mt="sm" viewportRef={scrollRef}>
           {loading && !currentData ? (
             <Center h={200}><Loader /></Center>
