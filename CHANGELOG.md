@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.21] - 2026-08-13 (fix — Environments table never blank after load)
+
+### Fixed
+- **Classification | Environments:** table could still appear empty after a
+  success toast when ScrollArea collapsed (`h="100%"` inside max-height-only
+  parent) or when the load path wiped state on error. Use
+  `ScrollArea.Autosize`, always seed rows from control_repo discovery
+  (fallback `production`), show environment count in the banner, and never
+  clear the table to empty on partial failure.
+
 ## [3.11.1-alpha.20] - 2026-08-13 (fix — Environments tab empty after sync toast)
 
 ### Fixed

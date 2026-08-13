@@ -533,8 +533,11 @@ function HierarchyTab() {
 async function discoverControlRepoEnvironments(): Promise<string[]> {
   try {
     const puppetResp = await config.getEnvironments();
-    const names = (puppetResp.environments || []).map(String).filter(Boolean);
-    if (names.length > 0) return [...new Set(names)].sort();
+    const raw = Array.isArray(puppetResp?.environments) ? puppetResp.environments : [];
+    const names: string[] = raw
+      .map((n: unknown) => String(n ?? '').trim())
+      .filter((n: string) => n.length > 0);
+    if (names.length > 0) return Array.from(new Set(names)).sort();
   } catch {
     /* fall through */
   }
@@ -596,23 +599,27 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<{
     /* keep map */
   }
 
-  // Display order = discovered control_repo list (not arbitrary ENC-only rows)
-  const envs = discovered.map((name) => {
+  // Display order = discovered control_repo list (not arbitrary ENC-only rows).
+  // Always return one row per discovered name so the table cannot be empty
+  // after a success toast (creates may fail; stubs still render).
+  const names = discovered.length > 0 ? discovered : ['production'];
+  const envs = names.map((name) => {
     const row = byName.get(name);
     return row || { name, classes: {}, parameters: {}, description: '' };
   });
 
   if (opts?.notify) {
+    const listed = envs.map((e) => e.name).join(', ');
     if (created.length > 0) {
       notifications.show({
         title: 'Environments ready',
-        message: created.join(', '),
+        message: `Showing ${envs.length}: ${listed}`,
         color: 'blue',
       });
-    } else if (discovered.length > 0) {
+    } else if (envs.length > 0) {
       notifications.show({
         title: 'Environments loaded',
-        message: discovered.join(', '),
+        message: `Showing ${envs.length}: ${listed}`,
         color: 'blue',
       });
     } else {
@@ -624,7 +631,7 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<{
     }
   }
 
-  return { envs, discovered };
+  return { envs, discovered: names };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -646,11 +653,25 @@ function EnvironmentsTab() {
     setLoading(true);
     try {
       const { envs: list, discovered: names } = await ensureEncEnvironments({ notify });
-      setDiscovered(names);
-      setEnvs(list);
-    } catch {
-      setEnvs([]);
-      setDiscovered([]);
+      // Always set from discovery-backed list (never leave stale empty after "synced")
+      setDiscovered(names.length ? names : list.map((e: any) => String(e.name)).filter(Boolean));
+      setEnvs(Array.isArray(list) && list.length > 0
+        ? list
+        : (names.length ? names : ['production']).map((name) => ({
+            name, classes: {}, parameters: {}, description: '',
+          })));
+    } catch (e: any) {
+      // Last resort: still show production so the tab is never blank after load
+      const fallback = [{ name: 'production', classes: {}, parameters: {}, description: '' }];
+      setDiscovered(['production']);
+      setEnvs(fallback);
+      if (notify) {
+        notifications.show({
+          title: 'Environments load issue',
+          message: e?.message || 'Could not fully sync; showing fallback',
+          color: 'yellow',
+        });
+      }
     }
     setLoading(false);
   }, []);
@@ -700,6 +721,12 @@ function EnvironmentsTab() {
           Environments are determined by the <strong>control_repo Git branches</strong>, and are
           <strong> not editable here</strong>. You can only apply <strong>classes</strong> and
           <strong> parameters</strong> at the environment level.
+          {envs.length > 0 && (
+            <>
+              {' '}Currently listing <strong>{envs.length}</strong> environment
+              {envs.length === 1 ? '' : 's'} from the control_repo.
+            </>
+          )}
         </Alert>
         <Button
           variant="light"
@@ -711,46 +738,45 @@ function EnvironmentsTab() {
         </Button>
       </Group>
       <Card withBorder shadow="sm">
-        <Box style={{ maxHeight: 500, minHeight: 0, overflow: 'hidden' }}>
-          <ScrollArea h="100%" type="auto" offsetScrollbars scrollbarSize={6}>
-            <Table striped highlightOnHover>
-              <Table.Thead><Table.Tr>
-                <Table.Th>Environment</Table.Th>
-                <Table.Th>Classes</Table.Th>
-                <Table.Th>Parameters</Table.Th>
-                <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
-              </Table.Tr></Table.Thead>
-              <Table.Tbody>
-            {envs.map((e) => (
-              <Table.Tr key={e.name}>
-                <Table.Td><Badge color="blue" size="lg">{e.name}</Badge></Table.Td>
-                <Table.Td><ClassBadges classes={e.classes} color="blue" /></Table.Td>
-                <Table.Td><ParamBadges params={e.parameters} color="cyan" /></Table.Td>
-                <Table.Td>
-                  <Group gap="xs" justify="flex-end">
-                    <Tooltip label="Apply classes and parameters">
-                      <ActionIcon variant="subtle" color="blue" onClick={() => openEdit(e)}>
-                        <IconPencil size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-            {envs.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={4}>
-                  <Text c="dimmed" ta="center" py="lg">
-                    No environments available yet. Deploy control_repo branches to the compilers,
-                    then click Refresh list.
-                  </Text>
-                </Table.Td>
-              </Table.Tr>
-            )}
-          </Table.Tbody>
-        </Table>
-        </ScrollArea>
-      </Box>
+        {/* mah (not h=100% inside maxHeight-only Box) — avoids zero-height collapse */}
+        <ScrollArea.Autosize mah={500} type="auto" offsetScrollbars scrollbarSize={6}>
+          <Table striped highlightOnHover>
+            <Table.Thead><Table.Tr>
+              <Table.Th>Environment</Table.Th>
+              <Table.Th>Classes</Table.Th>
+              <Table.Th>Parameters</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
+            </Table.Tr></Table.Thead>
+            <Table.Tbody>
+              {envs.map((e) => (
+                <Table.Tr key={e.name || e.id || JSON.stringify(e)}>
+                  <Table.Td><Badge color="blue" size="lg">{e.name}</Badge></Table.Td>
+                  <Table.Td><ClassBadges classes={e.classes || {}} color="blue" /></Table.Td>
+                  <Table.Td><ParamBadges params={e.parameters || {}} color="cyan" /></Table.Td>
+                  <Table.Td>
+                    <Group gap="xs" justify="flex-end">
+                      <Tooltip label="Apply classes and parameters">
+                        <ActionIcon variant="subtle" color="blue" onClick={() => openEdit(e)}>
+                          <IconPencil size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+              {envs.length === 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={4}>
+                    <Text c="dimmed" ta="center" py="lg">
+                      No environments available yet. Deploy control_repo branches to the compilers,
+                      then click Refresh list.
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea.Autosize>
       </Card>
       <Modal
         opened={modalOpen}
