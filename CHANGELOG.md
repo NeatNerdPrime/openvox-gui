@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.17] - 2026-08-13 (fix — orchestration execution history 500)
+
+### Fixed
+- **Orchestration | Run Command history:** Postgres query used tz-aware cutoffs
+  against TIMESTAMP WITHOUT TIME ZONE (asyncpg 500). Use naive UTC; soft-fail
+  missing table; normalize JSON parameters after migration.
+- Frontend history URL was `/execution-history/?…` — corrected to
+  `/execution-history?…`.
+
 ## [3.11.1-alpha.16] - 2026-08-13 (feat — seamless singleton→clustered migration)
 
 ### Added

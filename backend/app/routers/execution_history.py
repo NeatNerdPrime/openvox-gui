@@ -128,6 +128,11 @@ async def update_execution_history(
     return entry
 
 
+def _cutoff_naive(days: int) -> datetime:
+    """Naive UTC cutoff — matches TIMESTAMP WITHOUT TIME ZONE + asyncpg."""
+    return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+
+
 @router.get("/", response_model=List[ExecutionHistoryResponse])
 async def get_execution_history(
     days: int = Query(14, ge=1, le=90, description="Number of days of history to retrieve"),
@@ -139,30 +144,64 @@ async def get_execution_history(
     current_user: str = Depends(get_current_user)
 ):
     """Get execution history for the last N days."""
-    # Calculate cutoff date
-    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-    
-    # Build query
-    query = select(ExecutionHistory).where(
-        ExecutionHistory.executed_at >= cutoff_date
-    )
-    
-    # Apply filters
-    if execution_type:
-        query = query.where(ExecutionHistory.execution_type == execution_type)
-    if node_name:
-        query = query.where(ExecutionHistory.node_name == node_name)
-    if status:
-        query = query.where(ExecutionHistory.status == status)
-    
-    # Order by most recent first and apply limit
-    query = query.order_by(desc(ExecutionHistory.executed_at)).limit(limit)
-    
-    # Execute query
-    result = await db.execute(query)
-    entries = result.scalars().all()
-    
-    return entries
+    cutoff_date = _cutoff_naive(days)
+
+    try:
+        query = select(ExecutionHistory).where(
+            ExecutionHistory.executed_at >= cutoff_date
+        )
+        if execution_type:
+            query = query.where(ExecutionHistory.execution_type == execution_type)
+        if node_name:
+            query = query.where(ExecutionHistory.node_name == node_name)
+        if status:
+            query = query.where(ExecutionHistory.status == status)
+        query = query.order_by(desc(ExecutionHistory.executed_at)).limit(limit)
+        result = await db.execute(query)
+        entries = list(result.scalars().all())
+        # Normalize JSON params that may be strings after SQLite→PG migration
+        out: List[ExecutionHistoryResponse] = []
+        for e in entries:
+            params = e.parameters
+            if isinstance(params, str):
+                try:
+                    import json as _json
+                    params = _json.loads(params)
+                except Exception:
+                    params = None
+            out.append(
+                ExecutionHistoryResponse(
+                    id=e.id,
+                    execution_type=e.execution_type,
+                    node_name=e.node_name,
+                    command_name=e.command_name,
+                    task_name=e.task_name,
+                    plan_name=e.plan_name,
+                    environment=e.environment,
+                    parameters=params if isinstance(params, dict) else params,
+                    result_format=e.result_format,
+                    status=e.status,
+                    executed_at=e.executed_at,
+                    executed_by=e.executed_by,
+                    duration_ms=e.duration_ms,
+                    error_message=e.error_message,
+                    result_preview=e.result_preview,
+                )
+            )
+        return out
+    except Exception as e:
+        # Missing table after Postgres cutover, etc. — empty history not a hard fail
+        logger.exception("get_execution_history failed: %s", e)
+        err = str(e).lower()
+        if (
+            "does not exist" in err
+            or "undefinedtable" in err
+            or "no such table" in err
+            or "offset-naive" in err
+            or "offset-aware" in err
+        ):
+            return []
+        raise HTTPException(status_code=500, detail=f"Failed to load execution history: {e}")
 
 
 @router.get("/stats")
@@ -172,15 +211,18 @@ async def get_execution_stats(
     current_user: str = Depends(get_current_user)
 ):
     """Get execution statistics for the last N days."""
-    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-    
-    # Get all entries in the date range
-    result = await db.execute(
-        select(ExecutionHistory).where(
-            ExecutionHistory.executed_at >= cutoff_date
+    cutoff_date = _cutoff_naive(days)
+
+    try:
+        result = await db.execute(
+            select(ExecutionHistory).where(
+                ExecutionHistory.executed_at >= cutoff_date
+            )
         )
-    )
-    entries = result.scalars().all()
+        entries = list(result.scalars().all())
+    except Exception as e:
+        logger.exception("get_execution_stats failed: %s", e)
+        entries = []
     
     # Calculate statistics
     total_executions = len(entries)
@@ -246,26 +288,24 @@ async def cleanup_old_history(
     current_user: str = Depends(require_role("admin"))
 ):
     """Delete execution history entries older than N days."""
-    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-    
-    # Count entries to be deleted
+    cutoff_date = _cutoff_naive(days)
+
     count_result = await db.execute(
         select(ExecutionHistory).where(
             ExecutionHistory.executed_at < cutoff_date
         )
     )
     count = len(count_result.scalars().all())
-    
+
     logger.info(f"Admin {current_user} cleaning up {count} execution history entries older than {days} days")
-    
-    # Delete old entries
+
     await db.execute(
         ExecutionHistory.__table__.delete().where(
             ExecutionHistory.executed_at < cutoff_date
         )
     )
     await db.commit()
-    
+
     return {
         "message": f"Deleted {count} execution history entries older than {days} days"
     }

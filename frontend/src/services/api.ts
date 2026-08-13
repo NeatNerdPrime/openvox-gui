@@ -831,15 +831,18 @@ export const executionHistory = {
     if (params?.status) qs.set('status', params.status);
     if (params?.limit) qs.set('limit', params.limit.toString());
     const query = qs.toString();
-    return fetchJSON<ExecutionHistoryEntry[]>(`/execution-history/${query ? '?' + query : ''}`);
+    // No slash before ? — `/execution-history/?days=` can 500/404 on some proxies
+    return fetchJSON<ExecutionHistoryEntry[]>(
+      query ? `/execution-history?${query}` : '/execution-history',
+    );
   },
-  
+
   getStats: (days: number = 14) =>
     fetchJSON<ExecutionStats>(`/execution-history/stats?days=${days}`),
-  
+
   deleteEntry: (id: number) =>
     fetchJSON<any>(`/execution-history/${id}`, { method: 'DELETE' }),
-  
+
   cleanupOld: (days: number = 90) =>
     fetchJSON<any>(`/execution-history/cleanup/old?days=${days}`, { method: 'DELETE' }),
 };
