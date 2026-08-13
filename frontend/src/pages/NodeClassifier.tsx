@@ -14,6 +14,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconPlus, IconTrash, IconPencil, IconHierarchy2, IconTags,
   IconServer, IconWorld, IconSearch, IconLayersLinked, IconArrowDown, IconX, IconHelp,
+  IconRefresh,
 } from '@tabler/icons-react';
 import { enc, nodes as nodesApi, config } from '../services/api';
 import { useAppTheme } from '../hooks/ThemeContext';
@@ -525,11 +526,24 @@ function HierarchyTab() {
 }
 
 /**
- * Ensure ENC DB has environment rows for the classify/group dropdowns.
- * Discovery is compiler/PuppetDB-first (GUI hosts have no control_repo).
- * Seeds `production` only as a last-resort name if discovery returns nothing.
+ * Discover control_repo environment names (r10k branch ↔ environment) and
+ * ensure ENC rows exist so operators can attach classes/params only.
+ * Names are never invented in the UI — only discovered + production fallback.
  */
+async function discoverControlRepoEnvironments(): Promise<string[]> {
+  try {
+    const puppetResp = await config.getEnvironments();
+    const names = (puppetResp.environments || []).map(String).filter(Boolean);
+    if (names.length > 0) return names;
+  } catch {
+    /* fall through */
+  }
+  // Last resort so classify is not completely blocked
+  return ['production'];
+}
+
 async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<any[]> {
+  const discovered = await discoverControlRepoEnvironments();
   let encEnvs: any[] = [];
   try {
     encEnvs = await enc.listEnvironments();
@@ -537,28 +551,12 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<any[]
     encEnvs = [];
   }
   const encNames = new Set((encEnvs || []).map((e: any) => e.name));
-
-  let discovered: string[] = [];
-  try {
-    const puppetResp = await config.getEnvironments();
-    discovered = (puppetResp.environments || []).map(String).filter(Boolean);
-  } catch {
-    discovered = [];
-  }
-  // Always ensure production exists as a fallback name
-  if (!discovered.includes('production')) {
-    discovered = ['production', ...discovered];
-  }
-
   const missing = discovered.filter((n) => n && !encNames.has(n));
   for (const name of missing) {
     try {
       await enc.createEnvironment({
         name,
-        description:
-          name === 'production' && discovered.length <= 1
-            ? 'Default environment (auto-seeded)'
-            : 'OpenVox environment (auto-discovered)',
+        description: 'From control_repo (auto-discovered — name is not editable)',
         classes: {},
         parameters: {},
       });
@@ -566,108 +564,121 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<any[]
       /* race or already exists */
     }
   }
-  if (missing.length > 0) {
-    try {
-      encEnvs = await enc.listEnvironments();
-    } catch {
-      /* keep prior */
-    }
-    if (opts?.notify && missing.length > 0) {
-      notifications.show({
-        title: 'Environments synced',
-        message: `Added: ${missing.join(', ')}`,
-        color: 'blue',
-      });
-    }
+  try {
+    encEnvs = await enc.listEnvironments();
+  } catch {
+    /* keep prior */
   }
-  return encEnvs;
+  // Only surface environments that still exist in the control_repo discovery set
+  const allowed = new Set(discovered);
+  const active = (encEnvs || []).filter((e: any) => allowed.has(e.name));
+  if (opts?.notify && missing.length > 0) {
+    notifications.show({
+      title: 'Environments synced from control_repo',
+      message: missing.join(', '),
+      color: 'blue',
+    });
+  }
+  return active.length > 0 ? active : encEnvs;
 }
 
 /* ═══════════════════════════════════════════════════════════════
    TAB 2: ENVIRONMENTS
+   Names come from control_repo (via compilers). Operators only set
+   classes/parameters — no inventing or deleting environment names.
    ═══════════════════════════════════════════════════════════════ */
 function EnvironmentsTab() {
   const [envs, setEnvs] = useState<any[]>([]);
+  const [discovered, setDiscovered] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [formName, setFormName] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formClasses, setFormClasses] = useState<string[]>([]);
   const [formParams, setFormParams] = useState<Array<{ key: string; val: string }>>([]);
-  const [pendingDeleteEnv, setPendingDeleteEnv] = useState<string | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (notify = false) => {
     setLoading(true);
     try {
-      setEnvs(await ensureEncEnvironments({ notify: true }));
+      const names = await discoverControlRepoEnvironments();
+      setDiscovered(names);
+      setEnvs(await ensureEncEnvironments({ notify }));
     } catch {
       setEnvs([]);
+      setDiscovered([]);
     }
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(true); }, [load]);
 
-  const openCreate = () => {
-    setEditing(null);
-    setFormName(''); setFormDesc(''); setFormClasses([]); setFormParams([]);
-    setModalOpen(true);
-  };
   const openEdit = (e: any) => {
     setEditing(e);
-    setFormName(e.name); setFormDesc(e.description || '');
+    setFormDesc(e.description || '');
     setFormClasses(classDictToList(e.classes));
     setFormParams(dictToRows(e.parameters));
     setModalOpen(true);
   };
   const handleSave = async () => {
+    if (!editing?.name) return;
     try {
-      const payload = { name: formName, description: formDesc,
-        classes: classListToDict(formClasses), parameters: rowsToDict(formParams) };
-      if (editing) {
-        await enc.updateEnvironment(editing.name, payload);
-        notifications.show({ title: 'Updated', message: `Environment '${formName}' updated`, color: 'green' });
-      } else {
-        await enc.createEnvironment(payload);
-        notifications.show({ title: 'Created', message: `Environment '${formName}' created`, color: 'green' });
-      }
-      setModalOpen(false); load();
-    } catch (e: any) { notifications.show({ title: 'Error', message: e.message, color: 'red' }); }
-  };
-  const handleDelete = async (name: string) => {
-    setDeleteLoading(true);
-    try {
-      await enc.deleteEnvironment(name);
-      notifications.show({ title: 'Deleted', message: `'${name}' removed`, color: 'green' });
-      setPendingDeleteEnv(null);
-      load();
+      // Name is fixed — only classification payload changes
+      await enc.updateEnvironment(editing.name, {
+        name: editing.name,
+        description: formDesc,
+        classes: classListToDict(formClasses),
+        parameters: rowsToDict(formParams),
+      });
+      notifications.show({
+        title: 'Updated',
+        message: `Classes/parameters for environment '${editing.name}' saved`,
+        color: 'green',
+      });
+      setModalOpen(false);
+      load(false);
     } catch (e: any) {
       notifications.show({ title: 'Error', message: e.message, color: 'red' });
     }
-    setDeleteLoading(false);
   };
 
-  if (loading) return <LoadingState height={300} label="Loading environments…" />;
+  const handleResync = async () => {
+    setSyncing(true);
+    await load(true);
+    setSyncing(false);
+  };
+
+  if (loading) return <LoadingState height={300} label="Loading environments from control_repo…" />;
 
   return (
     <Stack>
-      <Group justify="flex-end">
-        <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add Environment</Button>
+      <Group justify="space-between" align="flex-start">
+        <Alert variant="light" color="blue" style={{ flex: 1 }} mb={0}>
+          Environment <strong>names</strong> are the control_repo Git branches (1:1 with r10k),
+          discovered from compilers — not created on this console. Use this tab only to apply
+          <strong> classes and parameters</strong> to those environments. Add or remove branches
+          in the control_repo, then Stage/Activate and click Resync.
+        </Alert>
+        <Button
+          variant="light"
+          leftSection={<IconRefresh size={16} />}
+          loading={syncing}
+          onClick={handleResync}
+        >
+          Resync from control_repo
+        </Button>
       </Group>
-      <Alert variant="light" color="blue" mb="xs">
-        Environments are the <strong>control_repo Git branches</strong> (1:1 with r10k). This
-        console does not hold the control_repo. Names are discovered from compilers (
-        <Code>/puppet/v3/environments</Code> or the live codedir after Stage/Activate), then
-        PuppetDB. Classes and parameters set here apply to every node in that environment.
-      </Alert>
+      {discovered.length > 0 && (
+        <Text size="xs" c="dimmed">
+          Discovered branches: {discovered.join(', ')}
+        </Text>
+      )}
       <Card withBorder shadow="sm">
         <Box style={{ maxHeight: 500, minHeight: 0, overflow: 'hidden' }}>
           <ScrollArea h="100%" type="auto" offsetScrollbars scrollbarSize={6}>
             <Table striped highlightOnHover>
               <Table.Thead><Table.Tr>
-                <Table.Th>Environment</Table.Th><Table.Th>Description</Table.Th>
+                <Table.Th>Environment (branch)</Table.Th><Table.Th>Description</Table.Th>
                 <Table.Th>Classes</Table.Th><Table.Th>Parameters</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr></Table.Thead>
@@ -680,43 +691,65 @@ function EnvironmentsTab() {
                 <Table.Td><ParamBadges params={e.parameters} color="cyan" /></Table.Td>
                 <Table.Td>
                   <Group gap="xs" justify="flex-end">
-                    <Tooltip label="Edit"><ActionIcon variant="subtle" color="blue" onClick={() => openEdit(e)}><IconPencil size={16} /></ActionIcon></Tooltip>
-                    <Tooltip label="Delete"><ActionIcon variant="subtle" color="red" onClick={() => setPendingDeleteEnv(e.name)}><IconTrash size={16} /></ActionIcon></Tooltip>
+                    <Tooltip label="Edit classes &amp; parameters">
+                      <ActionIcon variant="subtle" color="blue" onClick={() => openEdit(e)}>
+                        <IconPencil size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                   </Group>
                 </Table.Td>
               </Table.Tr>
             ))}
-            {envs.length === 0 && <Table.Tr><Table.Td colSpan={5}><Text c="dimmed" ta="center" py="lg">No environments defined</Text></Table.Td></Table.Tr>}
+            {envs.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={5}>
+                  <Text c="dimmed" ta="center" py="lg">
+                    No environments discovered yet. Ensure compilers have r10k environments
+                    (control_repo branches) and OPENVOX_GUI_PUPPET_SERVER_HOST / deploy targets
+                    are set, then Resync.
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            )}
           </Table.Tbody>
         </Table>
         </ScrollArea>
       </Box>
       </Card>
-      <Modal opened={modalOpen} onClose={() => setModalOpen(false)}
-        title={editing ? `Edit Environment \u2014 ${editing.name}` : 'Add Environment'} size="lg">
+      <Modal
+        opened={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editing ? `Environment classes — ${editing.name}` : 'Environment'}
+        size="lg"
+      >
         <Stack>
-          <TextInput label="Name" required value={formName} disabled={!!editing}
-            onChange={(e) => setFormName(e.currentTarget.value)} placeholder="e.g. production, staging" />
-          <TextInput label="Description" value={formDesc}
-            onChange={(e) => setFormDesc(e.currentTarget.value)} />
-          <ClassPicker value={formClasses} onChange={setFormClasses} environment={formName || 'production'}
-            label="Environment Classes" description="Classes applied to all nodes in this environment" />
-          <ParamEditor value={formParams} onChange={setFormParams}
-            label="Environment Parameters" description="Parameters applied to all nodes in this environment" />
-          <Button onClick={handleSave}>{editing ? 'Update' : 'Create'}</Button>
+          <TextInput
+            label="Environment name (from control_repo)"
+            value={editing?.name || ''}
+            disabled
+            description="Names are control_repo branches; they cannot be created or renamed here."
+          />
+          <TextInput
+            label="Description (optional note in ENC)"
+            value={formDesc}
+            onChange={(e) => setFormDesc(e.currentTarget.value)}
+          />
+          <ClassPicker
+            value={formClasses}
+            onChange={setFormClasses}
+            environment={editing?.name || 'production'}
+            label="Environment Classes"
+            description="Classes applied to all nodes classified into this environment"
+          />
+          <ParamEditor
+            value={formParams}
+            onChange={setFormParams}
+            label="Environment Parameters"
+            description="Parameters applied to all nodes in this environment"
+          />
+          <Button onClick={handleSave}>Save classes &amp; parameters</Button>
         </Stack>
       </Modal>
-      <ConfirmModal
-        opened={!!pendingDeleteEnv}
-        onClose={() => !deleteLoading && setPendingDeleteEnv(null)}
-        onConfirm={() => pendingDeleteEnv && handleDelete(pendingDeleteEnv)}
-        title="Delete environment?"
-        body={`Delete environment '${pendingDeleteEnv}'?`}
-        details={pendingDeleteEnv ? [pendingDeleteEnv] : undefined}
-        confirmLabel="Delete"
-        danger
-        loading={deleteLoading}
-      />
     </Stack>
   );
 }

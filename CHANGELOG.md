@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.18] - 2026-08-13 (feat — ENC environments from control_repo only)
+
+### Changed
+- **Classification | Environments:** environment **names** are auto-populated from
+  control_repo (via compilers/r10k discovery). Operators can only edit
+  **classes and parameters** — no Add Environment / Delete / rename.
+  Resync button re-pulls branch list from compilers.
+
 ## [3.11.1-alpha.17] - 2026-08-13 (fix — orchestration execution history 500)
 
 ### Fixed
