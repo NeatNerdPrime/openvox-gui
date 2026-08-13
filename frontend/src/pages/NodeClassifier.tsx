@@ -528,58 +528,103 @@ function HierarchyTab() {
 /**
  * Discover control_repo environment names (r10k branch ↔ environment) and
  * ensure ENC rows exist so operators can attach classes/params only.
- * Names are never invented in the UI — only discovered + production fallback.
+ * UI always lists discovered names; names are never invented in the form.
  */
 async function discoverControlRepoEnvironments(): Promise<string[]> {
   try {
     const puppetResp = await config.getEnvironments();
     const names = (puppetResp.environments || []).map(String).filter(Boolean);
-    if (names.length > 0) return names;
+    if (names.length > 0) return [...new Set(names)].sort();
   } catch {
     /* fall through */
   }
-  // Last resort so classify is not completely blocked
   return ['production'];
 }
 
-async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<any[]> {
+/**
+ * Returns one row per discovered control_repo environment, merged with ENC
+ * classes/parameters when present. Always re-lists after create so the table
+ * is never empty after a "synced" notification.
+ */
+async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<{
+  envs: any[];
+  discovered: string[];
+}> {
   const discovered = await discoverControlRepoEnvironments();
   let encEnvs: any[] = [];
   try {
     encEnvs = await enc.listEnvironments();
+    if (!Array.isArray(encEnvs)) encEnvs = [];
   } catch {
     encEnvs = [];
   }
-  const encNames = new Set((encEnvs || []).map((e: any) => e.name));
-  const missing = discovered.filter((n) => n && !encNames.has(n));
-  for (const name of missing) {
+
+  const byName = new Map<string, any>();
+  for (const e of encEnvs) {
+    if (e?.name) byName.set(String(e.name), e);
+  }
+
+  const created: string[] = [];
+  const failed: string[] = [];
+  for (const name of discovered) {
+    if (byName.has(name)) continue;
     try {
-      await enc.createEnvironment({
+      const row = await enc.createEnvironment({
         name,
-        description: 'From control_repo (auto-discovered — name is not editable)',
+        description: '',
         classes: {},
         parameters: {},
       });
-    } catch {
-      /* race or already exists */
+      byName.set(name, row || { name, classes: {}, parameters: {}, description: '' });
+      created.push(name);
+    } catch (e: any) {
+      // Already exists from race — re-list later
+      failed.push(name);
+      byName.set(name, { name, classes: {}, parameters: {}, description: '' });
     }
   }
+
+  // Fresh list so we pick up server state after creates
   try {
-    encEnvs = await enc.listEnvironments();
+    const fresh = await enc.listEnvironments();
+    if (Array.isArray(fresh)) {
+      for (const e of fresh) {
+        if (e?.name) byName.set(String(e.name), e);
+      }
+    }
   } catch {
-    /* keep prior */
+    /* keep map */
   }
-  // Only surface environments that still exist in the control_repo discovery set
-  const allowed = new Set(discovered);
-  const active = (encEnvs || []).filter((e: any) => allowed.has(e.name));
-  if (opts?.notify && missing.length > 0) {
-    notifications.show({
-      title: 'Environments synced from control_repo',
-      message: missing.join(', '),
-      color: 'blue',
-    });
+
+  // Display order = discovered control_repo list (not arbitrary ENC-only rows)
+  const envs = discovered.map((name) => {
+    const row = byName.get(name);
+    return row || { name, classes: {}, parameters: {}, description: '' };
+  });
+
+  if (opts?.notify) {
+    if (created.length > 0) {
+      notifications.show({
+        title: 'Environments ready',
+        message: created.join(', '),
+        color: 'blue',
+      });
+    } else if (discovered.length > 0) {
+      notifications.show({
+        title: 'Environments loaded',
+        message: discovered.join(', '),
+        color: 'blue',
+      });
+    } else {
+      notifications.show({
+        title: 'No environments found',
+        message: 'Could not discover control_repo branches from compilers',
+        color: 'yellow',
+      });
+    }
   }
-  return active.length > 0 ? active : encEnvs;
+
+  return { envs, discovered };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -600,9 +645,9 @@ function EnvironmentsTab() {
   const load = useCallback(async (notify = false) => {
     setLoading(true);
     try {
-      const names = await discoverControlRepoEnvironments();
+      const { envs: list, discovered: names } = await ensureEncEnvironments({ notify });
       setDiscovered(names);
-      setEnvs(await ensureEncEnvironments({ notify }));
+      setEnvs(list);
     } catch {
       setEnvs([]);
       setDiscovered([]);
@@ -760,11 +805,12 @@ function GroupsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [g, e] = await Promise.all([
+      const [g, envResult] = await Promise.all([
         enc.listGroups(),
         ensureEncEnvironments({ notify: false }),
       ]);
-      setGroups(g); setEnvs(e);
+      setGroups(g);
+      setEnvs(envResult.envs);
     } catch {
       setGroups([]);
       setEnvs([]);
@@ -911,13 +957,16 @@ function NodesTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [n, e, g, c] = await Promise.all([
+      const [n, envResult, g, c] = await Promise.all([
         enc.listNodes(),
         ensureEncEnvironments({ notify: false }),
         enc.listGroups(),
         enc.getCommon().catch(() => null),
       ]);
-      setClassified(n); setEnvs(e); setGroups(g); setCommonData(c);
+      setClassified(n);
+      setEnvs(envResult.envs);
+      setGroups(g);
+      setCommonData(c);
       try {
         const pn = await nodesApi.list();
         setPuppetNodes(pn.map((x: any) => x.certname).sort());

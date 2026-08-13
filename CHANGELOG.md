@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.20] - 2026-08-13 (fix — Environments tab empty after sync toast)
+
+### Fixed
+- **Classification | Environments:** after sync, the table could stay empty
+  because the list was filtered incorrectly and the toast fired even when
+  creates failed. Always render one row per discovered control_repo
+  environment, merge ENC classes/parameters, and only report success for
+  real loads.
+
 ## [3.11.1-alpha.19] - 2026-08-13 (fix — Environments tab wording)
 
 ### Changed
