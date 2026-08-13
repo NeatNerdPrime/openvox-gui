@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.16] - 2026-08-13 (feat — seamless singleton→clustered migration)
+
+### Added
+- **Automatic migration when enabling Clustered:** seed local codedir
+  environments into ENC; if still on SQLite and a Postgres URL is provided,
+  copy users/ENC/GUI tables into `openvox_gui`; surface a plain-language
+  checklist (actions/warnings) so operators need not know the underpinnings.
+- `backend/app/services/cluster_migrate.py` — SQLite→Postgres table copy +
+  environment capture.
+
 ## [3.11.1-alpha.15] - 2026-08-13 (chore — singleton local / clustered remote rule)
 
 ### Changed

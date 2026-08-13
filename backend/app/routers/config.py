@@ -1,16 +1,18 @@
+"""
+Configuration API - Manage PuppetServer, PuppetDB, Hiera, and application settings.
+"""
 from pathlib import Path
 import json
 import re
 import socket
-"""
-Configuration API - Manage PuppetServer, PuppetDB, Hiera, and application settings.
-"""
 import logging
 from fastapi import Request, APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+from sqlalchemy.ext.asyncio import AsyncSession
 from ..services.puppetserver import puppetserver_service
 from ..config import settings
+from ..database import get_db
 from ..dependencies import require_role
 from ..middleware.security import rate_limit_heavy, concurrency_heavy
 
@@ -388,13 +390,20 @@ class ClusterConfigUpdate(BaseModel):
 async def update_cluster_config(
     body: ClusterConfigUpdate,
     _user: str = Depends(_ADMIN_ONLY),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Save cluster configuration. Optionally seed ENC infrastructure groups."""
+    """Save cluster configuration. Optionally seed ENC infrastructure groups.
+
+    When enabling **clustered**, runs seamless migration helpers:
+    seed local environments into ENC, optional SQLite→Postgres copy.
+    """
     from ..services.cluster_config import save_cluster_config, load_cluster_config
+    from ..services.cluster_migrate import prepare_clustered_migration
     from ..utils.audit import audit_event
 
     data = body.model_dump()
     current = load_cluster_config()
+    previous_mode = (current.get("deployment_mode") or "single").strip()
     if not data.get("staging_codedir"):
         data["staging_codedir"] = current.get("staging_codedir")
     if not data.get("live_codedir"):
@@ -402,9 +411,10 @@ async def update_cluster_config(
     seed = data.pop("seed_infrastructure_groups", True)
     database_url = (data.pop("database_url", None) or "").strip()
     shared_secret = (data.pop("shared_secret_key", None) or "").strip()
+    new_mode = (data.get("deployment_mode") or "single").strip()
 
     # Clustered always uses Postgres for the GUI app DB (openvox_gui).
-    if (data.get("deployment_mode") or "").strip() == "clustered":
+    if new_mode == "clustered":
         data["database_backend"] = "postgresql"
         from ..config import settings as _settings
 
@@ -413,11 +423,11 @@ async def update_cluster_config(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Clustered mode requires PostgreSQL for classification and GUI "
-                    "state (database openvox_gui). Provide database_url "
-                    "(postgresql+asyncpg://openvox_gui:…@ovdb…/openvox_gui), or "
-                    "install/bootstrap with OPENVOX_GUI_DB_BACKEND=postgresql first. "
-                    "SQLite cannot be shared across consoles or survive console loss."
+                    "Switching to Clustered is automatic once PostgreSQL is ready. "
+                    "Provide database_url (postgresql+asyncpg://openvox_gui:…@ovdb…/openvox_gui) "
+                    "so we can migrate your SQLite data, or install with "
+                    "OPENVOX_GUI_DB_BACKEND=postgresql / bootstrap-openvox-gui-db.sh first. "
+                    "SQLite cannot survive console loss or a second console."
                 ),
             )
         if database_url and not database_url.startswith(
@@ -427,19 +437,48 @@ async def update_cluster_config(
                 status_code=400,
                 detail="database_url must be postgresql+asyncpg://…/openvox_gui",
             )
+        # Default compiler VIP if operator left puppet_server at console hostname
+        if data.get("compilers") and not database_url:
+            pass  # topology only
+        # ENC API URL default: this console (compilers point here)
+        if not data.get("enc_api_urls"):
+            try:
+                host = (_settings.puppet_server_host or "").strip()
+                # Prefer first console FQDN if listed
+                consoles = data.get("consoles") or []
+                if consoles:
+                    host = consoles[0]
+                # Build https://host:app_port if we have hostname
+                import socket
+                fqdn = socket.getfqdn()
+                port = getattr(_settings, "app_port", 4567) or 4567
+                data["enc_api_urls"] = [f"https://{fqdn}:{port}"]
+            except Exception:
+                pass
+
+    # Seamless migration (seed envs + optional SQLite→PG) BEFORE flipping mode file
+    migrate_report: Dict[str, Any] = {"actions": [], "warnings": [], "migration": None}
+    if new_mode == "clustered":
+        try:
+            migrate_report = await prepare_clustered_migration(
+                db,
+                new_database_url=database_url or None,
+                previous_mode=previous_mode,
+                new_mode=new_mode,
+            )
+        except Exception as e:
+            logger.exception("Clustered migration helpers failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Automatic migration failed: {e}",
+            )
 
     try:
-        # If this request supplies a postgres URL, we will write .env below —
-        # do not require settings.database_url to already be postgres.
-        require_pg = (
-            (data.get("deployment_mode") or "").strip() == "clustered"
-            and not database_url
-        )
+        require_pg = new_mode == "clustered" and not database_url
         saved = save_cluster_config(data, require_postgres_url=require_pg)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OSError as e:
-        # Typical: /opt/openvox-gui/data not writable by service user (puppet)
         logger.exception("Failed to write cluster_config.json")
         raise HTTPException(
             status_code=500,
@@ -459,11 +498,13 @@ async def update_cluster_config(
         try:
             seeded = await _seed_infrastructure_enc_groups(saved)
         except Exception as e:
-            # Config is already on disk — do not fail the whole save for ENC seed issues.
             logger.exception("Cluster config saved but ENC infrastructure seed failed")
             seed_error = str(e)
 
-    env_notes: List[str] = []
+    env_notes: List[str] = list(migrate_report.get("actions") or [])
+    for w in migrate_report.get("warnings") or []:
+        env_notes.append(f"Warning: {w}")
+
     if database_url:
         if not database_url.startswith(("postgresql+asyncpg://", "postgresql://", "postgres://")):
             raise HTTPException(
@@ -474,7 +515,7 @@ async def update_cluster_config(
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         _upsert_env_key("OPENVOX_GUI_DATABASE_URL", database_url)
         env_notes.append(
-            "DATABASE_URL written to .env — restart openvox-gui "
+            "DATABASE_URL written to .env — restart openvox-gui to use PostgreSQL "
             "(any additional console must use this same URL)"
         )
     if shared_secret:
@@ -495,7 +536,13 @@ async def update_cluster_config(
             + (f" seed_error={seed_error}" if seed_error else "")
         ),
     )
-    out: Dict[str, Any] = {"config": saved, "seeded_groups": seeded}
+    out: Dict[str, Any] = {
+        "config": saved,
+        "seeded_groups": seeded,
+        "migration_actions": migrate_report.get("actions") or [],
+        "migration_warnings": migrate_report.get("warnings") or [],
+        "migration": migrate_report.get("migration"),
+    }
     if seed_error:
         out["seed_warning"] = (
             f"Cluster config saved, but ENC group seed failed: {seed_error}"

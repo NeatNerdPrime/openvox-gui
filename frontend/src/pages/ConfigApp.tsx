@@ -608,23 +608,37 @@ function ClusterTab() {
         seed_infrastructure_groups: mode === 'clustered',
       });
       const seeded = (result?.seeded_groups || []).join(', ') || 'none';
+      const actions = [
+        ...(result?.migration_actions || []),
+        ...(result?.restart_required || []),
+      ];
+      const warnings = result?.migration_warnings || [];
       if (result?.seed_warning) {
         notifications.show({
           title: 'Cluster config saved (ENC seed warning)',
           message: result.seed_warning,
           color: 'yellow',
         });
-      } else {
+      }
+      if (warnings.length > 0) {
         notifications.show({
-          title: 'Cluster settings saved',
-          message: result?.restart_required
-            ? `${result.restart_required.join('; ')}`
-            : mode === 'clustered'
-            ? `Clustered mode on. ENC groups seeded: ${seeded}`
-            : 'Single-server mode (cluster UI hidden)',
-          color: 'green',
+          title: 'Migration warnings',
+          message: warnings.join(' · '),
+          color: 'yellow',
+          autoClose: 12000,
         });
       }
+      notifications.show({
+        title: mode === 'clustered' ? 'Clustered mode ready' : 'Cluster settings saved',
+        message:
+          actions.length > 0
+            ? actions.slice(0, 6).join(' · ')
+            : mode === 'clustered'
+            ? `ENC groups seeded: ${seeded}. Restart openvox-gui if DATABASE_URL changed.`
+            : 'Single-server mode',
+        color: 'green',
+        autoClose: 15000,
+      });
       refetch();
     } catch (e: any) {
       notifications.show({ title: 'Save failed', message: e.message, color: 'red' });
@@ -707,11 +721,12 @@ function ClusterTab() {
               />
               <Divider label="GUI application database (required)" labelPosition="left" />
               <Alert variant="light" color="orange">
-                Clustered mode always uses PostgreSQL database <Code>openvox_gui</Code> (not
-                SQLite, not tables inside <Code>puppetdb</Code>). Install with{' '}
-                <Code>OPENVOX_GUI_DB_BACKEND=postgresql</Code> /{' '}
-                <Code>bootstrap-openvox-gui-db.sh</Code>, or set the URL below. Any future
-                second console must use the <strong>same</strong> URL and SECRET_KEY.
+                Switching to Clustered is designed to be automatic: we seed environments from
+                this host if present, and if you still use SQLite we <strong>copy</strong> your
+                classification and users into PostgreSQL when you provide the URL below
+                (database <Code>openvox_gui</Code> on ovdb — not inside <Code>puppetdb</Code>).
+                After save, restart the service. Discovery then uses compilers (API + Bolt).
+                Any future console uses the same URL and SECRET_KEY.
               </Alert>
               <TextInput
                 label="PostgreSQL URL (writes .env — restart required)"
