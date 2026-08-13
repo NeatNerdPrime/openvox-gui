@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.9] - 2026-08-13 (fix — Postgres user create / bcrypt)
+
+### Fixed
+- **manage_users / local auth on PostgreSQL:** User `created_at`/`updated_at` use
+  timezone-naive UTC so asyncpg accepts `TIMESTAMP WITHOUT TIME ZONE`.
+- **bcrypt pin 4.0.1** (passlib 1.7.4 incompatible with bcrypt 4.1+ `__about__` removal).
+
 ## [3.11.1-alpha.8] - 2026-08-13 (feat — clustered requires openvox_gui Postgres)
 
 ### Changed

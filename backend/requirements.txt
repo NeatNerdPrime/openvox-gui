@@ -17,7 +17,8 @@ jinja2==3.1.6
 alembic==1.18.4
 passlib[bcrypt]==1.7.4
 PyJWT[crypto]==2.13.0
-bcrypt==4.2.1
+# 4.1+ removes bcrypt.__about__ which passlib 1.7.4 still reads (breaks manage_users)
+bcrypt==4.0.1
 cryptography==48.0.1
 certifi==2026.5.20
 prometheus-client==0.25.0

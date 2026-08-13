@@ -6,6 +6,11 @@ from datetime import datetime, timezone
 from ..database import Base
 
 
+def _utc_naive() -> datetime:
+    """UTC now without tzinfo — asyncpg rejects aware datetimes for TIMESTAMP WITHOUT TIME ZONE."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class User(Base):
     """Application user with role-based access."""
     __tablename__ = "users"
@@ -14,9 +19,8 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(String(50), nullable=False, default="viewer")  # admin | operator | certops | viewer
     auth_source = Column(String(50), nullable=False, default="local")  # local | ldap
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
 
 
 class LdapConfig(Base):
@@ -61,6 +65,5 @@ class LdapConfig(Base):
     ad_domain = Column(String(255), nullable=True)  # e.g. CORP.EXAMPLE.COM for AD UPN
     use_ad_upn = Column(Boolean, nullable=False, default=False)  # Use user@domain for bind
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=_utc_naive)
+    updated_at = Column(DateTime, default=_utc_naive, onupdate=_utc_naive)
