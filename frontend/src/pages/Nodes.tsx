@@ -500,7 +500,40 @@ export function NodesPage() {
                                   onClick={() => navigate(`/nodes/${node.certname}`)}
                                 >
                                   <Table.Td><Text fw={500}>{node.certname}</Text></Table.Td>
-                                  <Table.Td><StatusBadge status={node.latest_report_status} /></Table.Td>
+                                  <Table.Td>
+                                    <Tooltip
+                                      multiline
+                                      maw={420}
+                                      label={
+                                        [
+                                          `Badge = PuppetDB report status, not Bolt success.`,
+                                          `shown: ${node.latest_report_status || 'unreported'}`,
+                                          `source: ${node.status_source || 'node_index'}`,
+                                          node.node_index_status
+                                            ? `node index: ${node.node_index_status}`
+                                            : null,
+                                          node.report_producer
+                                            ? `producer: ${node.report_producer}`
+                                            : null,
+                                          node.cached_catalog_status
+                                            ? `cached catalog: ${node.cached_catalog_status}`
+                                            : null,
+                                          node.latest_report_hash
+                                            ? `hash: ${node.latest_report_hash}`
+                                            : null,
+                                          node.report_timestamp
+                                            ? `time: ${node.report_timestamp}`
+                                            : null,
+                                        ]
+                                          .filter(Boolean)
+                                          .join('\n')
+                                      }
+                                    >
+                                      <span>
+                                        <StatusBadge status={node.latest_report_status} />
+                                      </span>
+                                    </Tooltip>
+                                  </Table.Td>
                                   <Table.Td>{(node as any).enc_environment || node.report_environment || '\u2014'}</Table.Td>
                                   <Table.Td>{timeAgo(node.report_timestamp)}</Table.Td>
                                   <Table.Td>{actionCell(node)}</Table.Td>
@@ -556,7 +589,23 @@ export function NodesPage() {
               key: 'latest_report_status',
               header: 'Status',
               sortValue: (n) => n.latest_report_status || '',
-              render: (n) => <StatusBadge status={n.latest_report_status} />,
+              render: (n) => (
+                <Tooltip
+                  multiline
+                  maw={420}
+                  label={[
+                    `Badge = PuppetDB report status, not Bolt success.`,
+                    `shown: ${n.latest_report_status || 'unreported'}`,
+                    `source: ${n.status_source || 'node_index'}`,
+                    n.node_index_status ? `node index: ${n.node_index_status}` : null,
+                    n.report_producer ? `producer: ${n.report_producer}` : null,
+                    n.cached_catalog_status ? `cached catalog: ${n.cached_catalog_status}` : null,
+                    n.report_timestamp ? `time: ${n.report_timestamp}` : null,
+                  ].filter(Boolean).join('\n')}
+                >
+                  <span><StatusBadge status={n.latest_report_status} /></span>
+                </Tooltip>
+              ),
             },
             {
               key: 'report_environment',

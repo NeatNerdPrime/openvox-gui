@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.28] - 2026-08-13 (fix — explain Nodes Failed badge from PDB report)
+
+### Fixed
+- **Overview | Nodes Failed badge is not Bolt:** the GUI never maps a
+  successful `puppet agent -t` / Bolt exit to Failed. The badge is
+  PuppetDB's latest **report** `status` (`failed` / `changed` / `unchanged`).
+  Resolve status via PQL newest report (not only the lagging node index);
+  hover the badge for producer, hash, time, cached-catalog, and
+  node-index vs report. `GET /api/nodes/{certname}/run-status` returns
+  the raw newest report so we can see *why* PDB still says failed
+  (old report not replaced, or `cached_catalog_status = on_failure`).
+
 ## [3.11.1-alpha.27] - 2026-08-13 (fix — Overview Nodes badge from latest report)
 
 ### Fixed

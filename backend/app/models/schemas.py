@@ -50,6 +50,12 @@ class NodeSummary(BaseModel):
     enc_groups: List[str] = Field(default_factory=list)
     enc_classes: Dict[str, Any] = Field(default_factory=dict)
     enc_parameters: Dict[str, Any] = Field(default_factory=dict)
+    # Why the badge is what it is (latest report vs stale node index)
+    status_source: Optional[str] = None
+    node_index_status: Optional[str] = None
+    latest_report_hash: Optional[str] = None
+    cached_catalog_status: Optional[str] = None
+    report_producer: Optional[str] = None
 
 
 class NodeFact(BaseModel):
@@ -66,6 +72,11 @@ class NodeDetail(BaseModel):
     report_environment: Optional[str] = None
     classes: List[str] = []
     resources_count: int = 0
+    status_source: Optional[str] = None
+    node_index_status: Optional[str] = None
+    latest_report_hash: Optional[str] = None
+    cached_catalog_status: Optional[str] = None
+    report_producer: Optional[str] = None
 
 
 # ─── Reports ───────────────────────────────────────────────

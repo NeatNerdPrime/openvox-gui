@@ -230,6 +230,19 @@ export function NodeDetailPage() {
       <Group>
         <Title order={2}>{node.certname}</Title>
         <StatusBadge status={node.latest_report_status} size="lg" />
+        {(node as any).status_source && (
+          <Text size="xs" c="dimmed">
+            report {(node as any).status_source}
+            {(node as any).report_producer ? ` via ${(node as any).report_producer}` : ''}
+            {(node as any).cached_catalog_status
+              ? ` (cached catalog: ${(node as any).cached_catalog_status})`
+              : ''}
+            {(node as any).node_index_status
+              && (node as any).node_index_status !== node.latest_report_status
+              ? ` · node-index still ${(node as any).node_index_status}`
+              : ''}
+          </Text>
+        )}
         <Button
           leftSection={runningPuppet ? <Loader size={14} color="white" /> : <IconPlayerPlay size={14} />}
           color="green" size="sm" variant="outline"

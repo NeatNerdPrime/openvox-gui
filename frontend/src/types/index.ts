@@ -84,6 +84,11 @@ export interface NodeSummary {
   enc_groups?: string[];
   enc_classes?: Record<string, any>;
   enc_parameters?: Record<string, any>;
+  status_source?: string | null;
+  node_index_status?: string | null;
+  latest_report_hash?: string | null;
+  cached_catalog_status?: string | null;
+  report_producer?: string | null;
 }
 
 export interface NodeDetail {
@@ -95,6 +100,11 @@ export interface NodeDetail {
   report_environment: string | null;
   classes: string[];
   resources_count: number;
+  status_source?: string | null;
+  node_index_status?: string | null;
+  latest_report_hash?: string | null;
+  cached_catalog_status?: string | null;
+  report_producer?: string | null;
 }
 
 // ─── Reports ────────────────────────────────────────────────

@@ -218,6 +218,30 @@ async def search_packages(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{certname}/run-status")
+async def get_node_run_status(certname: str):
+    """Explain the badge: node-index vs newest report (not Bolt exit code)."""
+    certname = validate_pql_value(certname, "certname")
+    try:
+        node = await puppetdb_service.get_node(certname)
+    except Exception as e:
+        node = {"error": str(e)}
+    newest = await puppetdb_service.get_newest_report_for_certname(certname)
+    return {
+        "certname": certname,
+        "display_status": (newest or {}).get("status") or (node or {}).get("latest_report_status"),
+        "node_index_status": (node or {}).get("node_index_status")
+        or (node or {}).get("latest_report_status"),
+        "newest_report": newest,
+        "note": (
+            "The GUI badge is PuppetDB report status (failed/changed/unchanged), "
+            "not Bolt 'Successful'. A green Bolt apply can still leave the last "
+            "stored report as failed if compilers do not store reports to PuppetDB, "
+            "or if cached_catalog_status is on_failure."
+        ),
+    }
+
+
 @router.get("/{certname}", response_model=NodeDetail)
 async def get_node_detail(certname: str):
     """Get detailed information about a specific node.
@@ -259,6 +283,11 @@ async def get_node_detail(certname: str):
             report_environment=node.get("report_environment"),
             classes=classes,
             resources_count=len(resources),
+            status_source=node.get("status_source"),
+            node_index_status=node.get("node_index_status"),
+            latest_report_hash=node.get("latest_report_hash"),
+            cached_catalog_status=node.get("cached_catalog_status"),
+            report_producer=node.get("report_producer"),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

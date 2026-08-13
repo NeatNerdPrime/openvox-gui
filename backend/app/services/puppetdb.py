@@ -280,8 +280,27 @@ class PuppetDBService:
         return fleet
 
     async def get_node(self, certname: str) -> Dict:
-        """Get a single node by certname."""
+        """Get a single node by certname, status overlaid from newest report."""
         result = await self._query(f"nodes/{certname}")
+        if isinstance(result, dict):
+            await self._overlay_latest_report_status([result])
+            newest = await self.get_newest_report_for_certname(certname)
+            if newest and newest.get("status"):
+                result["node_index_status"] = result.get("node_index_status") or result.get(
+                    "latest_report_status"
+                )
+                result["latest_report_status"] = newest.get("status")
+                ts = (
+                    newest.get("end_time")
+                    or newest.get("receive_time")
+                    or newest.get("start_time")
+                )
+                if ts:
+                    result["report_timestamp"] = ts
+                result["latest_report_hash"] = newest.get("hash")
+                result["cached_catalog_status"] = newest.get("cached_catalog_status")
+                result["report_producer"] = newest.get("producer")
+                result["status_source"] = "newest_report"
         return result
 
     async def get_node_facts(self, certname: str) -> List[Dict]:
@@ -359,54 +378,105 @@ class PuppetDBService:
 
     # ─── Reports ────────────────────────────────────────────
 
+    async def pql(self, query: str, limit: int = 5000) -> Any:
+        """Run a PQL query against /pdb/query/v4 (no trailing slash)."""
+        client = await self._get_client()
+        resp = await client.get(
+            "/pdb/query/v4",
+            params={"query": query, "limit": str(limit)},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     async def get_latest_reports_by_certname(self) -> Dict[str, Dict]:
-        """One latest report document per certname (PuppetDB ``latest_report?``)."""
+        """One latest report document per certname.
+
+        Prefer PQL ``latest_report?`` (full projection). Fall back to the
+        reports AST endpoint. Last resort: newest report per certname from
+        a receive_time-ordered window.
+        """
+        rows: List[Dict] = []
         try:
-            rows = await self.get_reports(
-                query='["=", "latest_report?", true]',
+            rows = await self.pql(
+                "reports[certname, status, receive_time, start_time, end_time, "
+                "hash, producer, cached_catalog_status, noop] { latest_report? = true }",
                 limit=5000,
-            )
+            ) or []
         except Exception as e:
-            logger.warning("latest_report? query failed: %s", e)
-            return {}
+            logger.warning("PQL latest_report? failed, trying AST: %s", e)
+            try:
+                rows = await self.get_reports(
+                    query='["=", "latest_report?", true]',
+                    limit=5000,
+                ) or []
+            except Exception as e2:
+                logger.warning("AST latest_report? failed: %s", e2)
+                rows = []
+
         out: Dict[str, Dict] = {}
-        for row in rows or []:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
             key = str(row.get("certname") or "").strip().lower()
             if key:
                 out[key] = row
         return out
 
-    async def _overlay_latest_report_status(self, nodes: List[Dict]) -> None:
-        """Replace stale nodes.latest_report_status with the latest report row.
+    async def get_newest_report_for_certname(self, certname: str) -> Optional[Dict]:
+        """Newest report for one certname by receive_time (not the node index)."""
+        cn = (certname or "").replace("\\", "\\\\").replace('"', '\\"')
+        if not cn:
+            return None
+        try:
+            rows = await self.pql(
+                "reports[certname, status, receive_time, start_time, end_time, "
+                "hash, producer, cached_catalog_status, noop, configuration_version] { "
+                f'certname = "{cn}" '
+                "} order by receive_time desc",
+                limit=1,
+            ) or []
+            if rows and isinstance(rows[0], dict):
+                return rows[0]
+        except Exception as e:
+            logger.warning("newest report query failed certname=%s: %s", certname, e)
+        return None
 
-        Overview | Nodes was showing FAILED after a later successful run when
-        the node index had not caught up. The latest report document is the
-        same source Insights | Reports uses for per-row status.
+    async def _overlay_latest_report_status(self, nodes: List[Dict]) -> None:
+        """Set display status from the latest *report document*, not the node index.
+
+        The GUI does not invent Failed from Bolt. PuppetDB report ``status``
+        is failed/changed/unchanged. The node-index field can stick on failed
+        after a later successful report exists — we overlay the report.
         """
         if not nodes:
             return
         latest = await self.get_latest_reports_by_certname()
-        if not latest:
-            return
         for node in nodes:
             key = str(node.get("certname") or "").strip().lower()
+            node["node_index_status"] = node.get("latest_report_status")
             row = latest.get(key)
             if not row:
+                node["status_source"] = "node_index"
                 continue
             status = row.get("status")
             if status:
                 prev = node.get("latest_report_status")
                 if prev != status:
                     logger.info(
-                        "overlay latest report status certname=%s node_index=%s latest_report=%s",
+                        "overlay latest report status certname=%s node_index=%s latest_report=%s hash=%s",
                         node.get("certname"),
                         prev,
                         status,
+                        row.get("hash"),
                     )
                 node["latest_report_status"] = status
             ts = row.get("end_time") or row.get("receive_time") or row.get("start_time")
             if ts:
                 node["report_timestamp"] = ts
+            node["latest_report_hash"] = row.get("hash")
+            node["cached_catalog_status"] = row.get("cached_catalog_status")
+            node["report_producer"] = row.get("producer")
+            node["status_source"] = "latest_report"
 
     async def get_reports(self, query: Optional[str] = None,
                           limit: int = 50, offset: int = 0,
