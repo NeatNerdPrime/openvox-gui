@@ -136,7 +136,9 @@ class PuppetServerService:
             logger.error(f"Permission denied writing to {conf_path}")
             return False
 
-    # ─── Environments (compiler HTTP first, local codedir fallback) ──
+    # ─── Environments ───────────────────────────────────────
+    # Rule of thumb: single/all-in-one → local codedir first is fine.
+    # Clustered console → compiler HTTP + Bolt (control_repo lives on compilers).
 
     def list_environments_local(self) -> List[str]:
         """Walk this host's codedir. Fallback only — empty on a console."""
@@ -171,15 +173,27 @@ class PuppetServerService:
             return [], f"{host}: {e}"
 
     async def fetch_environments(self) -> List[str]:
-        """Discover environment names: compiler HTTP race → PuppetDB → local codedir.
+        """Discover environment names (control_repo branches after r10k).
 
-        Dedicated consoles have no codedir; VIP/compiler list must succeed
-        (OPENVOX_GUI_PUPPET_SERVER_HOST + Settings → Cluster compilers).
+        - **single / all-in-one:** local codedir first, then HTTP/PDB.
+        - **clustered:** compiler HTTP race → Bolt on deploy target →
+          PuppetDB → local codedir last (usually empty on console).
         """
         import asyncio
+        from .cluster_config import is_clustered
+
+        errors: List[str] = []
+
+        # Singleton: local files first (all-in-one has the control_repo tree)
+        if not is_clustered():
+            local = self.list_environments_local()
+            if local:
+                logger.info(
+                    "environments from local codedir (singleton) count=%s", len(local)
+                )
+                return local
 
         hosts = self._compiler_hosts_for_api()
-        errors: List[str] = []
         if hosts:
             tasks = {
                 asyncio.create_task(self._environments_http(h), name=h): h
@@ -217,7 +231,7 @@ class PuppetServerService:
                     t.cancel()
 
         # Bolt: list control_repo environments on a compiler (r10k basedir).
-        # These directory names are 1:1 with control_repo Git branches after deploy.
+        # Directory names are 1:1 with control_repo Git branches after deploy.
         try:
             from .cluster_config import deploy_targets, is_clustered
             from pathlib import Path as _Path
@@ -296,10 +310,10 @@ class PuppetServerService:
             errors.append(f"puppetdb: {e}")
             logger.warning("PuppetDB environments failed: %s", e)
 
-        # Co-located GUI only: walk local codedir (control_repo after r10k)
+        # Last resort: local codedir (singleton already tried first above)
         local = self.list_environments_local()
         if local:
-            logger.info("environments from local codedir count=%s", len(local))
+            logger.info("environments from local codedir (fallback) count=%s", len(local))
             return local
         if errors:
             logger.warning("No environments discovered; errors=%s", errors[:8])

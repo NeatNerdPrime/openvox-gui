@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.15] - 2026-08-13 (chore — singleton local / clustered remote rule)
+
+### Changed
+- **Discovery rule of thumb:** singleton/all-in-one prefers **local codedir**
+  first; clustered prefers **compiler HTTP + Bolt**, then PuppetDB, local last.
+  Documented in `cluster_config` and `fetch_environments`.
+
 ## [3.11.1-alpha.14] - 2026-08-13 (fix — ENC envs = control_repo branches via compilers)
 
 ### Fixed

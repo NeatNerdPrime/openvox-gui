@@ -4,6 +4,12 @@ Cluster / multi-server configuration for openvox-gui.
 Single-server (default) keeps the historic singleton UX. When
 ``deployment_mode`` is ``clustered``, the UI exposes multi-compiler
 code deploy, infrastructure ENC groups, and per-FQDN service health.
+
+Access rule of thumb (data plane for code/ENC discovery):
+  - **single** (all-in-one): prefer **local files** — codedir, r10k.yaml,
+    puppet.conf, local puppetserver/PuppetDB on this host.
+  - **clustered** (dedicated console): prefer **HTTP APIs + Bolt** to
+    compilers / deploy targets — no control_repo on the GUI host.
 """
 from __future__ import annotations
 
