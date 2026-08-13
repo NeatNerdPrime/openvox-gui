@@ -526,8 +526,8 @@ function HierarchyTab() {
 
 /**
  * Ensure ENC DB has environment rows for the classify/group dropdowns.
- * Discovers names from Puppet Server (or codedir); always seeds `production`
- * if nothing is known yet (fresh Postgres / dedicated console).
+ * Discovery is compiler/PuppetDB-first (GUI hosts have no control_repo).
+ * Seeds `production` only as a last-resort name if discovery returns nothing.
  */
 async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<any[]> {
   let encEnvs: any[] = [];
@@ -657,10 +657,11 @@ function EnvironmentsTab() {
         <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add Environment</Button>
       </Group>
       <Alert variant="light" color="blue" mb="xs">
-        Environments are auto-discovered from the compiler
-        (<Code>/puppet/v3/environments</Code> via <Code>OPENVOX_GUI_PUPPET_SERVER_HOST</Code>),
-        then PuppetDB, then local codedir. Classes and parameters set here apply to every node
-        in this environment.
+        Environments are <strong>not</strong> read from this console&apos;s disk (there is no
+        control_repo here). They are discovered from catalog compilers via{' '}
+        <Code>/puppet/v3/environments</Code> (<Code>OPENVOX_GUI_PUPPET_SERVER_HOST</Code> and
+        Settings → Cluster compilers), then PuppetDB. Classes and parameters set here apply to
+        every node classified into that environment.
       </Alert>
       <Card withBorder shadow="sm">
         <Box style={{ maxHeight: 500, minHeight: 0, overflow: 'hidden' }}>

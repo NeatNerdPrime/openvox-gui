@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.13] - 2026-08-13 (docs/ui — ENC environments not on console disk)
+
+### Fixed
+- **Classification | Environments** banner no longer claims discovery from
+  `/etc/puppetlabs/code/environments/` on the GUI host. Copy matches
+  compiler/PuppetDB discovery (dedicated console has no control_repo).
+
 ## [3.11.1-alpha.12] - 2026-08-13 (fix — discover all control_repo environments)
 
 ### Fixed
