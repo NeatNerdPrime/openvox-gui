@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.27] - 2026-08-13 (fix — Overview Nodes badge from latest report)
+
+### Fixed
+- **Overview | Nodes:** a node (e.g. ovca1) could stay **failed** after
+  successful agent runs because the badge used PuppetDB's node-index
+  `latest_report_status`, which can lag or stick. Overlay each node's
+  actual latest report (`latest_report? = true`) for status and timestamp.
+  After "Run OpenVox", the list refreshes (immediate + 3s) so the badge
+  updates when PuppetDB ingests the new report.
+
 ## [3.11.1-alpha.26] - 2026-08-13 (fix — Reports group badge uses latest status only)
 
 ### Fixed

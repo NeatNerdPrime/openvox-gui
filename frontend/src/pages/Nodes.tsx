@@ -242,7 +242,7 @@ export function NodesPage() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [runTarget, setRunTarget] = useState<string | null>(null);
   const [runningCert, setRunningCert] = useState<string | null>(null);
-  const { data: nodeList, loading: nodesLoading, error: nodesError } = useApi<NodeSummary[]>(nodes.list);
+  const { data: nodeList, loading: nodesLoading, error: nodesError, refetch } = useApi<NodeSummary[]>(nodes.list);
   const navigate = useNavigate();
   const { begin, end } = useActivity();
   const skipConfirm = useSkipAdhocConfirm();
@@ -270,6 +270,9 @@ export function NodesPage() {
           : failDetail,
         color: ok ? 'green' : 'red',
       });
+      // PuppetDB may ingest the new report a beat after Bolt returns
+      refetch();
+      window.setTimeout(() => refetch(), 3000);
     } catch (e: any) {
       end(actId, 'error', e.message);
       notifications.show({ title: 'Error', message: e.message, color: 'red' });

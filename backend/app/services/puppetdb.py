@@ -137,6 +137,10 @@ class PuppetDBService:
             if key and key not in seen:
                 seen.add(key)
                 unique.append(node)
+
+        # Node index latest_report_status can lag behind (or stick on failed)
+        # after a later successful run. Overlay the actual latest report doc.
+        await self._overlay_latest_report_status(unique)
         return unique
 
     async def get_live_nodes(self) -> List[Dict]:
@@ -188,6 +192,7 @@ class PuppetDBService:
                 len(signed),
             )
             live = [{"certname": cn} for cn in sorted(signed)]
+            await self._overlay_latest_report_status(live)
         else:
             live = [
                 n
@@ -353,6 +358,55 @@ class PuppetDBService:
         return (await self.is_node_active(certname)) is False
 
     # ─── Reports ────────────────────────────────────────────
+
+    async def get_latest_reports_by_certname(self) -> Dict[str, Dict]:
+        """One latest report document per certname (PuppetDB ``latest_report?``)."""
+        try:
+            rows = await self.get_reports(
+                query='["=", "latest_report?", true]',
+                limit=5000,
+            )
+        except Exception as e:
+            logger.warning("latest_report? query failed: %s", e)
+            return {}
+        out: Dict[str, Dict] = {}
+        for row in rows or []:
+            key = str(row.get("certname") or "").strip().lower()
+            if key:
+                out[key] = row
+        return out
+
+    async def _overlay_latest_report_status(self, nodes: List[Dict]) -> None:
+        """Replace stale nodes.latest_report_status with the latest report row.
+
+        Overview | Nodes was showing FAILED after a later successful run when
+        the node index had not caught up. The latest report document is the
+        same source Insights | Reports uses for per-row status.
+        """
+        if not nodes:
+            return
+        latest = await self.get_latest_reports_by_certname()
+        if not latest:
+            return
+        for node in nodes:
+            key = str(node.get("certname") or "").strip().lower()
+            row = latest.get(key)
+            if not row:
+                continue
+            status = row.get("status")
+            if status:
+                prev = node.get("latest_report_status")
+                if prev != status:
+                    logger.info(
+                        "overlay latest report status certname=%s node_index=%s latest_report=%s",
+                        node.get("certname"),
+                        prev,
+                        status,
+                    )
+                node["latest_report_status"] = status
+            ts = row.get("end_time") or row.get("receive_time") or row.get("start_time")
+            if ts:
+                node["report_timestamp"] = ts
 
     async def get_reports(self, query: Optional[str] = None,
                           limit: int = 50, offset: int = 0,
