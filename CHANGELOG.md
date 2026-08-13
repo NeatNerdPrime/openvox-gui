@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.5] - 2026-08-13 (docs — shared openvox_gui DB on ovdb + Spock)
+
+### Added
+- **`docs/OPENVOX_GUI_SHARED_DB.md`** — full operator procedure:
+  separate database `openvox_gui` (not a tablespace), role on all ovdb
+  nodes, schema then Spock mesh, VIP vs API layers, acceptance tests,
+  and productization notes (install-time vs Clustered UI vs control-repo).
+- Cross-link from `docs/CLUSTERED_SHARED_DB.txt`.
+
+### Notes
+- PuppetDB Spock does **not** replicate `openvox_gui`; CREATE DATABASE
+  on ovdb1 alone does not appear on peers.
+
 ## [3.11.1-alpha.4] - 2026-08-12 (fix — compiler ENC path + install docs)
 
 ### Fixed / documented (no more tribal ENC steps)
