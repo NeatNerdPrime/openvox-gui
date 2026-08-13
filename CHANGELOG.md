@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.25] - 2026-08-13 (fix — Reports status from PuppetDB nodes)
+
+### Fixed
+- **Insights | Reports:** nodes showed blank/"no status" after SSL reconnect
+  because the page only joined a truncated report document list. Status now
+  also uses each node's PuppetDB `latest_report_status` (and report timestamp),
+  so successful runs display correctly even when their full report is outside
+  the fetch window. Blank rows render as **unreported**. Banner clarifies that
+  SSL re-sign alone does not create status — compilers need
+  `reports = store,puppetdb` and a successful agent run.
+- **Reports API:** accept `/api/reports` without trailing slash; raise list
+  limit cap to 2000 for larger fleets.
+
 ## [3.11.1-alpha.24] - 2026-08-13 (fix — execution history 404 without trailing slash)
 
 ### Fixed

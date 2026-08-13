@@ -64,13 +64,15 @@ _snapshot_cache_ts: Dict[str, float] = {}
 _SNAPSHOT_CACHE_TTL = 60  # seconds — report data is semi-static
 
 
+# Collection routes: "" and "/" — SPA catch-all 404s unmatched /api/* without slash.
+@router.get("", response_model=List[ReportSummary], include_in_schema=False)
 @router.get("/", response_model=List[ReportSummary])
 async def list_reports(
     certname: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     environment: Optional[str] = Query(None),
-    limit: int = Query(50, le=200),
-    offset: int = Query(0),
+    limit: int = Query(200, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
 ):
     """List Puppet run reports with optional certname, status, and
     environment filters.

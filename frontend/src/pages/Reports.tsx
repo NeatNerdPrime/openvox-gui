@@ -23,7 +23,11 @@ import { FilterBar } from '../components/FilterBar';
 
 type ReportNodeRow = {
   certname: string;
+  /** Latest report row from /api/reports (has hash for drill-down), if present in the fetch window. */
   report?: any;
+  /** From PuppetDB nodes.latest_report_status — survives SSL re-sign and report-list truncation. */
+  node_status?: string | null;
+  report_timestamp?: string | null;
 };
 
 
@@ -270,27 +274,38 @@ interface GroupedReports {
     nodes: string[];
     reports: any[];
     latestReportByNode?: Record<string, any>;
-    status: 'unchanged' | 'changed' | 'failed';
+    status: 'unchanged' | 'changed' | 'failed' | 'unreported';
   };
 }
 
-function getGroupStatus(reports: any[]): 'unchanged' | 'changed' | 'failed' {
-  if (reports.length === 0) return 'unchanged';
-  // Only consider the last 10 reports (most recent) for badge status
-  const recentReports = reports.slice(0, 10);
-  const hasFailed = recentReports.some(r => r.status === 'failed');
-  if (hasFailed) return 'failed';
-  const hasChanged = recentReports.some(r => r.status === 'changed');
-  if (hasChanged) return 'changed';
-  return 'unchanged';
+function effectiveStatus(row: { report?: any; node_status?: string | null }): string {
+  const s = (row.report?.status || row.node_status || '').toString().toLowerCase();
+  return s || 'unreported';
 }
 
-function getStatusBadgeProps(status: 'unchanged' | 'changed' | 'failed') {
+function getGroupStatus(
+  reports: any[],
+  nodeStatuses: Array<string | null | undefined> = [],
+): 'unchanged' | 'changed' | 'failed' | 'unreported' {
+  const statuses: string[] = [
+    ...reports.map((r) => (r?.status || '').toString().toLowerCase()).filter(Boolean),
+    ...nodeStatuses.map((s) => (s || '').toString().toLowerCase()).filter(Boolean),
+  ];
+  if (statuses.length === 0) return 'unreported';
+  if (statuses.some((s) => s === 'failed')) return 'failed';
+  if (statuses.some((s) => s === 'changed')) return 'changed';
+  if (statuses.some((s) => s === 'unchanged' || s === 'noop')) return 'unchanged';
+  return 'unreported';
+}
+
+function getStatusBadgeProps(status: 'unchanged' | 'changed' | 'failed' | 'unreported') {
   switch (status) {
     case 'failed':
       return { color: 'red', label: 'Failed' };
     case 'changed':
       return { color: 'orange', label: 'Changed' };
+    case 'unreported':
+      return { color: 'gray', label: 'Unreported' };
     default:
       return { color: 'green', label: 'Unchanged' };
   }
@@ -334,7 +349,28 @@ export function ReportsPage() {
     [statusFilter, reportLimit]
   );
 
-  const loading = hierarchyLoading || reportsLoading;
+  // PuppetDB node status (latest_report_status) — independent of report-list window.
+  // SSL re-sign alone does not change this; a successful agent run that stores
+  // reports to PuppetDB does.
+  const { data: fleetNodes, loading: fleetLoading } = useApi(
+    () => nodesApi.list(),
+    []
+  );
+
+  const loading = hierarchyLoading || reportsLoading || fleetLoading;
+
+  const nodeStatusByCert = useMemo(() => {
+    const map: Record<string, { status: string | null; ts: string | null }> = {};
+    for (const n of fleetNodes || []) {
+      const cn = String(n.certname || '').trim();
+      if (!cn) continue;
+      map[cn.toLowerCase()] = {
+        status: n.latest_report_status ?? null,
+        ts: n.report_timestamp ?? null,
+      };
+    }
+    return map;
+  }, [fleetNodes]);
 
   // Build group → nodes mapping and group reports
   const groupedReports: GroupedReports = useMemo(() => {
@@ -373,9 +409,12 @@ export function ReportsPage() {
       }
     });
 
-    // If no groups exist, create "All Nodes" group
+    // If no groups exist, create "All Nodes" group from ENC + live fleet
     if (Object.keys(groupNodes).length === 0) {
-      const allCerts = hierarchy.nodes?.map((n: any) => n.certname) || [];
+      const allCerts = [
+        ...(hierarchy.nodes?.map((n: any) => n.certname) || []),
+        ...(fleetNodes || []).map((n: any) => n.certname),
+      ].filter(Boolean);
       groupNodes['All Nodes'] = Array.from(new Set(allCerts));
     }
 
@@ -414,16 +453,20 @@ export function ReportsPage() {
         }
       }
 
+      const nodeStatuses = sortedNodeList.map(
+        (cn) => nodeStatusByCert[cn.toLowerCase()]?.status,
+      );
+
       groups[groupName] = {
         nodes: sortedNodeList,
         reports: groupReports,
         latestReportByNode,
-        status: getGroupStatus(groupReports),
+        status: getGroupStatus(groupReports, nodeStatuses),
       };
     });
 
     return groups;
-  }, [hierarchy, reportList]);
+  }, [hierarchy, reportList, fleetNodes, nodeStatusByCert]);
 
   // Filter groups and reports by search
   const filteredGroups = useMemo(() => {
@@ -615,9 +658,21 @@ export function ReportsPage() {
         }
       />
 
+      <Alert color="blue" variant="light">
+        <Text size="sm">
+          <strong>Status comes from PuppetDB reports</strong>, not from SSL/cert state.
+          Re-signing or reconnecting agent SSL only restores trust — each host still needs a
+          successful <code>puppet agent -t</code> (or scheduled run) with compilers storing
+          reports (<code>reports = store,puppetdb</code>). Until PuppetDB has a latest report,
+          nodes stay <strong>unreported</strong>.
+        </Text>
+      </Alert>
+
       {reportList && reportList.length >= reportLimit && (
         <Alert color="yellow" variant="light">
-          Showing up to {reportLimit} latest reports from the API (limit control above). Increase limit or filter by status for large fleets.
+          Showing up to {reportLimit} latest report <em>documents</em> for drill-down.
+          Per-node status also uses PuppetDB <code>latest_report_status</code> so nodes
+          outside this window still show correctly. Increase the fetch limit for full history.
         </Alert>
       )}
 
@@ -640,10 +695,15 @@ export function ReportsPage() {
             const { status, reports: groupReports, nodes, latestReportByNode = {} } = groupData;
             const badgeProps = getStatusBadgeProps(status);
             const isExpanded = expandedGroups[groupName] ?? false;
-            const nodeRows: ReportNodeRow[] = nodes.map((certname: string) => ({
-              certname,
-              report: latestReportByNode[certname],
-            }));
+            const nodeRows: ReportNodeRow[] = nodes.map((certname: string) => {
+              const pdb = nodeStatusByCert[certname.toLowerCase()];
+              return {
+                certname,
+                report: latestReportByNode[certname],
+                node_status: pdb?.status ?? null,
+                report_timestamp: pdb?.ts ?? null,
+              };
+            });
 
             return (
               <Card key={groupName} withBorder shadow="sm" style={{ overflow: 'hidden' }}>
@@ -668,7 +728,7 @@ export function ReportsPage() {
                       maxHeight={420}
                       emptyTitle="No nodes for this group"
                       onRowClick={(r) => {
-                        if (r.report) navigate(`/reports/${r.report.hash}`);
+                        if (r.report?.hash) navigate(`/reports/${r.report.hash}`);
                         else navigate(`/nodes/${r.certname}`);
                       }}
                       columns={[
@@ -681,9 +741,8 @@ export function ReportsPage() {
                         {
                           key: 'status',
                           header: 'Status',
-                          sortValue: (r) => r.report?.status || '',
-                          render: (r) =>
-                            r.report ? <StatusBadge status={r.report.status} /> : <Text c="dimmed">—</Text>,
+                          sortValue: (r) => effectiveStatus(r),
+                          render: (r) => <StatusBadge status={effectiveStatus(r)} />,
                         },
                         {
                           key: 'type',
@@ -698,8 +757,10 @@ export function ReportsPage() {
                               ) : (
                                 <Badge color="gray" variant="light" size="sm">Intentional</Badge>
                               )
+                            ) : effectiveStatus(r) === 'unreported' ? (
+                              <Text c="dimmed" size="sm">no report in PDB</Text>
                             ) : (
-                              <Text c="dimmed">—</Text>
+                              <Text c="dimmed" size="sm">latest status only</Text>
                             ),
                         },
                         {
@@ -710,13 +771,13 @@ export function ReportsPage() {
                         },
                         {
                           key: 'start_time',
-                          header: 'Start Time',
+                          header: 'Last report',
                           sortType: 'date',
-                          sortValue: (r) => r.report?.start_time || '',
-                          render: (r) =>
-                            r.report?.start_time
-                              ? new Date(r.report.start_time).toLocaleString()
-                              : '—',
+                          sortValue: (r) => r.report?.start_time || r.report_timestamp || '',
+                          render: (r) => {
+                            const ts = r.report?.start_time || r.report_timestamp;
+                            return ts ? new Date(ts).toLocaleString() : '—';
+                          },
                         },
                         {
                           key: 'puppet_version',

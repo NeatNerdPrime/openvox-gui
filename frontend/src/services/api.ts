@@ -149,7 +149,9 @@ export const reports = {
     if (params?.status) qs.set('status', params.status);
     if (params?.limit) qs.set('limit', params.limit.toString());
     const query = qs.toString();
-    return fetchJSON<any[]>(`/reports/${query ? '?' + query : ''}`);
+    // Prefer no trailing slash before ? (same pattern as execution-history);
+    // backend registers both "" and "/" collection paths.
+    return fetchJSON<any[]>(query ? `/reports?${query}` : '/reports');
   },
   get: (hash: string) => fetchJSON<any>(`/reports/${hash}`),
   // Live Inventory report (Logs | Reports | Inventory)
