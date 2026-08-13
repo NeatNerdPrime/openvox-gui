@@ -70,6 +70,23 @@ def _report_ts(row: Optional[Dict]) -> str:
     return str(row.get("receive_time") or row.get("end_time") or row.get("start_time") or "")
 
 
+def _fold_newest_report(out: Dict[str, Dict], row: Any) -> None:
+    """Keep the newest report document per certname (by receive_time).
+
+    ``latest_report?`` is a denormalized flag. On clustered OpenVoxDB
+    (Spock / multi-writer) it can stick on an older ``failed`` row after
+    a later unchanged/changed report exists. Newest ``receive_time`` wins.
+    """
+    if not isinstance(row, dict):
+        return
+    key = str(row.get("certname") or "").strip().lower()
+    if not key:
+        return
+    prev = out.get(key)
+    if prev is None or _report_ts(row) >= _report_ts(prev):
+        out[key] = row
+
+
 def _pick_report_for_node(certname: str, by_exact: Dict[str, Dict]) -> Optional[Dict]:
     """Resolve a node's latest report without cross-site short-name collisions.
 
@@ -433,73 +450,84 @@ class PuppetDBService:
         return resp.json()
 
     async def get_latest_reports_by_certname(self) -> Dict[str, Dict]:
-        """One latest report document per certname.
+        """One newest report document per certname.
 
-        Prefer PQL ``latest_report?`` (full projection). Fall back to the
-        reports AST endpoint. Last resort: newest report per certname from
-        a receive_time-ordered window.
+        ``latest_report?`` is a hint only. OpenVoxDB (especially a
+        multi-writer / Spock mesh) can leave that flag on an older
+        ``failed`` row after a later successful report is stored. Always
+        merge a recent ``receive_time`` window and keep the newest row
+        per exact certname. Do not put ``order by`` in PQL text —
+        OpenVoxDB rejects it.
         """
-        rows: List[Dict] = []
+        out: Dict[str, Dict] = {}
+
         try:
-            rows = await self.pql(
+            flagged = await self.pql(
                 "reports[certname, status, receive_time, start_time, end_time, "
                 "hash, producer, cached_catalog_status, noop] { latest_report? = true }",
                 limit=5000,
             ) or []
+            for row in flagged:
+                _fold_newest_report(out, row)
         except Exception as e:
             logger.warning("PQL latest_report? failed, trying AST: %s", e)
             try:
-                rows = await self.get_reports(
+                flagged = await self.get_reports(
                     query='["=", "latest_report?", true]',
                     limit=5000,
                 ) or []
+                for row in flagged:
+                    _fold_newest_report(out, row)
             except Exception as e2:
                 logger.warning("AST latest_report? failed: %s", e2)
-                rows = []
 
-        out: Dict[str, Dict] = {}
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            key = str(row.get("certname") or "").strip().lower()
-            if not key:
-                continue
-            prev = out.get(key)
-            if prev is None or _report_ts(row) >= _report_ts(prev):
-                out[key] = row
+        # Recent reports via the AST endpoint (HTTP order_by, not PQL).
+        # Newer receive_time replaces a stuck latest_report? flag.
+        try:
+            recent = await self.get_reports(
+                limit=2000,
+                order_by="receive_time",
+                order_dir="desc",
+            ) or []
+            for row in recent:
+                _fold_newest_report(out, row)
+        except Exception as e:
+            logger.warning("recent reports window failed: %s", e)
+
         return out
 
     async def get_newest_report_for_certname(self, certname: str) -> Optional[Dict]:
         """Newest report for one certname by receive_time (not the node index)."""
         # Exact certname only — do not query bare "ovca1" (collides across sites).
-        names = [(certname or "").strip().lower()]
-        if not names[0]:
+        # OpenVoxDB rejects PQL ``order by``; use the AST reports endpoint.
+        cn = (certname or "").strip()
+        if not cn:
+            return None
+        safe = cn.replace("\\", "").replace('"', "")
+        try:
+            rows = await self.get_reports(
+                query=f'["=", "certname", "{safe}"]',
+                limit=50,
+                order_by="receive_time",
+                order_dir="desc",
+            ) or []
+        except Exception as e:
+            logger.warning("newest report query failed certname=%s: %s", cn, e)
             return None
         best: Optional[Dict] = None
-        for raw in names:
-            cn = raw.replace("\\", "\\\\").replace('"', '\\"')
-            try:
-                rows = await self.pql(
-                    "reports[certname, status, receive_time, start_time, end_time, "
-                    "hash, producer, cached_catalog_status, noop, configuration_version] { "
-                    f'certname = "{cn}" '
-                    "} order by receive_time desc",
-                    limit=1,
-                ) or []
-            except Exception as e:
-                logger.warning("newest report query failed certname=%s: %s", raw, e)
+        for row in rows:
+            if not isinstance(row, dict):
                 continue
-            if rows and isinstance(rows[0], dict):
-                if best is None or _report_ts(rows[0]) >= _report_ts(best):
-                    best = rows[0]
+            if best is None or _report_ts(row) >= _report_ts(best):
+                best = row
         return best
 
     async def _overlay_latest_report_status(self, nodes: List[Dict]) -> None:
-        """Set display status from the latest *report document*, not the node index.
+        """Set display status from the newest report document, not the node index.
 
-        The GUI does not invent Failed from Bolt. PuppetDB report ``status``
-        is failed/changed/unchanged. The node-index field can stick on failed
-        after a later successful report exists — we overlay the report.
+        PuppetDB report ``status`` is failed/changed/unchanged. The node-index
+        field and ``latest_report?`` can stick on failed after a later
+        successful report exists — we overlay the newest ``receive_time``.
         """
         if not nodes:
             return

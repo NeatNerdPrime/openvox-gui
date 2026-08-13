@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.5] - 2026-08-13 (fix — Failed badge after successful runs)
+
+### Fixed
+- **Nodes / Dashboard stay Failed after a successful agent run:** the
+  badge trusted OpenVoxDB `latest_report?`, which can stick on an older
+  `failed` row (especially on a Spock mesh) after a later unchanged
+  report exists. Status is now the newest report document per exact
+  certname by `receive_time`. A recent reports window overlays the flag.
+- **Single-node newest report:** dropped PQL `order by` (OpenVoxDB
+  rejects it); use the AST reports endpoint and pick max `receive_time`.
+- **Overview | Dashboard:** apply the same live-run overlay as Nodes so
+  a green Bolt `puppet agent` run is not still counted as Failed.
+- Live-run matching is `puppet agent` only (a `puppet config print` as
+  the `bolt` user is not a catalog run). Same-run window is 5 minutes.
+
 ## [3.11.1-beta.4] - 2026-08-13 (fix — ovca1 PDXC/ATLC status flap)
 
 ### Fixed

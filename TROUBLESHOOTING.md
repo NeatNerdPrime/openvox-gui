@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.1-beta.4**
+**OpenVox GUI Version 3.11.1-beta.5**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.1-beta.4"}
+   # Should return: {"status":"ok","version":"3.11.1-beta.5"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -513,6 +513,33 @@ To use a real certificate, see the Configuration documentation.
    returned zero certs. 3.11.0-alpha.8 uses the remote CA HTTP API
    instead. Compilers still need `reports = store,puppetdb` and an
    agent run before graphs fill in.
+
+### Problem: Node stays Failed after a successful agent run
+
+**Cause:** The badge is the **newest report document** for that exact
+certname (by `receive_time`). OpenVoxDB's `latest_report?` flag and the
+node-index field can stick on an older `failed` row — especially on a
+clustered / Spock mesh — after a later unchanged/changed report exists.
+
+**What the GUI does (3.11.1-beta.5+):**
+1. Merge `latest_report?` with a recent reports window; newest
+   `receive_time` wins (sites stay isolated — `ovca1.pdxc` ≠ `ovca1.atlc`).
+2. If Orchestration recorded a newer successful `puppet agent` run and
+   the compiler never stored that report, the badge follows the live run.
+
+**Check the real newest report** (no `order by` in PQL — OpenVoxDB
+rejects it):
+
+```
+reports[hash, status, receive_time, producer] { certname = "ovca1.pdxc-it.corp.int-x.ai" }
+```
+
+Sort the result by `receive_time` yourself. Compilers need
+`reports = store,puppetdb` in `[server]` (not the agent's `[main]`).
+
+`puppet config print ssldir` via Bolt as the `bolt` user prints
+`/home/bolt/.puppetlabs/etc/puppet/ssl`. That is not the CA mount.
+Use `sudo puppet config print ssldir`.
 
 ### Problem: Reports Missing or Incomplete
 

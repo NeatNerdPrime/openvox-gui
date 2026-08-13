@@ -13,7 +13,7 @@ to prevent PQL injection attacks.
 import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, or_
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from ..database import get_db
@@ -54,12 +54,7 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
         result = await db.execute(
             select(ExecutionHistory)
             .where(ExecutionHistory.status == "success")
-            .where(
-                or_(
-                    ExecutionHistory.command_name.ilike("%puppet agent%"),
-                    ExecutionHistory.command_name.ilike("%/opt/puppetlabs/bin/puppet%"),
-                )
-            )
+            .where(ExecutionHistory.command_name.ilike("%puppet agent%"))
             .order_by(desc(ExecutionHistory.executed_at))
         )
         rows = list(result.scalars().all())
@@ -106,9 +101,13 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
             continue
         report_at = _parse_ts(node.get("report_timestamp"))
         report_status = (node.get("latest_report_status") or "").lower()
-        # 90s grace: report processor often lands after Bolt returns
+        # executed_at is run *start*. Report receive_time is after apply.
+        # Same-run window (5 min): a failed row that landed during the
+        # Bolt run we already marked success is that run, not a later
+        # scheduled failure. A failed report newer than that window wins.
+        same_run_window = timedelta(minutes=5)
         stale_failed = report_status == "failed" and (
-            report_at is None or live_at + timedelta(seconds=90) >= report_at
+            report_at is None or live_at + same_run_window >= report_at
         )
         if stale_failed:
             node["node_index_status"] = node.get("node_index_status") or report_status
@@ -335,9 +334,11 @@ async def get_node_run_status(certname: str, db: AsyncSession = Depends(get_db))
         or (node or {}).get("latest_report_status"),
         "newest_report": newest,
         "note": (
-            "Badge prefers a newer successful GUI/Bolt puppet agent run over a "
-            "stale PuppetDB report that is still 'failed' (report not stored on "
-            "the compiler). cached_catalog_status=on_failure is a real failed report."
+            "Badge is the newest report document for this certname by "
+            "receive_time (not the latest_report? flag). A newer successful "
+            "GUI/Bolt puppet agent run overrides a stale failed row when the "
+            "compiler did not store this run. cached_catalog_status=on_failure "
+            "is a real failed report."
         ),
     }
 

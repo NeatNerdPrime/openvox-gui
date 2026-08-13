@@ -24,6 +24,7 @@ import { useActivity } from '../hooks/ActivityContext';
 import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
 import { useAppTheme } from '../hooks/ThemeContext';
 import type { NodeSummary } from '../types';
+import { timeAgo } from '../utils/timeAgo';
 
 /** Columns for All Nodes export (CSV / JSON / text) — mirrors Inventory ExportActions. */
 const NODES_EXPORT_COLS = [
@@ -153,18 +154,6 @@ function NodeOVision() {
   );
 }
 
-function timeAgo(timestamp: string | null): string {
-  if (!timestamp) return 'Never';
-  const diff = Date.now() - new Date(timestamp).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 // Grouped nodes interface
 interface GroupedNodes {
   [groupName: string]: {
@@ -270,9 +259,10 @@ export function NodesPage() {
           : failDetail,
         color: ok ? 'green' : 'red',
       });
-      // PuppetDB may ingest the new report a beat after Bolt returns
+      // Newest-report overlay + live-run can take a beat to land
       refetch();
-      window.setTimeout(() => refetch(), 3000);
+      window.setTimeout(() => refetch(), 2000);
+      window.setTimeout(() => refetch(), 8000);
     } catch (e: any) {
       end(actId, 'error', e.message);
       notifications.show({ title: 'Error', message: e.message, color: 'red' });
@@ -506,7 +496,7 @@ export function NodesPage() {
                                       maw={420}
                                       label={
                                         [
-                                          `Badge = PuppetDB report status, not Bolt success.`,
+                                          `Badge = newest report for this certname (receive_time).`,
                                           `shown: ${node.latest_report_status || 'unreported'}`,
                                           `source: ${node.status_source || 'node_index'}`,
                                           node.node_index_status
@@ -594,7 +584,7 @@ export function NodesPage() {
                   multiline
                   maw={420}
                   label={[
-                    `Badge = PuppetDB report status, not Bolt success.`,
+                    `Badge = newest report for this certname (receive_time).`,
                     `shown: ${n.latest_report_status || 'unreported'}`,
                     `source: ${n.status_source || 'node_index'}`,
                     n.node_index_status ? `node index: ${n.node_index_status}` : null,

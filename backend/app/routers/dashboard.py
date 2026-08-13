@@ -19,6 +19,7 @@ from ..database import async_session
 from ..models.session import ActiveSession
 from ..services.fleet_insights import compute_status_counts, compute_trends
 from ..utils.ttl_cache import get_or_set as cache_get_or_set
+from .nodes import apply_live_run_status
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,14 @@ async def _build_dashboard_data() -> Dict[str, Any]:
         _fetch_trend_reports(cutoff),
     )
 
+    # Same display status as Overview | Nodes: newest report, then a
+    # newer successful GUI/Bolt puppet agent run.
+    try:
+        async with async_session() as db:
+            await apply_live_run_status(raw_nodes, db)
+    except Exception as e:
+        logger.warning("dashboard live-run overlay failed: %s", e)
+
     status_counts = compute_status_counts(raw_nodes)
     trends = compute_trends(raw_nodes, reports)
 
@@ -129,7 +138,7 @@ async def get_dashboard_data():
     try:
         # v2 cache key: lean extract payload shape / invalidates full-report cache
         return await cache_get_or_set(
-            "dashboard:data:v2",
+            "dashboard:data:v3",
             _DASHBOARD_DATA_TTL,
             _build_dashboard_data,
         )

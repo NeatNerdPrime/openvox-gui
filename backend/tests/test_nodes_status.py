@@ -2,7 +2,12 @@
 
 from datetime import datetime, timedelta
 
-from app.services.puppetdb import _cert_aliases, _report_ts, _pick_report_for_node
+from app.services.puppetdb import (
+    _cert_aliases,
+    _report_ts,
+    _pick_report_for_node,
+    _fold_newest_report,
+)
 
 
 def test_cert_aliases_fqdn_and_short():
@@ -72,12 +77,122 @@ def test_overlay_picks_newer_short_name_report():
 
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(
-        PuppetDBService._overlay_latest_report_status(svc, nodes)
-    )
+    asyncio.run(PuppetDBService._overlay_latest_report_status(svc, nodes))
     assert nodes[0]["latest_report_status"] == "unchanged"
     assert nodes[0]["status_source"] == "latest_report"
     assert nodes[0]["node_index_status"] == "failed"
+
+
+def test_fold_newest_report_prefers_later_success():
+    """Stuck latest_report?=failed must lose to a newer unchanged row."""
+    out = {}
+    _fold_newest_report(
+        out,
+        {
+            "certname": "ovca1.pdxc-it.corp.int-x.ai",
+            "status": "failed",
+            "receive_time": "2026-08-13T17:00:00Z",
+        },
+    )
+    _fold_newest_report(
+        out,
+        {
+            "certname": "ovca1.pdxc-it.corp.int-x.ai",
+            "status": "unchanged",
+            "receive_time": "2026-08-13T18:00:00Z",
+        },
+    )
+    assert out["ovca1.pdxc-it.corp.int-x.ai"]["status"] == "unchanged"
+
+
+def test_fold_newest_report_keeps_sites_apart():
+    out = {}
+    _fold_newest_report(
+        out,
+        {
+            "certname": "ovca1.pdxc-it.corp.int-x.ai",
+            "status": "unchanged",
+            "receive_time": "1",
+        },
+    )
+    _fold_newest_report(
+        out,
+        {
+            "certname": "ovca1.atlc-it.corp.int-x.ai",
+            "status": "failed",
+            "receive_time": "9",
+        },
+    )
+    assert out["ovca1.pdxc-it.corp.int-x.ai"]["status"] == "unchanged"
+    assert out["ovca1.atlc-it.corp.int-x.ai"]["status"] == "failed"
+
+
+def test_get_latest_reports_merges_recent_over_stuck_flag():
+    from app.services.puppetdb import PuppetDBService
+    import asyncio
+
+    svc = PuppetDBService.__new__(PuppetDBService)
+
+    async def fake_pql(query, limit=5000):
+        return [
+            {
+                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "status": "failed",
+                "receive_time": "2026-08-13T17:00:00Z",
+                "hash": "old-failed",
+            }
+        ]
+
+    async def fake_get_reports(**kwargs):
+        return [
+            {
+                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "status": "unchanged",
+                "receive_time": "2026-08-13T18:05:00Z",
+                "hash": "new-ok",
+            }
+        ]
+
+    svc.pql = fake_pql  # type: ignore[method-assign]
+    svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+
+    latest = asyncio.run(PuppetDBService.get_latest_reports_by_certname(svc))
+    row = latest["ovca1.pdxc-it.corp.int-x.ai"]
+    assert row["status"] == "unchanged"
+    assert row["hash"] == "new-ok"
+
+
+def test_get_newest_report_no_pql_order_by():
+    from app.services.puppetdb import PuppetDBService
+    import asyncio
+
+    svc = PuppetDBService.__new__(PuppetDBService)
+    seen = {}
+
+    async def fake_get_reports(query=None, limit=50, order_by="receive_time", order_dir="desc"):
+        seen["query"] = query
+        seen["order_by"] = order_by
+        return [
+            {
+                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "status": "failed",
+                "receive_time": "2026-08-13T17:00:00Z",
+            },
+            {
+                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "status": "unchanged",
+                "receive_time": "2026-08-13T18:00:00Z",
+            },
+        ]
+
+    svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+    row = asyncio.run(
+        PuppetDBService.get_newest_report_for_certname(
+            svc, "ovca1.pdxc-it.corp.int-x.ai"
+        )
+    )
+    assert "order by" not in (seen.get("query") or "").lower()
+    assert row["status"] == "unchanged"
 
 
 def test_apply_live_run_flips_stale_failed():
@@ -102,8 +217,6 @@ def test_apply_live_run_flips_stale_failed():
         "latest_report_status": "failed",
         "report_timestamp": (datetime.utcnow() - timedelta(hours=2)).isoformat() + "Z",
     }
-    asyncio.get_event_loop().run_until_complete(
-        nodes_mod.apply_live_run_status([node], db)
-    )
+    asyncio.run(nodes_mod.apply_live_run_status([node], db))
     assert node["latest_report_status"] == "unchanged"
     assert node["status_source"] == "live_run"
