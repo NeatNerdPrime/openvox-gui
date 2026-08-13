@@ -79,6 +79,14 @@ def test_strip_ansi_removes_escapes():
     assert "\x1b" not in strip_ansi("plain")
 
 
+def test_strip_control_chars_removes_nul_keeps_yaml():
+    raw = "\x00---\ngroups:\n  - name: [web]\n"
+    out = validation.strip_control_chars(raw)
+    assert out.startswith("---")
+    assert "[web]" in out
+    assert "\x00" not in out
+
+
 def test_strip_ansi_drops_spinner_and_nul():
     noisy = (
         "\x00Started on ovca1.example.com...\r|\r/\r-\r\\\r"

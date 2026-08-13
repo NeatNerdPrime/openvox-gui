@@ -354,6 +354,20 @@ def validate_url(url: str) -> str:
         raise ValueError(f"Invalid URL: {e}")
 
 
+def strip_control_chars(text: str) -> str:
+    """Remove NULs, BOM, and other C0 controls. Keeps tab/newline/CR.
+
+    PTY ``script``/sudo cat often prefixes files with ``\\x00`` (shown as
+    ``^@``). Do **not** use strip_ansi here — its orphan-CSI regex would
+    eat YAML like ``[production]``.
+    """
+    if not text:
+        return text
+    if text.startswith("\ufeff"):
+        text = text.lstrip("\ufeff")
+    return "".join(ch for ch in text if ch in "\t\n\r" or ord(ch) >= 32)
+
+
 _ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 _OSC = re.compile(r'\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)')
 # Bolt/r10k TTY spinner frames: \ | / -

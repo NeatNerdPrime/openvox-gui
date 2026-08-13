@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.3] - 2026-08-13 (fix — Orchestration YAML ^@ prefix)
+
+### Fixed
+- **Infrastructure | Orchestration Configuration:** bolt-project.yaml,
+  inventory.yaml, debug log, and .rerun.json showed a leading `^@` (NUL
+  from PTY `sudo cat`). Strip C0 controls on read/save without touching
+  YAML `[lists]`.
+
 ## [3.11.1-beta.2] - 2026-08-13 (fix — Orchestration version field NUL)
 
 ### Fixed

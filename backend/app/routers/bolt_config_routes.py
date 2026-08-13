@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..dependencies import require_role
 from ..utils.sudo import run_sudo
+from ..utils.validation import strip_control_chars
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -46,7 +47,7 @@ async def _sudo_cat(path: str) -> tuple[Optional[str], Optional[str]]:
     """
     r = await run_sudo(["sudo", "/usr/bin/cat", path], timeout=15)
     if r["returncode"] == 0 and r.get("stdout") is not None:
-        return str(r["stdout"]), None
+        return strip_control_chars(str(r["stdout"])), None
     err = (r.get("stderr") or r.get("stdout") or f"exit {r.get('returncode')}").strip()
     return None, f"sudo cat failed: {err}"
 
@@ -113,7 +114,7 @@ async def _read_bolt_config_file(filename: str) -> Dict[str, Any]:
     for path in candidates:
         try:
             if path.is_file():
-                content = path.read_text(encoding="utf-8")
+                content = strip_control_chars(path.read_text(encoding="utf-8"))
                 return {"path": str(path), "content": content, "error": None}
         except PermissionError as e:
             last_err = f"permission denied reading {path}: {e}"
@@ -161,7 +162,7 @@ async def get_config(
             found = _find_bolt_file(filename)
             if found:
                 try:
-                    content = found.read_text(encoding="utf-8")
+                    content = strip_control_chars(found.read_text(encoding="utf-8"))
                     result[key] = {"path": str(found), "content": content, "error": None}
                 except Exception as e:
                     # Try sudo cat for debug log too if locked down
@@ -225,6 +226,8 @@ async def save_config(
         except OSError:
             pass
         found = default_dir / filename
+
+    req.content = strip_control_chars(req.content or "")
 
     # Validate YAML syntax before saving
     try:

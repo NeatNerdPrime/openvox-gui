@@ -909,7 +909,8 @@ function EditableConfigFile({ label, description, fileKey, path, content, error,
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [editContent, setEditContent] = useState(content || '');
+  const clean = cleanCliOutput(content || '');
+  const [editContent, setEditContent] = useState(clean);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -930,7 +931,7 @@ function EditableConfigFile({ label, description, fileKey, path, content, error,
   };
 
   const handleCancel = () => {
-    setEditContent(content || '');
+    setEditContent(cleanCliOutput(content || ''));
     setEditing(false);
   };
 
@@ -942,7 +943,7 @@ function EditableConfigFile({ label, description, fileKey, path, content, error,
           <Text size="xs" c="dimmed">{description}</Text>
         </div>
         {!editing ? (
-          <Button variant="light" size="xs" onClick={() => { setEditContent(content || placeholder); setEditing(true); }}>
+          <Button variant="light" size="xs" onClick={() => { setEditContent(cleanCliOutput(content || '') || placeholder); setEditing(true); }}>
             Edit
           </Button>
         ) : (
@@ -967,10 +968,10 @@ function EditableConfigFile({ label, description, fileKey, path, content, error,
           maxRows={24}
           styles={{ input: { fontFamily: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace', fontSize: 12 } }}
         />
-      ) : (content != null && content !== '') ? (
+      ) : (clean !== '') ? (
         <ScrollArea style={{ maxHeight: 400 }}>
           <Code block style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
-            {content}
+            {clean}
           </Code>
         </ScrollArea>
       ) : (
@@ -1054,7 +1055,7 @@ function ConfigTab() {
           </Group>
           <ScrollArea style={{ maxHeight: 300 }}>
             <Code block style={{ fontSize: 11, whiteSpace: 'pre-wrap' }}>
-              {cfg.debug_log.content}
+              {cleanCliOutput(cfg.debug_log.content)}
             </Code>
           </ScrollArea>
         </Card>
@@ -1072,7 +1073,7 @@ function ConfigTab() {
           </Group>
           <ScrollArea style={{ maxHeight: 200 }}>
             <Code block style={{ fontSize: 11, whiteSpace: 'pre-wrap' }}>
-              {cfg.rerun.content}
+              {cleanCliOutput(cfg.rerun.content)}
             </Code>
           </ScrollArea>
         </Card>
