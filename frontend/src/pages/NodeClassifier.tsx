@@ -524,6 +524,65 @@ function HierarchyTab() {
   );
 }
 
+/**
+ * Ensure ENC DB has environment rows for the classify/group dropdowns.
+ * Discovers names from Puppet Server (or codedir); always seeds `production`
+ * if nothing is known yet (fresh Postgres / dedicated console).
+ */
+async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<any[]> {
+  let encEnvs: any[] = [];
+  try {
+    encEnvs = await enc.listEnvironments();
+  } catch {
+    encEnvs = [];
+  }
+  const encNames = new Set((encEnvs || []).map((e: any) => e.name));
+
+  let discovered: string[] = [];
+  try {
+    const puppetResp = await config.getEnvironments();
+    discovered = puppetResp.environments || [];
+  } catch {
+    discovered = [];
+  }
+  // Always offer production so classify is usable even when discovery fails
+  if (!discovered.includes('production')) {
+    discovered = ['production', ...discovered];
+  }
+
+  const missing = discovered.filter((n) => n && !encNames.has(n));
+  for (const name of missing) {
+    try {
+      await enc.createEnvironment({
+        name,
+        description:
+          name === 'production' && discovered.length <= 1
+            ? 'Default environment (auto-seeded)'
+            : 'OpenVox environment (auto-discovered)',
+        classes: {},
+        parameters: {},
+      });
+    } catch {
+      /* race or already exists */
+    }
+  }
+  if (missing.length > 0) {
+    try {
+      encEnvs = await enc.listEnvironments();
+    } catch {
+      /* keep prior */
+    }
+    if (opts?.notify && missing.length > 0) {
+      notifications.show({
+        title: 'Environments synced',
+        message: `Added: ${missing.join(', ')}`,
+        color: 'blue',
+      });
+    }
+  }
+  return encEnvs;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    TAB 2: ENVIRONMENTS
    ═══════════════════════════════════════════════════════════════ */
@@ -542,23 +601,10 @@ function EnvironmentsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [encEnvs, puppetResp] = await Promise.all([
-        enc.listEnvironments(),
-        config.getEnvironments().catch(() => ({ environments: [] })),
-      ]);
-      const puppetNames: string[] = puppetResp.environments || [];
-      const encNames = new Set(encEnvs.map((e: any) => e.name));
-      const missing = puppetNames.filter((n: string) => !encNames.has(n));
-      for (const name of missing) {
-        await enc.createEnvironment({ name, description: 'OpenVox environment (auto-discovered)', classes: {}, parameters: {} });
-      }
-      if (missing.length > 0) {
-        setEnvs(await enc.listEnvironments());
-        notifications.show({ title: 'Environments Synced', message: `Added ${missing.length} from OpenVox: ${missing.join(', ')}`, color: 'blue' });
-      } else {
-        setEnvs(encEnvs);
-      }
-    } catch {}
+      setEnvs(await ensureEncEnvironments({ notify: true }));
+    } catch {
+      setEnvs([]);
+    }
     setLoading(false);
   }, []);
 
@@ -693,9 +739,15 @@ function GroupsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [g, e] = await Promise.all([enc.listGroups(), enc.listEnvironments()]);
+      const [g, e] = await Promise.all([
+        enc.listGroups(),
+        ensureEncEnvironments({ notify: false }),
+      ]);
       setGroups(g); setEnvs(e);
-    } catch {}
+    } catch {
+      setGroups([]);
+      setEnvs([]);
+    }
     setLoading(false);
   }, []);
 
@@ -840,13 +892,22 @@ function NodesTab() {
     try {
       const [n, e, g, c] = await Promise.all([
         enc.listNodes(),
-        enc.listEnvironments(),
+        ensureEncEnvironments({ notify: false }),
         enc.listGroups(),
-        enc.getCommon().catch(() => null)
+        enc.getCommon().catch(() => null),
       ]);
       setClassified(n); setEnvs(e); setGroups(g); setCommonData(c);
-      try { const pn = await nodesApi.list(); setPuppetNodes(pn.map((x: any) => x.certname).sort()); } catch { setPuppetNodes([]); }
-    } catch {}
+      try {
+        const pn = await nodesApi.list();
+        setPuppetNodes(pn.map((x: any) => x.certname).sort());
+      } catch {
+        setPuppetNodes([]);
+      }
+    } catch {
+      setClassified([]);
+      setEnvs([]);
+      setGroups([]);
+    }
     setLoading(false);
   }, []);
 
@@ -1052,9 +1113,22 @@ function NodesTab() {
           ) : (
             <TextInput label="Certname" value={formCert} disabled />
           )}
-          <Select label="Environment" required
-            data={envs.map((e) => ({ value: e.name, label: e.name }))}
-            value={formEnv} onChange={(v) => setFormEnv(v || '')} />
+          <Select
+            label="Environment"
+            required
+            data={
+              envs.length > 0
+                ? envs.map((e) => ({ value: e.name, label: e.name }))
+                : [{ value: 'production', label: 'production' }]
+            }
+            value={formEnv || 'production'}
+            onChange={(v) => setFormEnv(v || 'production')}
+            description={
+              envs.length === 0
+                ? 'No environments in ENC yet — production will be created on save if needed'
+                : undefined
+            }
+          />
           <MultiSelect label="Groups" clearable searchable
             data={(() => {
               const byEnv: Record<string, Array<{ value: string; label: string }>> = {};

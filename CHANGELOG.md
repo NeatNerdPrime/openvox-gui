@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.11] - 2026-08-13 (fix — ENC environment dropdown empty)
+
+### Fixed
+- **Classification | Classify Node:** Environment dropdown was empty on a fresh
+  Postgres ENC store because Nodes/Groups only listed `enc_environments` and
+  never auto-seeded. Shared `ensureEncEnvironments()` now discovers from the
+  compiler (or seeds `production`) for Environments, Groups, and Nodes tabs.
+
 ## [3.11.1-alpha.10] - 2026-08-13 (fix — Monitoring Performance crash)
 
 ### Fixed
