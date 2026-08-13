@@ -775,6 +775,7 @@ for script in \
     hiera-list-remote.py \
     list-classes-remote.py \
     list-environments-remote.py \
+    read-logs-remote.py \
     generate_bolt_token.py
 do
     if [ -f "${SCRIPT_DIR}/scripts/${script}" ]; then

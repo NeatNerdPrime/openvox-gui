@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.33] - 2026-08-13 (fix — ship read-logs-remote.py in installers)
+
+### Fixed
+- **Log Viewer 500 Missing read-logs-remote.py:** the script lived in git but
+  was not in the install/update/deploy script allowlist, so `/opt/openvox-gui/scripts/`
+  never received it. Added to `install.sh`, `update_local.sh`, and `deploy.sh`.
+
 ## [3.11.1-alpha.32] - 2026-08-13 (fix — compiler Failed badge FQDN vs short name)
 
 ### Fixed

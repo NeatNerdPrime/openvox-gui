@@ -34,7 +34,19 @@ _REMOTE_CACHE: Dict[str, Any] = {}
 _REMOTE_CACHE_TS: Dict[str, float] = {}
 _REMOTE_CACHE_TTL = 15.0
 
-_SCRIPT = Path("/opt/openvox-gui/scripts/read-logs-remote.py")
+def _read_logs_script() -> Path:
+    """Installed copy first, then repo checkout (dev / incomplete deploy)."""
+    candidates = (
+        Path("/opt/openvox-gui/scripts/read-logs-remote.py"),
+        Path(__file__).resolve().parents[3] / "scripts" / "read-logs-remote.py",
+    )
+    for p in candidates:
+        if p.is_file():
+            return p
+    return candidates[0]
+
+
+_SCRIPT = _read_logs_script()
 
 # Log sources: journalctl unit(s) AND/OR log file(s) on disk.
 # PuppetDB / PuppetServer often prefer file logs; agent is primarily journal.
