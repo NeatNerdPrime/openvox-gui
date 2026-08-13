@@ -58,6 +58,7 @@ export function MetricsNodeHealthPage() {
     {
       cacheKey: 'openvox_metrics_node_health_v1',
       cacheValidate: (d) => d != null && Array.isArray((d as any).nodes),
+      pollIntervalMs: 20000,
     },
   );
 
@@ -130,6 +131,7 @@ export function MetricsNodeHealthPage() {
             </Badge>
           )}
           {refreshing && <Badge variant="outline" color="gray" size="sm">Refreshing…</Badge>}
+          <Text size="xs" c="dimmed">Auto-updates every 20s (pauses when this tab is hidden)</Text>
         </Group>
         <Group gap="xs">
           <Button

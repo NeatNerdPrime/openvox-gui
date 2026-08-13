@@ -984,7 +984,11 @@ async def get_node_health(_user: str = Depends(_AUTH)):
     CA-cleaned or deactivated/expired hosts do not appear.
 
     Facts (agent disabled / message) are applied only for certnames on that fleet.
+    Cached ~45s so Insights trickle polls stay cheap.
     """
+    cached = _get_cached("node_health")
+    if cached is not None:
+        return cached
     try:
         # Same source of truth as GET /api/nodes/ (Overview | Nodes)
         nodes = await puppetdb_service.get_live_nodes()
@@ -1081,7 +1085,7 @@ async def get_node_health(_user: str = Depends(_AUTH)):
         # Alphabetize the node list by certname
         result_nodes.sort(key=lambda x: (x.get("certname") or "").lower())
 
-        return {
+        payload = {
             "nodes": result_nodes,
             "summary": {
                 "total": len(result_nodes),
@@ -1090,7 +1094,10 @@ async def get_node_health(_user: str = Depends(_AUTH)):
                 "fact_deployed": len(fact_map) > 0,
             },
             "source": "fleet",  # same membership as Overview | Nodes
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         }
+        _set_cached("node_health", payload)
+        return payload
     except Exception as e:
         logger.warning(f"node-health error: {e}")
         raise HTTPException(status_code=502, detail=f"Failed to load node health: {str(e)}")

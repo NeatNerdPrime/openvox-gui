@@ -59,6 +59,7 @@ import {
 import { useAuth } from '../hooks/AuthContext';
 import { useAppTheme } from '../hooks/ThemeContext';
 import { useActivity } from '../hooks/ActivityContext';
+import { useInsightsTrickle } from '../hooks/useInsightsTrickle';
 import { dashboard, config, nodes as nodesApi } from '../services/api';
 import { APP_VERSION } from '../version';
 import type { PaletteAction } from './CommandPalette';
@@ -181,6 +182,7 @@ export function AppShellLayout() {
   }));
   const { items: activityItems } = useActivity();
   const runningCount = activityItems.filter((i) => i.status === 'running').length;
+  useInsightsTrickle(45000);
 
   useHotkeys([
     ['mod+K', () => setPaletteOpen((v) => !v)],

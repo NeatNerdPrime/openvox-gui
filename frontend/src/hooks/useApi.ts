@@ -31,6 +31,12 @@ export interface UseApiOptions<T> {
   cacheKey?: string;
   /** Optional validator — reject corrupt/empty cached shells. */
   cacheValidate?: (value: T) => boolean;
+  /**
+   * While the page is visible, refetch on this interval (ms). Pauses when the
+   * tab is hidden. Use for Insights trickle updates (Node Health, Compliance).
+   * Minimum 5000ms.
+   */
+  pollIntervalMs?: number;
 }
 
 /**
@@ -54,6 +60,7 @@ export function useApi<T>(
     keepPreviousData = true,
     cacheKey,
     cacheValidate,
+    pollIntervalMs,
   } = options;
 
   // Resolve seed on first render only (explicit initialData or session cache).
@@ -137,6 +144,24 @@ export function useApi<T>(
   useEffect(() => {
     refetch();
   }, [refetch, depsKey]);
+
+  // Trickle refresh: keep Insights/dashboard payloads warm without blocking paint.
+  useEffect(() => {
+    if (!pollIntervalMs || pollIntervalMs < 5000) return;
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      refetch();
+    };
+    const id = window.setInterval(tick, pollIntervalMs);
+    const onVis = () => {
+      if (!document.hidden) refetch();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [pollIntervalMs, refetch]);
 
   return { data, loading, refreshing, error, refetch };
 }

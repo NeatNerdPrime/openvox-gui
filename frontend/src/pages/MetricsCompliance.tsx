@@ -151,6 +151,7 @@ export function MetricsCompliancePage({
     {
       cacheKey: `openvox_metrics_compliance_v2_${hoursNum}_${sq}`,
       cacheValidate: (d) => d != null && typeof d === 'object' && 'total' in (d as object),
+      pollIntervalMs: 30000,
     },
   );
 

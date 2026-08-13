@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.29] - 2026-08-13 (feat — Insights trickle refresh)
+
+### Added
+- **Insights trickle updates:** Node Health and Fleet Compliance poll in the
+  background (20s / 30s) while the tab is visible and pause when hidden.
+  App shell warms Node Health, Compliance, and Dashboard session cache every
+  45s so those pages paint from last-good data instead of blocking on a full
+  PuppetDB gather. `/insights/node-health` is TTL-cached (~45s) on the server
+  so trickle polls stay cheap.
+
 ## [3.11.1-alpha.28] - 2026-08-13 (fix — explain Nodes Failed badge from PDB report)
 
 ### Fixed
