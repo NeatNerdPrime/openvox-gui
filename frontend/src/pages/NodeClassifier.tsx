@@ -409,7 +409,7 @@ function HierarchyTab() {
     { level: 3, label: 'Group', icon: IconTags, color: 'orange',
       desc: 'Logical groupings — webservers, databases, etc.', count: data.groups?.length || 0 },
     { level: 2, label: 'Environment', icon: IconWorld, color: 'blue',
-      desc: 'Environment-wide defaults — production, staging, dev', count: data.environments?.length || 0 },
+      desc: 'control_repo branches — apply classes/parameters only', count: data.environments?.length || 0 },
     { level: 1, label: 'Common', icon: IconLayersLinked, color: 'green',
       desc: 'Global defaults applied to every node',
       count: (Object.keys(data.common?.classes || {}).length + Object.keys(data.common?.parameters || {}).length) > 0 ? 1 : 0 },
@@ -594,7 +594,6 @@ function EnvironmentsTab() {
   const [syncing, setSyncing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [formDesc, setFormDesc] = useState('');
   const [formClasses, setFormClasses] = useState<string[]>([]);
   const [formParams, setFormParams] = useState<Array<{ key: string; val: string }>>([]);
 
@@ -615,7 +614,6 @@ function EnvironmentsTab() {
 
   const openEdit = (e: any) => {
     setEditing(e);
-    setFormDesc(e.description || '');
     setFormClasses(classDictToList(e.classes));
     setFormParams(dictToRows(e.parameters));
     setModalOpen(true);
@@ -623,10 +621,10 @@ function EnvironmentsTab() {
   const handleSave = async () => {
     if (!editing?.name) return;
     try {
-      // Name is fixed — only classification payload changes
+      // Name is fixed from control_repo — only classes/parameters
       await enc.updateEnvironment(editing.name, {
         name: editing.name,
-        description: formDesc,
+        description: editing.description || '',
         classes: classListToDict(formClasses),
         parameters: rowsToDict(formParams),
       });
@@ -648,16 +646,15 @@ function EnvironmentsTab() {
     setSyncing(false);
   };
 
-  if (loading) return <LoadingState height={300} label="Loading environments from control_repo…" />;
+  if (loading) return <LoadingState height={300} label="Loading environments…" />;
 
   return (
     <Stack>
       <Group justify="space-between" align="flex-start">
         <Alert variant="light" color="blue" style={{ flex: 1 }} mb={0}>
-          Environment <strong>names</strong> are the control_repo Git branches (1:1 with r10k),
-          discovered from compilers — not created on this console. Use this tab only to apply
-          <strong> classes and parameters</strong> to those environments. Add or remove branches
-          in the control_repo, then Stage/Activate and click Resync.
+          Environments are determined by the <strong>control_repo Git branches</strong>, and are
+          <strong> not editable here</strong>. You can only apply <strong>classes</strong> and
+          <strong> parameters</strong> at the environment level.
         </Alert>
         <Button
           variant="light"
@@ -665,33 +662,28 @@ function EnvironmentsTab() {
           loading={syncing}
           onClick={handleResync}
         >
-          Resync from control_repo
+          Refresh list
         </Button>
       </Group>
-      {discovered.length > 0 && (
-        <Text size="xs" c="dimmed">
-          Discovered branches: {discovered.join(', ')}
-        </Text>
-      )}
       <Card withBorder shadow="sm">
         <Box style={{ maxHeight: 500, minHeight: 0, overflow: 'hidden' }}>
           <ScrollArea h="100%" type="auto" offsetScrollbars scrollbarSize={6}>
             <Table striped highlightOnHover>
               <Table.Thead><Table.Tr>
-                <Table.Th>Environment (branch)</Table.Th><Table.Th>Description</Table.Th>
-                <Table.Th>Classes</Table.Th><Table.Th>Parameters</Table.Th>
+                <Table.Th>Environment</Table.Th>
+                <Table.Th>Classes</Table.Th>
+                <Table.Th>Parameters</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr></Table.Thead>
               <Table.Tbody>
             {envs.map((e) => (
               <Table.Tr key={e.name}>
                 <Table.Td><Badge color="blue" size="lg">{e.name}</Badge></Table.Td>
-                <Table.Td><Text size="sm">{e.description || '\u2014'}</Text></Table.Td>
                 <Table.Td><ClassBadges classes={e.classes} color="blue" /></Table.Td>
                 <Table.Td><ParamBadges params={e.parameters} color="cyan" /></Table.Td>
                 <Table.Td>
                   <Group gap="xs" justify="flex-end">
-                    <Tooltip label="Edit classes &amp; parameters">
+                    <Tooltip label="Apply classes and parameters">
                       <ActionIcon variant="subtle" color="blue" onClick={() => openEdit(e)}>
                         <IconPencil size={16} />
                       </ActionIcon>
@@ -702,11 +694,10 @@ function EnvironmentsTab() {
             ))}
             {envs.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={5}>
+                <Table.Td colSpan={4}>
                   <Text c="dimmed" ta="center" py="lg">
-                    No environments discovered yet. Ensure compilers have r10k environments
-                    (control_repo branches) and OPENVOX_GUI_PUPPET_SERVER_HOST / deploy targets
-                    are set, then Resync.
+                    No environments available yet. Deploy control_repo branches to the compilers,
+                    then click Refresh list.
                   </Text>
                 </Table.Td>
               </Table.Tr>
@@ -719,35 +710,30 @@ function EnvironmentsTab() {
       <Modal
         opened={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? `Environment classes — ${editing.name}` : 'Environment'}
+        title={editing ? `Environment level — ${editing.name}` : 'Environment'}
         size="lg"
       >
         <Stack>
           <TextInput
-            label="Environment name (from control_repo)"
+            label="Environment"
             value={editing?.name || ''}
             disabled
-            description="Names are control_repo branches; they cannot be created or renamed here."
-          />
-          <TextInput
-            label="Description (optional note in ENC)"
-            value={formDesc}
-            onChange={(e) => setFormDesc(e.currentTarget.value)}
+            description="Set by control_repo branch — not editable here."
           />
           <ClassPicker
             value={formClasses}
             onChange={setFormClasses}
             environment={editing?.name || 'production'}
-            label="Environment Classes"
-            description="Classes applied to all nodes classified into this environment"
+            label="Classes"
+            description="Applied to all nodes in this environment"
           />
           <ParamEditor
             value={formParams}
             onChange={setFormParams}
-            label="Environment Parameters"
-            description="Parameters applied to all nodes in this environment"
+            label="Parameters"
+            description="Applied to all nodes in this environment"
           />
-          <Button onClick={handleSave}>Save classes &amp; parameters</Button>
+          <Button onClick={handleSave}>Save</Button>
         </Stack>
       </Modal>
     </Stack>
