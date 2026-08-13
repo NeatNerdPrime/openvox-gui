@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.23] - 2026-08-13 (fix — ENC groups shared across Classify + targets)
+
+### Fixed
+- **Classification | Classify Node Groups dropdown:** groups created on the Node
+  Groups tab did not appear in Classify Node because each tab kept a separate
+  stale list from page mount. Shared ENC catalog (groups + environments) now
+  refreshes on tab switch, after group CRUD, when opening the classify modal,
+  and when opening the Groups MultiSelect.
+- **Orchestration / Fact Explorer:** target and group pickers re-fetch ENC groups
+  when the dropdown opens so new groups show without a full page reload.
+
 ## [3.11.1-alpha.22] - 2026-08-13 (fix — ENC group create datetime on Postgres)
 
 ### Fixed

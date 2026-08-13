@@ -23,6 +23,8 @@ export function TargetSelector({
   placeholder = 'Select one or more groups or nodes',
   /** Optional resolved certnames when groups expand client-side (display only) */
   resolvedPreview,
+  /** Re-fetch ENC groups/nodes when the dropdown opens (avoids stale lists). */
+  onDropdownOpen,
 }: {
   data: TargetSelectData | TargetOption[] | string[];
   value: string[];
@@ -32,6 +34,7 @@ export function TargetSelector({
   required?: boolean;
   placeholder?: string;
   resolvedPreview?: string[];
+  onDropdownOpen?: () => void;
 }) {
   const count = resolvedPreview?.length ?? value.length;
 
@@ -46,6 +49,7 @@ export function TargetSelector({
         data={data as TargetSelectData}
         value={value}
         onChange={onChange}
+        onDropdownOpen={onDropdownOpen}
         nothingFoundMessage="No matching targets"
         placeholder={placeholder}
       />

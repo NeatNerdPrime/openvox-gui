@@ -547,7 +547,7 @@ function RunCommandTab() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const skipConfirm = useSkipAdhocConfirm();
 
-  useEffect(() => {
+  const refreshTargets = useCallback(() => {
     nodesApi.list()
       .then((ns: any[]) => {
         const names = ns.map((n) => n.certname).filter(Boolean).sort((a, b) => a.localeCompare(b));
@@ -556,6 +556,8 @@ function RunCommandTab() {
       .catch(() => {});
     enc.listGroups().then(setEncGroups).catch(() => {});
   }, []);
+
+  useEffect(() => { refreshTargets(); }, [refreshTargets]);
 
   const targetSelectData = useMemo(
     () => [
@@ -604,6 +606,7 @@ function RunCommandTab() {
             data={targetSelectData}
             value={targets}
             onChange={setTargets}
+            onDropdownOpen={refreshTargets}
             required
             description="Multi-select: groups and/or individual nodes are unioned (duplicates removed) when sent to Bolt."
             resolvedPreview={
@@ -670,6 +673,16 @@ function RunTaskTab() {
   const [runPrivileged, setRunPrivileged] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const skipConfirm = useSkipAdhocConfirm();
+
+  const refreshTargets = useCallback(() => {
+    nodesApi.list()
+      .then((ns: any[]) => {
+        const names = ns.map((n) => n.certname).filter(Boolean).sort((a, b) => a.localeCompare(b));
+        setPuppetNodes(names);
+      })
+      .catch(() => {});
+    enc.listGroups().then(setEncGroups).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -740,6 +753,7 @@ function RunTaskTab() {
             data={targetSelectData}
             value={targets}
             onChange={setTargets}
+            onDropdownOpen={refreshTargets}
             required
             description="Multi-select: groups and/or nodes are unioned when executing the task."
             resolvedPreview={
@@ -1110,7 +1124,7 @@ function FilesTab() {
   const [downloading, setDownloading] = useState(false);
   const [downloadResult, setDownloadResult] = useState<any>(null);
 
-  useEffect(() => {
+  const refreshTargets = useCallback(() => {
     nodesApi.list()
       .then((ns: any[]) => {
         const names = ns.map((n) => n.certname).filter(Boolean).sort((a, b) => a.localeCompare(b));
@@ -1119,6 +1133,8 @@ function FilesTab() {
       .catch(() => {});
     enc.listGroups().then(setEncGroups).catch(() => {});
   }, []);
+
+  useEffect(() => { refreshTargets(); }, [refreshTargets]);
 
   const targetSelectData = [
     { group: 'Groups', items: [
@@ -1264,6 +1280,7 @@ function FilesTab() {
                 data={targetSelectData}
                 value={uploadTargets}
                 onChange={setUploadTargets}
+                onDropdownOpen={refreshTargets}
                 required
                 placeholder="Select one or more groups or nodes"
               />
@@ -1306,6 +1323,7 @@ function FilesTab() {
                 data={targetSelectData}
                 value={downloadTargets}
                 onChange={setDownloadTargets}
+                onDropdownOpen={refreshTargets}
                 required
                 placeholder="Select one or more groups or nodes"
               />
@@ -1387,6 +1405,7 @@ function FilesTab() {
                 data={targetSelectData}
                 value={scriptTargets}
                 onChange={setScriptTargets}
+                onDropdownOpen={refreshTargets}
                 required
                 placeholder="Select one or more groups or nodes"
               />

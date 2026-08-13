@@ -3,7 +3,7 @@
  * 
  * Component documentation to be expanded.
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Title, Card, Stack, Group, Text, Alert, Loader, Center,
@@ -142,18 +142,20 @@ export function FactExplorerPage() {
       .finally(() => setNamesLoading(false));
   }, []);
 
-  useEffect(() => {
+  const refreshEncGroups = useCallback(() => {
     Promise.all([enc.listGroups(), enc.listNodes()])
       .then(([groups, nodes]) => {
-        setEncGroups(groups.map((g: any) => g.name).sort());
+        setEncGroups((Array.isArray(groups) ? groups : []).map((g: any) => g.name).sort());
         const map: Record<string, string[]> = {};
-        for (const n of nodes) {
+        for (const n of Array.isArray(nodes) ? nodes : []) {
           map[n.certname] = n.groups || [];
         }
         setNodeGroupMap(map);
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => { refreshEncGroups(); }, [refreshEncGroups]);
 
   const handleFactSelect = async (factName: string | null) => {
     if (!factName || factName.trim() === '') {

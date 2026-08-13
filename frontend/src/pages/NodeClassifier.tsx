@@ -23,6 +23,12 @@ import { PrettyJson } from '../components/PrettyJson';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { LoadingState } from '../components/StateComponents';
 
+/** Shared shape for ENC environments + groups across Classification tabs. */
+type EncCatalog = {
+  groups: any[];
+  envs: any[];
+};
+
 /* ═══════════════════════════════════════════════════════════════
    SHARED: Class badges display
    ═══════════════════════════════════════════════════════════════ */
@@ -372,7 +378,7 @@ function NodeOScope() {
 /* ═══════════════════════════════════════════════════════════════
    TAB 1: HIERARCHY OVERVIEW
    ═══════════════════════════════════════════════════════════════ */
-function HierarchyTab() {
+function HierarchyTab({ reloadToken = 0 }: { reloadToken?: number }) {
   const navigate = useNavigate();
   const { isRobots } = useAppTheme();
   const [data, setData] = useState<any>(null);
@@ -392,7 +398,7 @@ function HierarchyTab() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reloadToken]);
 
   if (loading) return <Center h={300}><Loader size="xl" /></Center>;
   if (!data) return <Alert color="red">Failed to load hierarchy</Alert>;
@@ -634,12 +640,72 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<{
   return { envs, discovered: names };
 }
 
+/**
+ * One shared catalog for Classification tabs so Create Group immediately
+ * appears in Classify Node (and other consumers) without a full page reload.
+ */
+function useEncCatalog() {
+  const [catalog, setCatalog] = useState<EncCatalog>({ groups: [], envs: [] });
+  const [ready, setReady] = useState(false);
+
+  const refresh = useCallback(async (opts?: { notify?: boolean }): Promise<EncCatalog> => {
+    try {
+      const [g, envResult] = await Promise.all([
+        enc.listGroups().catch(() => [] as any[]),
+        ensureEncEnvironments({ notify: opts?.notify ?? false }),
+      ]);
+      const next: EncCatalog = {
+        groups: Array.isArray(g) ? g : [],
+        envs: envResult.envs || [],
+      };
+      setCatalog(next);
+      return next;
+    } catch {
+      const empty: EncCatalog = { groups: [], envs: [] };
+      setCatalog(empty);
+      return empty;
+    } finally {
+      setReady(true);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  return { ...catalog, ready, refresh };
+}
+
+/** MultiSelect data: all ENC groups, optionally highlighting the selected env first. */
+function groupMultiSelectData(groups: any[], preferEnv?: string) {
+  const sorted = [...(groups || [])].sort((a, b) => {
+    if (preferEnv) {
+      const aMatch = a.environment === preferEnv ? 0 : 1;
+      const bMatch = b.environment === preferEnv ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+    }
+    const envCmp = String(a.environment || '').localeCompare(String(b.environment || ''));
+    if (envCmp !== 0) return envCmp;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  const byEnv: Record<string, Array<{ value: string; label: string }>> = {};
+  for (const g of sorted) {
+    const env = g.environment || 'unknown';
+    if (!byEnv[env]) byEnv[env] = [];
+    byEnv[env].push({
+      value: String(g.id),
+      label: preferEnv && g.environment !== preferEnv
+        ? `${g.name} (${g.environment})`
+        : String(g.name),
+    });
+  }
+  return Object.entries(byEnv).map(([env, items]) => ({ group: env, items }));
+}
+
 /* ═══════════════════════════════════════════════════════════════
    TAB 2: ENVIRONMENTS
    Names come from control_repo (via compilers). Operators only set
    classes/parameters — no inventing or deleting environment names.
    ═══════════════════════════════════════════════════════════════ */
-function EnvironmentsTab() {
+function EnvironmentsTab({ onCatalogChange }: { onCatalogChange?: () => unknown }) {
   const [envs, setEnvs] = useState<any[]>([]);
   const [discovered, setDiscovered] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -660,6 +726,7 @@ function EnvironmentsTab() {
         : (names.length ? names : ['production']).map((name) => ({
             name, classes: {}, parameters: {}, description: '',
           })));
+      await onCatalogChange?.();
     } catch (e: any) {
       // Last resort: still show production so the tab is never blank after load
       const fallback = [{ name: 'production', classes: {}, parameters: {}, description: '' }];
@@ -674,7 +741,7 @@ function EnvironmentsTab() {
       }
     }
     setLoading(false);
-  }, []);
+  }, [onCatalogChange]);
 
   useEffect(() => { load(true); }, [load]);
 
@@ -814,10 +881,16 @@ function EnvironmentsTab() {
 /* ═══════════════════════════════════════════════════════════════
    TAB 3: NODE GROUPS
    ═══════════════════════════════════════════════════════════════ */
-function GroupsTab() {
-  const [groups, setGroups] = useState<any[]>([]);
-  const [envs, setEnvs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+function GroupsTab({
+  groups,
+  envs,
+  refreshCatalog,
+}: {
+  groups: any[];
+  envs: any[];
+  refreshCatalog: () => Promise<EncCatalog>;
+}) {
+  const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formName, setFormName] = useState('');
@@ -830,21 +903,9 @@ function GroupsTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const [g, envResult] = await Promise.all([
-        enc.listGroups(),
-        ensureEncEnvironments({ notify: false }),
-      ]);
-      setGroups(g);
-      setEnvs(envResult.envs);
-    } catch {
-      setGroups([]);
-      setEnvs([]);
-    }
+    await refreshCatalog();
     setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  }, [refreshCatalog]);
 
   const openCreate = () => {
     setEditing(null);
@@ -870,7 +931,8 @@ function GroupsTab() {
         await enc.createGroup(payload);
         notifications.show({ title: 'Created', message: `Group '${formName}' created`, color: 'green' });
       }
-      setModalOpen(false); load();
+      setModalOpen(false);
+      await refreshCatalog();
     } catch (e: any) { notifications.show({ title: 'Error', message: e.message, color: 'red' }); }
   };
   const handleDelete = async (id: number, name: string) => {
@@ -879,14 +941,14 @@ function GroupsTab() {
       await enc.deleteGroup(id);
       notifications.show({ title: 'Deleted', message: `'${name}' removed`, color: 'green' });
       setPendingDeleteGroup(null);
-      load();
+      await refreshCatalog();
     } catch (e: any) {
       notifications.show({ title: 'Error', message: e.message, color: 'red' });
     }
     setDeleteLoading(false);
   };
 
-  if (loading) return <LoadingState height={300} label="Loading groups…" />;
+  if (loading && groups.length === 0) return <LoadingState height={300} label="Loading groups…" />;
 
   return (
     <Stack>
@@ -963,10 +1025,16 @@ function GroupsTab() {
 /* ═══════════════════════════════════════════════════════════════
    TAB 4: NODES
    ═══════════════════════════════════════════════════════════════ */
-function NodesTab() {
+function NodesTab({
+  groups,
+  envs,
+  refreshCatalog,
+}: {
+  groups: any[];
+  envs: any[];
+  refreshCatalog: () => Promise<EncCatalog>;
+}) {
   const [classified, setClassified] = useState<any[]>([]);
-  const [envs, setEnvs] = useState<any[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
   const [commonData, setCommonData] = useState<any>(null);
   const [puppetNodes, setPuppetNodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -983,15 +1051,13 @@ function NodesTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [n, envResult, g, c] = await Promise.all([
+      const [n, c] = await Promise.all([
         enc.listNodes(),
-        ensureEncEnvironments({ notify: false }),
-        enc.listGroups(),
         enc.getCommon().catch(() => null),
       ]);
-      setClassified(n);
-      setEnvs(envResult.envs);
-      setGroups(g);
+      // Always re-pull groups/envs so Classify dropdown matches Groups tab
+      await refreshCatalog();
+      setClassified(Array.isArray(n) ? n : []);
       setCommonData(c);
       try {
         const pn = await nodesApi.list();
@@ -1001,24 +1067,30 @@ function NodesTab() {
       }
     } catch {
       setClassified([]);
-      setEnvs([]);
-      setGroups([]);
     }
     setLoading(false);
-  }, []);
+  }, [refreshCatalog]);
 
   useEffect(() => { load(); }, [load]);
 
-  const openCreate = (prefillCert?: string) => {
+  const openCreate = async (prefillCert?: string) => {
+    // Fresh catalog before modal — groups created on another tab appear immediately
+    const cat = await refreshCatalog();
     setEditing(null);
-    setFormCert(prefillCert || ''); setFormEnv(envs[0]?.name || 'production');
+    setFormCert(prefillCert || '');
+    setFormEnv(cat.envs[0]?.name || envs[0]?.name || 'production');
     setFormGroupIds([]); setFormClasses([]); setFormParams([]);
     setModalOpen(true);
   };
-  const openEdit = (n: any) => {
+  const openEdit = async (n: any) => {
+    const cat = await refreshCatalog();
     setEditing(n);
     setFormCert(n.certname); setFormEnv(n.environment);
-    setFormGroupIds(groups.filter((g) => (n.groups || []).includes(g.name)).map((g) => String(g.id)));
+    setFormGroupIds(
+      cat.groups
+        .filter((g) => (n.groups || []).includes(g.name))
+        .map((g) => String(g.id)),
+    );
     setFormClasses(classDictToList(n.classes));
     setFormParams(dictToRows(n.parameters));
     setModalOpen(true);
@@ -1225,18 +1297,22 @@ function NodesTab() {
                 : undefined
             }
           />
-          <MultiSelect label="Groups" clearable searchable
-            data={(() => {
-              const byEnv: Record<string, Array<{ value: string; label: string }>> = {};
-              for (const g of groups) {
-                if (!byEnv[g.environment]) byEnv[g.environment] = [];
-                byEnv[g.environment].push({ value: String(g.id), label: g.name });
-              }
-              return Object.entries(byEnv).map(([env, items]) => ({ group: env, items }));
-            })()}
-            value={formGroupIds} onChange={setFormGroupIds}
-            description="Assign this node to one or more groups. Node inherits classes/params from all selected groups."
-            placeholder={groups.length === 0 ? 'No groups defined' : 'Select groups'} />
+          <MultiSelect
+            label="Groups"
+            clearable
+            searchable
+            data={groupMultiSelectData(groups, formEnv || undefined)}
+            value={formGroupIds}
+            onChange={setFormGroupIds}
+            onDropdownOpen={() => { void refreshCatalog(); }}
+            description={
+              groups.length === 0
+                ? 'No groups yet — create them under Node Groups, then reopen this form.'
+                : `All ENC groups (${groups.length}). Prefer groups in the selected environment (${formEnv || '—'}).`
+            }
+            placeholder={groups.length === 0 ? 'No groups defined' : 'Select groups'}
+            nothingFoundMessage="No groups match"
+          />
           <ClassPicker value={formClasses} onChange={setFormClasses} environment={formEnv}
             label="Node-specific Classes" description="Override or add classes (highest priority)" />
           <ParamEditor value={formParams} onChange={setFormParams}
@@ -1467,11 +1543,21 @@ function InfrastructureGroupsHint() {
 }
 
 export function NodeClassifierPage() {
+  const catalog = useEncCatalog();
+  const [activeTab, setActiveTab] = useState<string | null>('nodes');
+
+  // Re-pull groups/envs when switching tabs so Classify always matches Groups
+  useEffect(() => {
+    if (activeTab === 'nodes' || activeTab === 'groups' || activeTab === 'help') {
+      void catalog.refresh();
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps -- refresh on tab change only
+
   return (
     <Stack>
       <Title order={2}>Classification</Title>
       <InfrastructureGroupsHint />
-      <Tabs defaultValue="nodes" variant="outline">
+      <Tabs value={activeTab} onChange={setActiveTab} variant="outline">
         <Tabs.List>
           <Tabs.Tab value="nodes" leftSection={<IconServer size={16} />}>Nodes</Tabs.Tab>
           <Tabs.Tab value="common" leftSection={<IconWorld size={16} />}>Common</Tabs.Tab>
@@ -1480,12 +1566,28 @@ export function NodeClassifierPage() {
           <Tabs.Tab value="lookup" leftSection={<IconSearch size={16} />}>Classification Lookup</Tabs.Tab>
           <Tabs.Tab value="help" leftSection={<IconHelp size={16} />}>Help</Tabs.Tab>
         </Tabs.List>
-        <Tabs.Panel value="nodes" pt="md"><NodesTab /></Tabs.Panel>
+        <Tabs.Panel value="nodes" pt="md">
+          <NodesTab
+            groups={catalog.groups}
+            envs={catalog.envs}
+            refreshCatalog={catalog.refresh}
+          />
+        </Tabs.Panel>
         <Tabs.Panel value="common" pt="md"><CommonTab /></Tabs.Panel>
-        <Tabs.Panel value="environments" pt="md"><EnvironmentsTab /></Tabs.Panel>
-        <Tabs.Panel value="groups" pt="md"><GroupsTab /></Tabs.Panel>
+        <Tabs.Panel value="environments" pt="md">
+          <EnvironmentsTab onCatalogChange={catalog.refresh} />
+        </Tabs.Panel>
+        <Tabs.Panel value="groups" pt="md">
+          <GroupsTab
+            groups={catalog.groups}
+            envs={catalog.envs}
+            refreshCatalog={catalog.refresh}
+          />
+        </Tabs.Panel>
         <Tabs.Panel value="lookup" pt="md"><LookupTab /></Tabs.Panel>
-        <Tabs.Panel value="help" pt="md"><HierarchyTab /></Tabs.Panel>
+        <Tabs.Panel value="help" pt="md">
+          <HierarchyTab reloadToken={catalog.groups.length + catalog.envs.length} />
+        </Tabs.Panel>
       </Tabs>
     </Stack>
   );
