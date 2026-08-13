@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.32] - 2026-08-13 (fix — compiler Failed badge FQDN vs short name)
+
+### Fixed
+- **Overview | Nodes:** one compiler could stay **failed** when PuppetDB
+  stored reports under the short hostname (`ovcompiler1`) but the node
+  list used the FQDN (or the reverse). Latest-report overlay and live-run
+  matching now use both names and keep the newer report.
+- **Cluster health:** compiler probe also tries `/status/v1/simple/master`
+  when `/status/v1/simple` is not a clean "running".
+- Tooltip says **compiled by** (report producer), not that the compiler
+  itself failed.
+
 ## [3.11.1-alpha.31] - 2026-08-13 (feat — clustered Log Viewer host picker)
 
 ### Added

@@ -513,7 +513,7 @@ export function NodesPage() {
                                             ? `node index: ${node.node_index_status}`
                                             : null,
                                           node.report_producer
-                                            ? `producer: ${node.report_producer}`
+                                            ? `compiled by: ${node.report_producer}`
                                             : null,
                                           node.cached_catalog_status
                                             ? `cached catalog: ${node.cached_catalog_status}`
@@ -598,7 +598,7 @@ export function NodesPage() {
                     `shown: ${n.latest_report_status || 'unreported'}`,
                     `source: ${n.status_source || 'node_index'}`,
                     n.node_index_status ? `node index: ${n.node_index_status}` : null,
-                    n.report_producer ? `producer: ${n.report_producer}` : null,
+                    n.report_producer ? `compiled by: ${n.report_producer}` : null,
                     n.cached_catalog_status ? `cached catalog: ${n.cached_catalog_status}` : null,
                     n.report_timestamp ? `time: ${n.report_timestamp}` : null,
                   ].filter(Boolean).join('\n')}

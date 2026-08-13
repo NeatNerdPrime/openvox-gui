@@ -46,6 +46,24 @@ def _validate_report_hash(report_hash: str) -> str:
     return report_hash
 
 
+def _cert_aliases(certname: str) -> List[str]:
+    """FQDN and short hostname — reports and nodes often disagree on which is used."""
+    c = (certname or "").strip().lower()
+    if not c:
+        return []
+    names = [c]
+    short = c.split(".")[0]
+    if short and short not in names:
+        names.append(short)
+    return names
+
+
+def _report_ts(row: Optional[Dict]) -> str:
+    if not row:
+        return ""
+    return str(row.get("receive_time") or row.get("end_time") or row.get("start_time") or "")
+
+
 class PuppetDBService:
     """Async client for PuppetDB v4 API."""
 
@@ -418,28 +436,38 @@ class PuppetDBService:
             if not isinstance(row, dict):
                 continue
             key = str(row.get("certname") or "").strip().lower()
-            if key:
-                out[key] = row
+            if not key:
+                continue
+            # Index FQDN and short name so ovcompiler1 matches ovcompiler1.site…
+            for alias in _cert_aliases(key):
+                prev = out.get(alias)
+                if prev is None or _report_ts(row) >= _report_ts(prev):
+                    out[alias] = row
         return out
 
     async def get_newest_report_for_certname(self, certname: str) -> Optional[Dict]:
         """Newest report for one certname by receive_time (not the node index)."""
-        cn = (certname or "").replace("\\", "\\\\").replace('"', '\\"')
-        if not cn:
+        names = [n for n in _cert_aliases(certname) if n]
+        if not names:
             return None
-        try:
-            rows = await self.pql(
-                "reports[certname, status, receive_time, start_time, end_time, "
-                "hash, producer, cached_catalog_status, noop, configuration_version] { "
-                f'certname = "{cn}" '
-                "} order by receive_time desc",
-                limit=1,
-            ) or []
+        best: Optional[Dict] = None
+        for raw in names:
+            cn = raw.replace("\\", "\\\\").replace('"', '\\"')
+            try:
+                rows = await self.pql(
+                    "reports[certname, status, receive_time, start_time, end_time, "
+                    "hash, producer, cached_catalog_status, noop, configuration_version] { "
+                    f'certname = "{cn}" '
+                    "} order by receive_time desc",
+                    limit=1,
+                ) or []
+            except Exception as e:
+                logger.warning("newest report query failed certname=%s: %s", raw, e)
+                continue
             if rows and isinstance(rows[0], dict):
-                return rows[0]
-        except Exception as e:
-            logger.warning("newest report query failed certname=%s: %s", certname, e)
-        return None
+                if best is None or _report_ts(rows[0]) >= _report_ts(best):
+                    best = rows[0]
+        return best
 
     async def _overlay_latest_report_status(self, nodes: List[Dict]) -> None:
         """Set display status from the latest *report document*, not the node index.
@@ -454,7 +482,13 @@ class PuppetDBService:
         for node in nodes:
             key = str(node.get("certname") or "").strip().lower()
             node["node_index_status"] = node.get("latest_report_status")
-            row = latest.get(key)
+            row = None
+            for alias in _cert_aliases(key):
+                cand = latest.get(alias)
+                if cand is None:
+                    continue
+                if row is None or _report_ts(cand) >= _report_ts(row):
+                    row = cand
             if not row:
                 node["status_source"] = "node_index"
                 continue

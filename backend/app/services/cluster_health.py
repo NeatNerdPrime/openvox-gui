@@ -96,6 +96,12 @@ async def probe_compiler(client: httpx.AsyncClient, fqdn: str) -> Dict[str, Any]
     """Puppet Server health on a compiler FQDN."""
     base = f"https://{fqdn}:8140"
     simple = await _get_text(client, f"{base}/status/v1/simple")
+    # Some OpenVox/Puppet Server builds only answer /simple/master (or return
+    # a non-"running" body on /simple). Try the master endpoint before failing.
+    if not simple.get("healthy"):
+        simple_m = await _get_text(client, f"{base}/status/v1/simple/master")
+        if simple_m.get("healthy"):
+            simple = simple_m
     services = await _get_json(client, f"{base}/status/v1/services")
     # master service state if present
     master_state = None

@@ -74,18 +74,27 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
             key = part.strip().lower()
             if not key or key in ("all", "ungrouped"):
                 continue
-            if key not in latest_ok and row.executed_at:
+            if row.executed_at:
                 ts = row.executed_at
                 if getattr(ts, "tzinfo", None):
                     ts = ts.replace(tzinfo=None)
-                latest_ok[key] = ts
+                for alias in (key, key.split(".")[0]):
+                    if alias and (alias not in latest_ok or ts > latest_ok[alias]):
+                        latest_ok[alias] = ts
 
     if not latest_ok:
         return
 
     for node in nodes:
         key = str(node.get("certname") or "").strip().lower()
-        live_at = latest_ok.get(key)
+        short = key.split(".")[0]
+        live_at = latest_ok.get(key) or latest_ok.get(short)
+        if not live_at:
+            # history stored the other form (short vs FQDN)
+            for hk, ts in latest_ok.items():
+                if key == hk or key.startswith(hk + ".") or hk.startswith(key + "."):
+                    live_at = ts
+                    break
         if not live_at:
             continue
         report_at = _parse_ts(node.get("report_timestamp"))
