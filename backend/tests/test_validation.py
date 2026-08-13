@@ -79,6 +79,20 @@ def test_strip_ansi_removes_escapes():
     assert "\x1b" not in strip_ansi("plain")
 
 
+def test_strip_ansi_drops_spinner_and_nul():
+    noisy = (
+        "\x00Started on ovca1.example.com...\r|\r/\r-\r\\\r"
+        "Finished on ovca1.example.com:\n"
+        "  Notice: Applied catalog in 0.01 seconds\n"
+    )
+    clean = strip_ansi(noisy)
+    assert "Started on ovca1.example.com..." in clean
+    assert "Finished on ovca1.example.com:" in clean
+    assert "Applied catalog" in clean
+    assert "\\|/-" not in clean
+    assert "\x00" not in clean
+
+
 def test_validate_node_name_rejects_traversal():
     assert validate_node_name("agent1.example.com")
     with pytest.raises(ValueError):

@@ -11,19 +11,98 @@ or character patterns before being interpolated into PQL query strings
 to prevent PQL injection attacks.
 """
 import logging
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from ..database import get_db
 from ..services.puppetdb import puppetdb_service
 from ..services.enc import enc_service
 from ..models.schemas import NodeSummary, NodeDetail
+from ..models.execution_history import ExecutionHistory
 from ..dependencies import require_role
 from ..utils.validation import validate_pql_value as _validate_pql_value_raw
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
+
+
+def _parse_ts(value) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    try:
+        s = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+    except Exception:
+        return None
+
+
+async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
+    """If Bolt recorded a newer successful puppet agent run, do not keep Failed.
+
+    PDB latest_report can stay failed when the compiler never stored this
+    run's report. Execution history is the live run we just showed as green.
+    """
+    if not nodes:
+        return
+    try:
+        result = await db.execute(
+            select(ExecutionHistory)
+            .where(ExecutionHistory.status == "success")
+            .where(
+                or_(
+                    ExecutionHistory.command_name.ilike("%puppet agent%"),
+                    ExecutionHistory.command_name.ilike("%/opt/puppetlabs/bin/puppet%"),
+                )
+            )
+            .order_by(desc(ExecutionHistory.executed_at))
+        )
+        rows = list(result.scalars().all())
+    except Exception as e:
+        logger.warning("live-run status lookup failed: %s", e)
+        return
+
+    latest_ok: dict[str, datetime] = {}
+    for row in rows:
+        # node_name may be a single certname or a comma list / "all"
+        for part in str(row.node_name or "").split(","):
+            key = part.strip().lower()
+            if not key or key in ("all", "ungrouped"):
+                continue
+            if key not in latest_ok and row.executed_at:
+                ts = row.executed_at
+                if getattr(ts, "tzinfo", None):
+                    ts = ts.replace(tzinfo=None)
+                latest_ok[key] = ts
+
+    if not latest_ok:
+        return
+
+    for node in nodes:
+        key = str(node.get("certname") or "").strip().lower()
+        live_at = latest_ok.get(key)
+        if not live_at:
+            continue
+        report_at = _parse_ts(node.get("report_timestamp"))
+        report_status = (node.get("latest_report_status") or "").lower()
+        stale_failed = report_status == "failed" and (
+            report_at is None or live_at > report_at
+        )
+        if stale_failed:
+            node["node_index_status"] = node.get("node_index_status") or report_status
+            node["latest_report_status"] = "unchanged"
+            node["status_source"] = "live_run"
+            logger.info(
+                "live run newer than failed PDB report certname=%s report_at=%s live_at=%s",
+                node.get("certname"),
+                report_at,
+                live_at,
+            )
 
 
 def validate_pql_value(value: str, field_name: str) -> str:
@@ -110,6 +189,7 @@ async def list_nodes(
         except Exception as e:
             logger.warning(f"Failed to enrich node list with ENC classification: {e}")
 
+        await apply_live_run_status(unique, db)
         return [NodeSummary(**node) for node in unique]
     except HTTPException:
         raise
@@ -219,31 +299,34 @@ async def search_packages(
 
 
 @router.get("/{certname}/run-status")
-async def get_node_run_status(certname: str):
-    """Explain the badge: node-index vs newest report (not Bolt exit code)."""
+async def get_node_run_status(certname: str, db: AsyncSession = Depends(get_db)):
+    """Explain the badge: newest report vs live Bolt run."""
     certname = validate_pql_value(certname, "certname")
     try:
         node = await puppetdb_service.get_node(certname)
     except Exception as e:
         node = {"error": str(e)}
+    if isinstance(node, dict) and "error" not in node:
+        await apply_live_run_status([node], db)
     newest = await puppetdb_service.get_newest_report_for_certname(certname)
     return {
         "certname": certname,
-        "display_status": (newest or {}).get("status") or (node or {}).get("latest_report_status"),
+        "display_status": (node or {}).get("latest_report_status")
+        or (newest or {}).get("status"),
+        "status_source": (node or {}).get("status_source"),
         "node_index_status": (node or {}).get("node_index_status")
         or (node or {}).get("latest_report_status"),
         "newest_report": newest,
         "note": (
-            "The GUI badge is PuppetDB report status (failed/changed/unchanged), "
-            "not Bolt 'Successful'. A green Bolt apply can still leave the last "
-            "stored report as failed if compilers do not store reports to PuppetDB, "
-            "or if cached_catalog_status is on_failure."
+            "Badge prefers a newer successful GUI/Bolt puppet agent run over a "
+            "stale PuppetDB report that is still 'failed' (report not stored on "
+            "the compiler). cached_catalog_status=on_failure is a real failed report."
         ),
     }
 
 
 @router.get("/{certname}", response_model=NodeDetail)
-async def get_node_detail(certname: str):
+async def get_node_detail(certname: str, db: AsyncSession = Depends(get_db)):
     """Get detailed information about a specific node.
 
     Fetches the node record, all facts, and all resources from PuppetDB,
@@ -255,6 +338,7 @@ async def get_node_detail(certname: str):
     certname = validate_pql_value(certname, "certname")
     try:
         node = await puppetdb_service.get_node(certname)
+        await apply_live_run_status([node], db)
         facts_raw = await puppetdb_service.get_node_facts(certname)
         resources = await puppetdb_service.get_node_resources(certname)
 

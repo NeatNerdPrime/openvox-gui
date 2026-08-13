@@ -125,18 +125,24 @@ async def run_bolt_command(args: List[str], timeout: int = 120) -> Dict[str, Any
     is_rainbow = "--format" in args and "rainbow" in args
     if is_rainbow and "--color" not in args:
         args = list(args) + ["--color"]
+    # Human/json: no TTY so Bolt does not emit CR spinner frames (\\|/- noise).
+    if not is_rainbow and "--no-tty" not in args:
+        args = list(args) + ["--no-tty"]
 
     bolt_args = ["sudo", "-E", "-u", "bolt", bolt] + args + inventory_flag + project_flag
 
     env = os.environ.copy()
-    env["TERM"] = "xterm-256color"
+    env["TERM"] = "xterm-256color" if is_rainbow else "dumb"
     # Same bypass list as /etc/profile.d/noproxy.sh (profiles::base::nixenv).
     # sudo -u bolt is non-login, so we inject it here. Leave http(s)_proxy set.
     bypass = _estate_no_proxy(env)
     env["NO_PROXY"] = bypass
     env["no_proxy"] = bypass
     result = await run_sudo(bolt_args, timeout=timeout, env=env)
-    if is_rainbow and isinstance(result.get("stdout"), str):
-        out = result["stdout"].replace("\r\n", "\n").replace("\r", "")
-        result = {**result, "stdout": out}
+    from ..utils.validation import strip_ansi
+
+    if isinstance(result.get("stdout"), str):
+        result = {**result, "stdout": strip_ansi(result["stdout"])}
+    if isinstance(result.get("stderr"), str):
+        result = {**result, "stderr": strip_ansi(result["stderr"])}
     return result

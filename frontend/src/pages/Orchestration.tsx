@@ -45,6 +45,7 @@ import { useAppTheme } from '../hooks/ThemeContext';
 import AnsiToHtml from 'ansi-to-html';
 import { ExecutionHistory } from '../components/ExecutionHistory';
 import { PrettyJson } from '../components/PrettyJson';
+import { cleanCliOutput } from '../utils/cleanCliOutput';
 
 /* ── ANSI color converter (singleton) ──────────────────────── */
 const ansiConverter = new AnsiToHtml({
@@ -115,21 +116,7 @@ function parseBoltJsonPayload(outputText: string): { items: BoltItem[]; meta?: a
  * Also removes "orphaned" CSI fragments like [0;32m when ESC was lost in transit.
  */
 function stripAnsiForDisplay(text: string): string {
-  if (!text) return '';
-  let s = text
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '');
-  // OSC (operating system command) sequences
-  s = s.replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '');
-  // CSI / standard ESC sequences (ESC [ ... letter)
-  s = s.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
-  // Lone ESC
-  s = s.replace(/\x1B/g, '');
-  // Orphan CSI without ESC (what you were seeing: [0;32mInfo...[0m)
-  s = s.replace(/\[[\d;?]*[ -/]*[@A-Za-z-~]/g, '');
-  // Other C0 controls except tab/newline
-  s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-  return s;
+  return cleanCliOutput(text);
 }
 
 /** Mimic `bolt command run --format human` multi-target layout from JSON items. */

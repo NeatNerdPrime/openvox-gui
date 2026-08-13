@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.30] - 2026-08-13 (fix — CLI output noise + stale Failed badge)
+
+### Fixed
+- **Output panes (Bolt, Puppet agent, r10k):** strip NUL (`^@`), ANSI, and
+  TTY spinner frames (`\\|/-`) that were concatenated when CR was deleted.
+  Bolt human/json runs now pass `--no-tty` / `TERM=dumb` so the spinner is
+  not emitted.
+- **Overview | Nodes Failed after a green run:** if execution history has a
+  newer successful `puppet agent` than the PuppetDB report timestamp, the
+  badge uses that live run (`unchanged`) instead of a stale `failed` report
+  that was never replaced (compiler not storing reports). Tooltip
+  `source: live_run` vs `latest_report`.
+
 ## [3.11.1-alpha.29] - 2026-08-13 (feat — Insights trickle refresh)
 
 ### Added

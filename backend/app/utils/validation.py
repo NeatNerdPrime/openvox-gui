@@ -354,14 +354,50 @@ def validate_url(url: str) -> str:
         raise ValueError(f"Invalid URL: {e}")
 
 
+_ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+_OSC = re.compile(r'\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)')
+# Bolt/r10k TTY spinner frames: \ | / -
+_SPINNER_ONLY = re.compile(r'^[\s\\|/.\-]+$')
+_SPINNER_RUN = re.compile(r'(?:\\\|/\\-){2,}|(?:[\\|/.\-]){8,}')
+
+
 def strip_ansi(text: str) -> str:
     """
-    Strip ANSI escape codes from text (for safe display of command output, logs, etc.).
-    This mitigates risks from terminal escape injection / ANSI smuggling attacks
-    when rendering untrusted output (e.g., from Bolt commands on remote nodes).
-    Uses a standard regex for CSI/OSC/etc. sequences.
-    See: dgl.cx ANSI terminal security research, Doyensec ansi_up advisory.
+    Strip ANSI, NULs, and TTY spinner noise from command/Bolt/r10k output.
+
+    Bolt with a TTY writes CR-overwritten spinner frames (\\ | / -). If those
+    CRs are deleted instead of treated as line resets, the UI shows
+    ``\\|/-\\|/-`` gibberish. ``^@`` is a NUL. CSI/OSC stripping also
+    mitigates terminal escape injection (dgl.cx / Doyensec ansi_up).
     """
-    import re
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', text)
+    if not text:
+        return text
+    s = text.replace("\x00", "")
+    s = _OSC.sub("", s)
+    s = _ANSI_ESCAPE.sub("", s)
+    # Orphan CSI when ESC was lost: [0;32m
+    s = re.sub(r"\[[\d;?]{1,24}[ -/]*[@A-Za-z-~]", "", s)
+    # CR spinner frames become their own lines so we can drop them without
+    # eating "Started on" / "Finished on" that share the same TTY row.
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    lines: list[str] = []
+    for line in s.split("\n"):
+        stripped = line.strip()
+        if _SPINNER_ONLY.match(stripped):
+            continue
+        line = _SPINNER_RUN.sub("", line)
+        if _SPINNER_ONLY.match(line.strip() or ""):
+            continue
+        lines.append(line.rstrip())
+    # Collapse runs of blank lines
+    out: list[str] = []
+    blank = False
+    for line in lines:
+        if not line.strip():
+            if not blank:
+                out.append("")
+            blank = True
+        else:
+            out.append(line)
+            blank = False
+    return "\n".join(out).strip("\n")

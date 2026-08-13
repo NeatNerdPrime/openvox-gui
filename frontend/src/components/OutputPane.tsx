@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Box, Code, Group, ScrollArea, TextInput, ActionIcon, Tooltip, Text } from '@mantine/core';
 import { IconCopy, IconSearch } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import { cleanCliOutput } from '../utils/cleanCliOutput';
 
 export function OutputPane({
   output,
@@ -18,7 +19,9 @@ export function OutputPane({
   title?: string;
 }) {
   const [filter, setFilter] = useState('');
-  const raw = [output, error].filter(Boolean).join('\n--- stderr ---\n') || '(no output)';
+  const raw =
+    [output, error].filter(Boolean).map((s) => cleanCliOutput(String(s))).join('\n--- stderr ---\n')
+    || '(no output)';
   const lines = raw.split('\n');
   const shown =
     filter.trim() === ''
