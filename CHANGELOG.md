@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.12] - 2026-08-13 (fix — discover all control_repo environments)
+
+### Fixed
+- **ENC environment list:** `fetch_environments` now races VIP + cluster
+  compilers (same as class discovery), then PuppetDB, then local codedir.
+  Dedicated consoles no longer only seed `production` when codedir is empty
+  and a single VIP call fails.
+
 ## [3.11.1-alpha.11] - 2026-08-13 (fix — ENC environment dropdown empty)
 
 ### Fixed

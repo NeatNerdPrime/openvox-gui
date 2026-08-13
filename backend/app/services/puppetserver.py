@@ -149,25 +149,100 @@ class PuppetServerService:
         """Sync disk walk. Prefer ``fetch_environments`` (HTTP) from async callers."""
         return self.list_environments_local()
 
-    async def fetch_environments(self) -> List[str]:
-        """GET /puppet/v3/environments on the compiler (VIP or localhost)."""
+    async def _environments_http(self, host: str) -> tuple[List[str], Optional[str]]:
+        """GET /puppet/v3/environments on one host. Returns (names, error)."""
+        url = f"https://{host}:{settings.puppet_server_port}"
         try:
-            client = await self._get_ps_client()
-            resp = await client.get(
-                "/puppet/v3/environments",
-                headers={"Accept": "application/json"},
-            )
+            ctx = self._create_ps_ssl_context()
+            async with httpx.AsyncClient(
+                base_url=url, verify=ctx, timeout=8.0, trust_env=False
+            ) as client:
+                resp = await client.get(
+                    "/puppet/v3/environments",
+                    headers={"Accept": "application/json"},
+                )
             if resp.status_code == 200:
                 names = parse_environments_payload(resp.json())
                 if names:
-                    return names
-            logger.warning(
-                "Compiler environments HTTP %s; falling back to local codedir",
-                resp.status_code,
-            )
+                    return names, None
+                return [], f"{host}: HTTP 200 but empty environments payload"
+            return [], f"{host}: HTTP {resp.status_code} {resp.text[:180]}"
         except Exception as e:
-            logger.warning("Compiler environments HTTP failed: %s", e)
-        return self.list_environments_local()
+            return [], f"{host}: {e}"
+
+    async def fetch_environments(self) -> List[str]:
+        """Discover environment names: compiler HTTP race → PuppetDB → local codedir.
+
+        Dedicated consoles have no codedir; VIP/compiler list must succeed
+        (OPENVOX_GUI_PUPPET_SERVER_HOST + Settings → Cluster compilers).
+        """
+        import asyncio
+
+        hosts = self._compiler_hosts_for_api()
+        errors: List[str] = []
+        if hosts:
+            tasks = {
+                asyncio.create_task(self._environments_http(h), name=h): h
+                for h in hosts[:8]
+            }
+            pending = set(tasks.keys())
+            try:
+                while pending:
+                    done, pending = await asyncio.wait(
+                        pending, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    for task in done:
+                        host = tasks[task]
+                        try:
+                            names, err = task.result()
+                        except Exception as e:
+                            errors.append(f"{host}: {e}")
+                            continue
+                        if names:
+                            for p in pending:
+                                p.cancel()
+                            if pending:
+                                await asyncio.gather(*pending, return_exceptions=True)
+                            logger.info(
+                                "environments from compiler API host=%s count=%s",
+                                host,
+                                len(names),
+                            )
+                            return names
+                        if err:
+                            errors.append(err)
+                            logger.warning("environments HTTP: %s", err)
+            finally:
+                for t in pending:
+                    t.cancel()
+
+        # PuppetDB knows environments that have reported nodes
+        try:
+            from .puppetdb import puppetdb_service
+
+            pdb_envs = await puppetdb_service.get_environments()
+            names: List[str] = []
+            if isinstance(pdb_envs, list):
+                for item in pdb_envs:
+                    if isinstance(item, dict) and item.get("name"):
+                        names.append(str(item["name"]))
+                    elif isinstance(item, str) and item:
+                        names.append(item)
+            names = sorted(set(names))
+            if names:
+                logger.info("environments from PuppetDB count=%s", len(names))
+                return names
+        except Exception as e:
+            errors.append(f"puppetdb: {e}")
+            logger.warning("PuppetDB environments failed: %s", e)
+
+        local = self.list_environments_local()
+        if local:
+            logger.info("environments from local codedir count=%s", len(local))
+            return local
+        if errors:
+            logger.warning("No environments discovered; errors=%s", errors[:5])
+        return local
 
     async def fetch_environment_modules(self, environment: str = "production") -> List[Dict[str, str]]:
         """GET /puppet/v3/environment_modules, then local codedir."""

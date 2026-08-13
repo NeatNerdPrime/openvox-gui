@@ -541,11 +541,11 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<any[]
   let discovered: string[] = [];
   try {
     const puppetResp = await config.getEnvironments();
-    discovered = puppetResp.environments || [];
+    discovered = (puppetResp.environments || []).map(String).filter(Boolean);
   } catch {
     discovered = [];
   }
-  // Always offer production so classify is usable even when discovery fails
+  // Always ensure production exists as a fallback name
   if (!discovered.includes('production')) {
     discovered = ['production', ...discovered];
   }
@@ -657,8 +657,10 @@ function EnvironmentsTab() {
         <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add Environment</Button>
       </Group>
       <Alert variant="light" color="blue" mb="xs">
-        Environments are auto-discovered from <Code>/etc/puppetlabs/code/environments/</Code>.
-        Classes and parameters set here apply to every node in this environment.
+        Environments are auto-discovered from the compiler
+        (<Code>/puppet/v3/environments</Code> via <Code>OPENVOX_GUI_PUPPET_SERVER_HOST</Code>),
+        then PuppetDB, then local codedir. Classes and parameters set here apply to every node
+        in this environment.
       </Alert>
       <Card withBorder shadow="sm">
         <Box style={{ maxHeight: 500, minHeight: 0, overflow: 'hidden' }}>
