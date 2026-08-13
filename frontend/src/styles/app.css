@@ -1,0 +1,95 @@
+/**
+ * OpenVox GUI — production surface.
+ * Theme tokens live in theme.ts; this file is the chrome around Mantine.
+ */
+
+:root {
+  color-scheme: light;
+  --ov-header-h: 56px;
+  --ov-ease: 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Soft app canvas — not a flat white slab */
+[data-mantine-color-scheme='light'] {
+  --ov-canvas: #f3f5f8;
+  --ov-header: rgba(255, 255, 255, 0.86);
+  --ov-nav: #f7f8fb;
+  --ov-line: rgba(15, 23, 42, 0.08);
+}
+
+[data-mantine-color-scheme='dark'] {
+  --ov-canvas: #12131c;
+  --ov-header: rgba(20, 21, 33, 0.88);
+  --ov-nav: #161724;
+  --ov-line: rgba(255, 255, 255, 0.07);
+}
+
+.ov-app-main {
+  background: var(--ov-canvas);
+  min-height: calc(100vh - var(--ov-header-h));
+}
+
+.ov-app-header {
+  background: var(--ov-header) !important;
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--ov-line) !important;
+}
+
+.ov-app-nav {
+  background: var(--ov-nav) !important;
+  border-right: 1px solid var(--ov-line) !important;
+}
+
+/* Interactive cards feel clickable without looking toy-like */
+.ov-card-link {
+  transition: transform var(--ov-ease), box-shadow var(--ov-ease), border-color var(--ov-ease);
+}
+.ov-card-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+/* Quiet live pulse used by LiveStatus */
+@keyframes ov-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+.ov-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mantine-color-teal-6);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mantine-color-teal-6) 22%, transparent);
+  animation: ov-pulse 2.2s ease-in-out infinite;
+}
+.ov-live-dot.is-refreshing {
+  background: var(--mantine-color-blue-5);
+  animation-duration: 0.7s;
+}
+
+/* Table rows: slightly taller, no harsh separators */
+.mantine-Table-th {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mantine-color-dimmed);
+  font-weight: 600;
+}
+
+/* Scrollbars stay thin and out of the way */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--mantine-color-dimmed) 45%, transparent) transparent;
+}

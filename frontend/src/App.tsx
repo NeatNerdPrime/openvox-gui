@@ -29,7 +29,7 @@
 
 import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router';
-import { Loader, Center } from '@mantine/core';
+import { Loader, Center, Stack, Text } from '@mantine/core';
 import { AuthProvider, useAuth } from './hooks/AuthContext';
 import { ActivityProvider } from './hooks/ActivityContext';
 
@@ -79,7 +79,14 @@ const MetricsClassCoveragePage = lazyWithRetry(() => import('./pages/MetricsClas
 const MetricsHostHealthPage = lazyWithRetry(() => import('./pages/MetricsHostHealth').then(m => ({ default: m.MetricsHostHealthPage })));
 
 function PageLoader() {
-  return <Center h={400}><Loader size="xl" /></Center>;
+  return (
+    <Center h={320}>
+      <Stack align="center" gap="sm">
+        <Loader size="sm" type="dots" />
+        <Text size="sm" c="dimmed">Loading…</Text>
+      </Stack>
+    </Center>
+  );
 }
 
 function AppRoutes() {

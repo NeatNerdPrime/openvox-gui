@@ -25,6 +25,7 @@ import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
 import { useAppTheme } from '../hooks/ThemeContext';
 import type { NodeSummary } from '../types';
 import { timeAgo } from '../utils/timeAgo';
+import { PageHeader } from '../components/PageHeader';
 
 /** Columns for All Nodes export (CSV / JSON / text) — mirrors Inventory ExportActions. */
 const NODES_EXPORT_COLS = [
@@ -231,7 +232,11 @@ export function NodesPage() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [runTarget, setRunTarget] = useState<string | null>(null);
   const [runningCert, setRunningCert] = useState<string | null>(null);
-  const { data: nodeList, loading: nodesLoading, error: nodesError, refetch } = useApi<NodeSummary[]>(nodes.list);
+  const { data: nodeList, loading: nodesLoading, error: nodesError, refetch, refreshing } = useApi<NodeSummary[]>(
+    nodes.list,
+    [],
+    { cacheKey: 'openvox_nodes_v1', pollIntervalMs: 20000 },
+  );
   const navigate = useNavigate();
   const { begin, end } = useActivity();
   const skipConfirm = useSkipAdhocConfirm();
@@ -366,7 +371,7 @@ export function NodesPage() {
     setExpandedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }));
   };
 
-  if (loading) return <LoadingState label="Loading nodes…" />;
+  if (loading && !nodeList) return <LoadingState label="Loading nodes…" />;
   if (error) return <ErrorState title="Failed to load nodes" message={error} />;
 
   const groupNames = Object.keys(filteredGroups);
@@ -395,7 +400,12 @@ export function NodesPage() {
 
   return (
     <Stack>
-      <Title order={2}>Nodes ({totalNodes})</Title>
+      <PageHeader
+        title={`Nodes (${totalNodes})`}
+        description="Fleet membership from OpenVoxDB ∩ signed CA. Status is the newest report per certname."
+        live
+        refreshing={refreshing}
+      />
       <FilterBar
         search={search}
         onSearchChange={setSearch}

@@ -20,6 +20,7 @@ import { LoadingState, ErrorState } from '../components/StateComponents';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { OpsTable, OpsColumn } from '../components/OpsTable';
 import { FilterBar } from '../components/FilterBar';
+import { PageHeader } from '../components/PageHeader';
 
 type ReportNodeRow = {
   certname: string;
@@ -351,13 +352,15 @@ export function ReportsPage() {
   // Fetch hierarchy (groups and nodes)
   const { data: hierarchy, loading: hierarchyLoading } = useApi(
     () => enc.getHierarchy(),
-    []
+    [],
+    { cacheKey: 'openvox_enc_hierarchy_v1', pollIntervalMs: 30000 },
   );
 
   // Fetch reports
-  const { data: reportList, loading: reportsLoading, error } = useApi(
+  const { data: reportList, loading: reportsLoading, error, refreshing } = useApi(
     () => reports.list({ status: statusFilter || undefined, limit: reportLimit }),
-    [statusFilter, reportLimit]
+    [statusFilter, reportLimit],
+    { pollIntervalMs: 20000 },
   );
 
   // PuppetDB node status (latest_report_status) — independent of report-list window.
@@ -365,7 +368,8 @@ export function ReportsPage() {
   // reports to PuppetDB does.
   const { data: fleetNodes, loading: fleetLoading } = useApi(
     () => nodesApi.list(),
-    []
+    [],
+    { cacheKey: 'openvox_nodes_v1', pollIntervalMs: 20000 },
   );
 
   const loading = hierarchyLoading || reportsLoading || fleetLoading;
@@ -616,8 +620,8 @@ export function ReportsPage() {
     loadExecutiveRecipients();
   }, []);
 
-  if (loading) return <LoadingState label="Loading reports…" />;
-  if (error) return <ErrorState title="Failed to load reports" message={error} />;
+  if (loading && !reportList) return <LoadingState label="Loading reports…" />;
+  if (error && !reportList) return <ErrorState title="Failed to load reports" message={error} />;
 
   // Sort group names alphabetically for consistent ordering (like other lists in the app).
   // Note: filteredGroups may have fewer groups due to search, so we sort what's visible.
@@ -626,7 +630,12 @@ export function ReportsPage() {
 
   return (
     <Stack>
-      <Title order={2}>Reports ({totalReports})</Title>
+      <PageHeader
+        title={`Reports (${totalReports})`}
+        description="Latest agent reports per node. The page stays put and refreshes in the background."
+        live
+        refreshing={refreshing}
+      />
       <FilterBar
         search={search}
         onSearchChange={setSearch}

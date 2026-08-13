@@ -19,6 +19,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { LoadingState, ErrorState } from '../components/StateComponents';
 import { useAppTheme } from '../hooks/ThemeContext';
 import type { NodeSummary } from '../types';
+import { PageHeader } from '../components/PageHeader';
 
 
 
@@ -263,26 +264,23 @@ export function DashboardPage() {
 
   return (
     <Stack>
-      <Group justify="space-between">
-        <Group gap="sm">
-          <Title order={2}>Dashboard</Title>
-          {autoRefresh && (
-            <Badge variant="dot" color="green" size="sm">Live</Badge>
-          )}
-          {refreshing && (
-            <Badge variant="outline" color="gray" size="sm">Refreshing…</Badge>
-          )}
-        </Group>
-        <Group gap="sm">
-          <Text size="xs" c="dimmed">Updated {lastRefresh.toLocaleTimeString()}</Text>
-          <Select size="xs"
-            data={[{value:'10',label:'10s'},{value:'30',label:'30s'},{value:'60',label:'1m'},{value:'300',label:'5m'}]}
-            value={refreshInterval} onChange={(v) => setRefreshInterval(v || '30')}
-            style={{ width: 70 }} />
-          <Switch size="sm" label="Auto" checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.currentTarget.checked)} />
-        </Group>
-      </Group>
+      <PageHeader
+        title="Dashboard"
+        description="Fleet at a glance. Charts and counts update in place — no full reload."
+        live={autoRefresh}
+        refreshing={refreshing}
+        updatedAt={lastRefresh}
+        extra={
+          <Group gap="sm">
+            <Select size="xs"
+              data={[{value:'10',label:'10s'},{value:'30',label:'30s'},{value:'60',label:'1m'},{value:'300',label:'5m'}]}
+              value={refreshInterval} onChange={(v) => setRefreshInterval(v || '30')}
+              style={{ width: 78 }} />
+            <Switch size="sm" label="Auto" checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.currentTarget.checked)} />
+          </Group>
+        }
+      />
 
       {/* Casual theme illustration — deferred one tick so ring/trends paint first */}
       {isRobots && showMascot && (
@@ -309,6 +307,7 @@ export function DashboardPage() {
               key={t.path}
               padding="sm"
               withBorder
+              className="ov-card-link"
               style={{ cursor: 'pointer' }}
               onClick={() => navigate(t.path)}
             >

@@ -25,7 +25,13 @@ export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
   const s = (status || '').toString().toLowerCase() || 'unreported';
   const label = s === 'unreported' || s === 'unknown' ? 'unreported' : s;
   return (
-    <Badge color={STATUS_COLORS[label] || STATUS_COLORS['unknown'] || 'gray'} variant="filled" size={size}>
+    <Badge
+      color={STATUS_COLORS[label] || STATUS_COLORS['unknown'] || 'gray'}
+      variant="light"
+      size={size}
+      tt="capitalize"
+      fw={600}
+    >
       {label}
     </Badge>
   );

@@ -37,6 +37,11 @@ export interface UseApiOptions<T> {
    * Minimum 5000ms.
    */
   pollIntervalMs?: number;
+  /**
+   * Refetch when the window/tab becomes visible again (AJAX, not a reload).
+   * Default true so navigating back to a page always pulls fresh data.
+   */
+  refetchOnFocus?: boolean;
 }
 
 /**
@@ -61,6 +66,7 @@ export function useApi<T>(
     cacheKey,
     cacheValidate,
     pollIntervalMs,
+    refetchOnFocus = true,
   } = options;
 
   // Resolve seed on first render only (explicit initialData or session cache).
@@ -145,23 +151,32 @@ export function useApi<T>(
     refetch();
   }, [refetch, depsKey]);
 
-  // Trickle refresh: keep Insights/dashboard payloads warm without blocking paint.
+  // Live surface: silent refetch on focus / tab visible, plus optional trickle.
+  // Never flips the full-page loader — prior data stays on screen (SWR).
   useEffect(() => {
-    if (!pollIntervalMs || pollIntervalMs < 5000) return;
-    const tick = () => {
+    const soft = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       refetch();
     };
-    const id = window.setInterval(tick, pollIntervalMs);
     const onVis = () => {
-      if (!document.hidden) refetch();
+      if (!document.hidden) soft();
     };
-    document.addEventListener('visibilitychange', onVis);
+    if (refetchOnFocus) {
+      window.addEventListener('focus', soft);
+      document.addEventListener('visibilitychange', onVis);
+    }
+    let id: number | undefined;
+    if (pollIntervalMs && pollIntervalMs >= 5000) {
+      id = window.setInterval(soft, pollIntervalMs);
+    }
     return () => {
-      window.clearInterval(id);
-      document.removeEventListener('visibilitychange', onVis);
+      if (refetchOnFocus) {
+        window.removeEventListener('focus', soft);
+        document.removeEventListener('visibilitychange', onVis);
+      }
+      if (id) window.clearInterval(id);
     };
-  }, [pollIntervalMs, refetch]);
+  }, [pollIntervalMs, refetch, refetchOnFocus]);
 
   return { data, loading, refreshing, error, refetch };
 }

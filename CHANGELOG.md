@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.6] - 2026-08-13 (feat — production UI facelift)
+
+### Added
+- Shared production theme (`frontend/src/theme.ts`): Inter + IBM Plex Mono,
+  10–12px radii, soft elevation, consistent Card/Button/Nav/Table defaults.
+- `PageHeader` + `LiveStatus` for in-place AJAX refresh (no full reload).
+- Header theme cycle (Light / Dark / Robots!!) without a settings trip.
+
+### Changed
+- App shell: frosted header, quieter sidebar (no rainbow group colors),
+  subtle canvas background, refined login card.
+- Status badges use light/capitalize instead of heavy filled chips.
+- `useApi` refetches on window/tab focus; Nodes and Reports trickle every
+  20s with SWR so prior data stays on screen.
+
 ## [3.11.1-beta.5] - 2026-08-13 (fix — Failed badge after successful runs)
 
 ### Fixed

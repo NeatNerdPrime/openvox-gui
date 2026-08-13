@@ -55,9 +55,12 @@ import {
   IconListDetails,
   IconHeartbeat,
   IconKeyboard,
+  IconSun,
+  IconMoon,
+  IconMoodSmile,
 } from '@tabler/icons-react';
 import { useAuth } from '../hooks/AuthContext';
-import { useAppTheme } from '../hooks/ThemeContext';
+import { useAppTheme, type AppTheme } from '../hooks/ThemeContext';
 import { useActivity } from '../hooks/ActivityContext';
 import { useInsightsTrickle } from '../hooks/useInsightsTrickle';
 import { dashboard, config, nodes as nodesApi } from '../services/api';
@@ -171,7 +174,7 @@ export function AppShellLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { isDark } = useAppTheme();
+  const { isDark, theme, setTheme } = useAppTheme();
   const [activeSessions, setActiveSessions] = useState<any>(null);
   const [appName, setAppName] = useState('OpenVox GUI');
   const [nodeNames, setNodeNames] = useState<string[]>([]);
@@ -251,13 +254,14 @@ export function AppShellLayout() {
   const activeCount = activeSessions?.active_count || 0;
   const activeUsersList = activeSessions?.users || [];
 
-  // Theme-dependent styles
-  const headerBg = !isDark ? '#ffffff' : '#1a1b2e';
-  const headerBorder = !isDark ? '1px solid #dee2e6' : 'none';
-  const navBg = !isDark ? '#f8f9fa' : '#141421';
-  const navBorder = !isDark ? '1px solid #dee2e6' : 'none';
-  const titleColor = !isDark ? '#212529' : undefined;
+  const titleColor = !isDark ? '#0f172a' : undefined;
   const logoSrc = !isDark ? '/openvox-logo.svg' : '/openvox-logo-orange.svg';
+  const cycleTheme = () => {
+    const order: AppTheme[] = ['light', 'dark', 'robots'];
+    const next = order[(order.indexOf(theme) + 1) % order.length];
+    setTheme(next);
+  };
+  const ThemeIcon = theme === 'light' ? IconSun : theme === 'dark' ? IconMoon : IconMoodSmile;
   // Recursive navigation renderer — supports nested children
   const renderNavItem = (item: NavItem, depth: number = 0): ReactNode => {
     const ItemIcon = item.icon;
@@ -283,8 +287,7 @@ export function AppShellLayout() {
           opened={isOpen}
           onChange={(o) => setOpenGroups((prev) => ({ ...prev, [item.label]: o }))}
           onClick={handleClick}
-          variant="filled"
-          mb={1}
+          mb={4}
           pl={depth > 0 ? `${indent}px` : undefined}
         >
           {item.children!.map((child) => renderNavItem(child, depth + 1))}
@@ -300,7 +303,6 @@ export function AppShellLayout() {
         leftSection={<ItemIcon size={depth > 0 ? 16 : 18} />}
         active={isActive}
         onClick={() => { navigate(item.path); setOpened(false); }}
-        variant="filled"
         mb={1}
         pl={depth > 0 ? `${indent + 4}px` : undefined}
       />
@@ -308,9 +310,8 @@ export function AppShellLayout() {
   };
 
   // Render a top-level nav group (label + items)
-  const renderNavGroup = (label: string, icon: any, items: NavItem[], color?: string) => {
+  const renderNavGroup = (label: string, icon: any, items: NavItem[]) => {
     const GroupIcon = icon;
-    const iconColor = color || undefined;
     const groupHasActive = pathBelongsToGroup(location.pathname, items);
 
     // Single-item group without children — render directly
@@ -321,11 +322,10 @@ export function AppShellLayout() {
         <NavLink
           key={item.path}
           label={label}
-          leftSection={<ItemIcon size={18} color={iconColor} />}
+          leftSection={<ItemIcon size={18} stroke={1.6} />}
           active={navItemMatchesPath(location.pathname, item.path)}
           onClick={() => { navigate(item.path); setOpened(false); }}
-          variant="filled"
-          mb={2}
+          mb={4}
         />
       );
     }
@@ -355,7 +355,7 @@ export function AppShellLayout() {
     return (
       <NavLink
         label={label}
-        leftSection={<GroupIcon size={18} color={iconColor} />}
+        leftSection={<GroupIcon size={18} stroke={1.6} />}
         childrenOffset={24}
         opened={isOpen}
         active={parentActive}
@@ -364,8 +364,7 @@ export function AppShellLayout() {
           setGroupOpen(o);
         }}
         onClick={handleParentClick}
-        variant="filled"
-        mb={2}
+        mb={4}
       >
         {items.map((item) => (
           <div key={item.path} onClickCapture={() => setGroupOpen(true)}>
@@ -378,17 +377,17 @@ export function AppShellLayout() {
 
   return (
     <MantineAppShell
-      header={{ height: 60 }}
-      navbar={{ width: 260, breakpoint: 'sm', collapsed: { mobile: !opened } }}
-      padding="md"
+      header={{ height: 56 }}
+      navbar={{ width: 248, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      padding="lg"
     >
-      <MantineAppShell.Header style={{ backgroundColor: headerBg, borderBottom: headerBorder }}>
-        <Group h="100%" px="md" justify="space-between">
+      <MantineAppShell.Header className="ov-app-header">
+        <Group h="100%" px="lg" justify="space-between">
           <Group gap="xs">
             <Burger opened={opened} onClick={() => setOpened(!opened)} hiddenFrom="sm" size="sm" />
-            <Group gap={16} wrap="nowrap" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
-              <img src={logoSrc} alt="OpenVox" style={{ height: 36, width: 36, flexShrink: 0, display: 'block' }} />
-              <Title order={3} c={titleColor} style={{ fontWeight: 700, whiteSpace: 'nowrap', lineHeight: 1 }}>
+            <Group gap={12} wrap="nowrap" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
+              <img src={logoSrc} alt="OpenVox" style={{ height: 30, width: 30, flexShrink: 0, display: 'block' }} />
+              <Title order={4} c={titleColor} style={{ fontWeight: 650, whiteSpace: 'nowrap', letterSpacing: '-0.02em' }}>
                 {appName}
               </Title>
             </Group>
@@ -432,6 +431,16 @@ export function AppShellLayout() {
                   )}
                 </HoverCard.Dropdown>
               </HoverCard>
+              <Tooltip label={`Theme: ${theme === 'robots' ? 'Robots!!' : theme}`}>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  onClick={cycleTheme}
+                  aria-label="Cycle theme"
+                >
+                  <ThemeIcon size={18} stroke={1.6} />
+                </ActionIcon>
+              </Tooltip>
               <Tooltip
                 label={
                   <Group gap={4}>
@@ -447,7 +456,7 @@ export function AppShellLayout() {
                   onClick={() => setPaletteOpen(true)}
                   aria-label="Open command palette"
                 >
-                  <IconKeyboard size={18} />
+                  <IconKeyboard size={18} stroke={1.6} />
                 </ActionIcon>
               </Tooltip>
               <Badge variant="outline" color="gray" size="sm">
@@ -466,20 +475,20 @@ export function AppShellLayout() {
         </Group>
       </MantineAppShell.Header>
 
-      <MantineAppShell.Navbar p="xs" style={{ backgroundColor: navBg, borderRight: navBorder }}>
+      <MantineAppShell.Navbar p="sm" className="ov-app-nav">
         <MantineAppShell.Section grow component={ScrollArea}>
-          {renderNavGroup('Overview', IconDashboard, overviewNav, '#3498db')}
-          {renderNavGroup('Infrastructure', IconCertificate, infrastructureNav, '#e67e22')}
-          {renderNavGroup('Classification & Code', IconRocket, classificationCodeNav, '#2ecc71')}
-          {renderNavGroup('Data', IconPackage, dataNav, '#9b59b6')}
-          {renderNavGroup('Explore', IconTool, exploreNav, '#f39c12')}
-          {renderNavGroup('Insights', IconChartBar, insightsNav, '#1abc9c')}
-          {renderNavGroup('Settings', IconSettings, configNav, '#95a5a6')}
+          {renderNavGroup('Overview', IconDashboard, overviewNav)}
+          {renderNavGroup('Infrastructure', IconCertificate, infrastructureNav)}
+          {renderNavGroup('Classification & Code', IconRocket, classificationCodeNav)}
+          {renderNavGroup('Data', IconPackage, dataNav)}
+          {renderNavGroup('Explore', IconTool, exploreNav)}
+          {renderNavGroup('Insights', IconChartBar, insightsNav)}
+          {renderNavGroup('Settings', IconSettings, configNav)}
         </MantineAppShell.Section>
 
         <MantineAppShell.Section>
-          <Box p="sm">
-            <Text size="xs" c="dimmed">OpenVox GUI v{APP_VERSION}</Text>
+          <Box pt="sm" px="xs">
+            <Text size="xs" c="dimmed" fw={500}>v{APP_VERSION}</Text>
             <HoverCard width={220} shadow="md" position="right" withArrow openDelay={200}>
               <HoverCard.Target>
                 <Text size="xs" c="dimmed" style={{ cursor: 'pointer' }}>
@@ -504,7 +513,7 @@ export function AppShellLayout() {
         </MantineAppShell.Section>
       </MantineAppShell.Navbar>
 
-      <MantineAppShell.Main>
+      <MantineAppShell.Main className="ov-app-main">
         <Outlet />
       </MantineAppShell.Main>
 

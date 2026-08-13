@@ -47,12 +47,19 @@ export function LoginPage() {
   };
 
   return (
-    <Center style={{ minHeight: '100vh', background: !isDark ? '#f8f9fa' : 'linear-gradient(135deg, #1a1b2e 0%, #252540 100%)' }}>
-      <Card shadow="xl" padding="xl" radius="lg" style={{ width: 400 }}>
-        <Stack align="center" mb="lg">
-          <img src={!isDark ? "/openvox-logo.svg" : "/openvox-logo-orange.svg"} alt="OpenVox" style={{ height: 72 }} />
-          <Title order={2}>{appName}</Title>
-          <Text size="sm" c="dimmed">Sign in to manage your OpenVox infrastructure</Text>
+    <Center
+      style={{
+        minHeight: '100vh',
+        background: !isDark
+          ? 'radial-gradient(1200px 500px at 50% -10%, rgba(13,110,253,0.08), transparent 60%), #f3f5f8'
+          : 'radial-gradient(1200px 500px at 50% -10%, rgba(236,134,34,0.12), transparent 55%), #12131c',
+      }}
+    >
+      <Card shadow="lg" padding="xl" radius="lg" style={{ width: 400, border: '1px solid var(--ov-line)' }}>
+        <Stack align="center" mb="lg" gap="xs">
+          <img src={!isDark ? "/openvox-logo.svg" : "/openvox-logo-orange.svg"} alt="OpenVox" style={{ height: 56 }} />
+          <Title order={2} mt="sm" style={{ letterSpacing: '-0.03em' }}>{appName}</Title>
+          <Text size="sm" c="dimmed">Sign in to your fleet</Text>
         </Stack>
 
         <form onSubmit={handleSubmit}>
