@@ -22,7 +22,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create the api_tokens table."""
+    """Create the api_tokens table (idempotent if create_all already ran)."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if "api_tokens" in insp.get_table_names():
+        return
     op.create_table(
         'api_tokens',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),

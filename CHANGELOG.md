@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.7] - 2026-08-13 (feat — installer provisions openvox_gui Postgres)
+
+### Added
+- **`scripts/bootstrap-openvox-gui-db.sh`** — one-shot provision of the GUI
+  application database: role `openvox_gui`, database `openvox_gui`, grants,
+  full schema (`create_all`), `alembic stamp head`, optional multi-host empty
+  DBs + Spock single-writer mesh (public dump + structure=false subs).
+- **`install.sh` / install.conf** — `OPENVOX_GUI_DB_BACKEND=postgresql` plus
+  admin DSN, app password, optional hosts/Spock; writes app
+  `OPENVOX_GUI_DATABASE_URL` into `.env`. Operators do not hand-run SQL.
+- Alembic 002–004 **idempotent** so create_all + upgrade/stamp coexists.
+
 ## [3.11.1-alpha.6] - 2026-08-13 (chore — remove session ENC/shared-DB runbooks)
 
 ### Removed

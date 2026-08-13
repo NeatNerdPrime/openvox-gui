@@ -64,6 +64,19 @@ CONFIGURE_ENC="auto"
 # Comma-separated GUI API URLs for enc.py (OPENVOX_GUI_API_BASE). Empty = https://localhost:APP_PORT
 ENC_API_BASE=""
 
+# Application database: sqlite (default) or postgresql (remote HA / DR)
+# When postgresql, bootstrap-openvox-gui-db.sh provisions role, DB, schema, optional Spock.
+OPENVOX_GUI_DB_BACKEND="${OPENVOX_GUI_DB_BACKEND:-sqlite}"
+# Superuser DSN used only at install to CREATE role/database (not stored as app URL):
+#   postgresql://postgres:SECRET@ovdb1.example.com:5432/postgres
+OPENVOX_GUI_DB_ADMIN_DSN="${OPENVOX_GUI_DB_ADMIN_DSN:-}"
+OPENVOX_GUI_DB_APP_PASSWORD="${OPENVOX_GUI_DB_APP_PASSWORD:-}"
+# Comma-separated ovdb hosts for multi-node empty DB + optional Spock (primary first)
+OPENVOX_GUI_DB_HOSTS="${OPENVOX_GUI_DB_HOSTS:-}"
+OPENVOX_GUI_DB_SPOCK="${OPENVOX_GUI_DB_SPOCK:-false}"
+OPENVOX_GUI_DB_REPL_USER="${OPENVOX_GUI_DB_REPL_USER:-}"
+OPENVOX_GUI_DB_REPL_PASSWORD="${OPENVOX_GUI_DB_REPL_PASSWORD:-}"
+
 # SSL for the GUI itself (incoming connections on port 4567)
 SSL_ENABLED="false"
 SSL_CERT_PATH="/etc/puppetlabs/puppet/ssl/certs/$(hostname -f).pem"
@@ -758,6 +771,7 @@ for script in \
     apply-singleton-bolt-layout.sh \
     bootstrap-compiler.sh \
     bootstrap-compiler-enc.sh \
+    bootstrap-openvox-gui-db.sh \
     hiera-list-remote.py \
     list-classes-remote.py \
     generate_bolt_token.py
@@ -1122,7 +1136,7 @@ OPENVOX_GUI_PUPPETDB_PORT=${PUPPETDB_PORT}
 # Authentication (none | local)
 OPENVOX_GUI_AUTH_BACKEND=${AUTH_BACKEND}
 
-# Database
+# Database (sqlite default; postgresql set by bootstrap-openvox-gui-db.sh when configured)
 OPENVOX_GUI_DATABASE_URL=sqlite+aiosqlite:///${INSTALL_DIR}/data/openvox_gui.db
 
 # Proxy Settings (auto-detected during installation)
@@ -1139,6 +1153,39 @@ OPENVOX_GUI_FLEET_HEALTH_REPORT_EMAILS=
 OPENVOX_GUI_FLEET_HEALTH_REPORT_OUTPUT_DIR=${INSTALL_DIR}/data/reports
 ENVEOF
 log_ok "Generated ${INSTALL_DIR}/config/.env"
+
+# ─── PostgreSQL application DB (optional; preferred for production DR) ──
+# Provisions role, database, full schema, alembic stamp, optional Spock mesh.
+# Operator only supplies install.conf credentials — no hand SQL.
+if [ "${OPENVOX_GUI_DB_BACKEND}" = "postgresql" ]; then
+    if [ -z "${OPENVOX_GUI_DB_ADMIN_DSN}" ] || [ -z "${OPENVOX_GUI_DB_APP_PASSWORD}" ]; then
+        log_warn "OPENVOX_GUI_DB_BACKEND=postgresql requires OPENVOX_GUI_DB_ADMIN_DSN and OPENVOX_GUI_DB_APP_PASSWORD"
+        log_warn "Leaving SQLite URL in .env — re-run scripts/bootstrap-openvox-gui-db.sh later"
+    elif [ ! -x "${INSTALL_DIR}/scripts/bootstrap-openvox-gui-db.sh" ]; then
+        log_warn "bootstrap-openvox-gui-db.sh missing — cannot provision Postgres"
+    else
+        log_info "Provisioning OpenVox GUI Postgres database (bootstrap-openvox-gui-db.sh)…"
+        _db_args=(
+            --admin-dsn "${OPENVOX_GUI_DB_ADMIN_DSN}"
+            --app-password "${OPENVOX_GUI_DB_APP_PASSWORD}"
+            --write-env "${INSTALL_DIR}/config/.env"
+            --install-dir "${INSTALL_DIR}"
+        )
+        if [ -n "${OPENVOX_GUI_DB_HOSTS}" ]; then
+            _db_args+=(--hosts "${OPENVOX_GUI_DB_HOSTS}")
+        fi
+        if [ "${OPENVOX_GUI_DB_SPOCK}" = "true" ]; then
+            _db_args+=(--spock)
+            [ -n "${OPENVOX_GUI_DB_REPL_USER}" ] && _db_args+=(--repl-user "${OPENVOX_GUI_DB_REPL_USER}")
+            [ -n "${OPENVOX_GUI_DB_REPL_PASSWORD}" ] && _db_args+=(--repl-password "${OPENVOX_GUI_DB_REPL_PASSWORD}")
+        fi
+        if bash "${INSTALL_DIR}/scripts/bootstrap-openvox-gui-db.sh" "${_db_args[@]}"; then
+            log_ok "Postgres application database provisioned"
+        else
+            log_warn "Postgres bootstrap failed — check admin DSN / network; SQLite may still be in .env"
+        fi
+    fi
+fi
 
 # ENC for compilers uses OPENVOX_GUI_API_BASE via EnvironmentFile (see
 # scripts/bootstrap-compiler-enc.sh). Do NOT sed-edit enc.py — it reads env.

@@ -16,6 +16,13 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if "api_tokens" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("api_tokens")}
+    if "role" in cols:
+        return
     op.add_column('api_tokens', sa.Column('role', sa.String(50), nullable=False, server_default='operator'))
 
 

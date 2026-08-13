@@ -172,6 +172,7 @@ for script in \
     apply-singleton-bolt-layout.sh \
     bootstrap-compiler.sh \
     bootstrap-compiler-enc.sh \
+    bootstrap-openvox-gui-db.sh \
     hiera-list-remote.py \
     list-classes-remote.py \
     generate_bolt_token.py

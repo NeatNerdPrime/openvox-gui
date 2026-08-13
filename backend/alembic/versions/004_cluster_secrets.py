@@ -14,6 +14,10 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if "cluster_secrets" in insp.get_table_names():
+        return
     op.create_table(
         "cluster_secrets",
         sa.Column("name", sa.String(128), primary_key=True),

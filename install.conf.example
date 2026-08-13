@@ -32,13 +32,21 @@ PUPPET_SERVER_PORT="8140"
 # true  = always run bootstrap-compiler-enc.sh on this host
 # false = skip (dedicated GUI console; push ENC to compilers separately)
 #CONFIGURE_ENC="auto"
-# Comma-separated OpenVox GUI URLs for enc.py (OPENVOX_GUI_API_BASE).
-# Blank = https://localhost:APP_PORT (or http if SSL_ENABLED=false).
 #ENC_API_BASE="https://openvox.example.com:4567"
-# Compilers (no GUI install on them):
-#   bolt script run /opt/openvox-gui/scripts/bootstrap-compiler-enc.sh \
-#     --targets compiler1,compiler2 --run-as root -- \
-#     --api-base "$ENC_API_BASE" --enc-src /opt/openvox-gui/scripts/enc.py
+
+# ─── Application database (GUI ENC / users / secrets) ─────────
+# sqlite     = local file (default, fine for lab)
+# postgresql = provision remote DB via scripts/bootstrap-openvox-gui-db.sh
+#              (role, database, full schema, alembic stamp, optional Spock)
+#OPENVOX_GUI_DB_BACKEND="postgresql"
+# Superuser DSN used ONLY at install to CREATE role/db (not the app runtime user):
+#OPENVOX_GUI_DB_ADMIN_DSN="postgresql://postgres:SECRET@ovdb1.example.com:5432/postgres"
+#OPENVOX_GUI_DB_APP_PASSWORD="choose-app-password"
+# Multi-node (primary first) — empty DB on each host + optional Spock mesh:
+#OPENVOX_GUI_DB_HOSTS="ovdb1.example.com,ovdb2.example.com,ovdb3.example.com,ovdb4.example.com"
+#OPENVOX_GUI_DB_SPOCK="true"
+#OPENVOX_GUI_DB_REPL_USER="spock_repl"
+#OPENVOX_GUI_DB_REPL_PASSWORD="repl-secret"
 
 # ─── PuppetDB Settings ───────────────────────────────────────
 # FQDN of PuppetDB (defaults to hostname -f, often same as PuppetServer)
