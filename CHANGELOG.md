@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.2] - 2026-08-13 (fix — Orchestration version field NUL)
+
+### Fixed
+- **Infrastructure | Orchestration Overview:** Version showed `^@5.6.0`
+  because `bolt --version` stdout started with a NUL. Strip control
+  characters and display the SemVer token only (`5.6.0`).
+
 ## [3.11.1-beta.1] - 2026-08-13 (beta — clustered console train)
 
 ### Added

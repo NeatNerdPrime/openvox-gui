@@ -14,11 +14,25 @@ from ..middleware.security import rate_limit_heavy, concurrency_heavy
 from ..services import bolt_orchestration as bolt_orch
 from ..services.bolt_orchestration import BoltRunResultModel
 from ..utils.audit import audit_event
-from ..utils.validation import validate_command
+from ..utils.validation import validate_command, strip_ansi
 from .bolt_runtime import find_bolt, resolve_targets, run_bolt_command
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+import re
+
+_BOLT_VER_RE = re.compile(r"\d+\.\d+(?:\.\d+)?(?:[-+][A-Za-z0-9.]+)?")
+
+
+def _clean_bolt_version(raw: Optional[str]) -> Optional[str]:
+    """NUL/ANSI-free version. ``^@5.6.0`` is a leading \\x00 from sudo/pty."""
+    text = strip_ansi(raw or "").strip()
+    if not text:
+        return None
+    first = text.splitlines()[0].strip()
+    m = _BOLT_VER_RE.search(first)
+    return m.group(0) if m else first or None
 
 APPROVED_SAFE_PREFIXES = [
     "puppet agent -t",
@@ -77,7 +91,7 @@ async def bolt_status():
             env=os.environ.copy(),
         )
         if result.get("returncode") == 0:
-            version = (result.get("stdout") or "").strip() or None
+            version = _clean_bolt_version(result.get("stdout"))
         else:
             err = (result.get("stderr") or result.get("stdout") or "bolt --version failed").strip()
             # Fallback: run binary directly as service user (path-only check already passed)
@@ -89,7 +103,7 @@ async def bolt_status():
                 )
                 out, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
                 if proc.returncode == 0:
-                    version = out.decode("utf-8", errors="replace").strip() or version
+                    version = _clean_bolt_version(out.decode("utf-8", errors="replace")) or version
             except Exception:
                 pass
     except Exception as exc:

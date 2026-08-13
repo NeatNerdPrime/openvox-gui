@@ -475,7 +475,7 @@ function OverviewTab() {
                 <>
                   <Group gap="sm" mb="xs">
                     <Text size="sm" c="dimmed">Version:</Text>
-                    <Code>{status.version || 'unknown'}</Code>
+                    <Code>{cleanCliOutput(status.version || '').replace(/^\W+/, '') || 'unknown'}</Code>
                   </Group>
                   <Group gap="sm">
                     <Text size="sm" c="dimmed">Path:</Text>
