@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.24] - 2026-08-13 (fix — execution history 404 without trailing slash)
+
+### Fixed
+- **Orchestration | Execution history:** frontend calls `/api/execution-history`
+  (no trailing slash) but the router only matched `/api/execution-history/`, so
+  the SPA catch-all returned `API endpoint not found`. Register both `""` and
+  `"/"` for list and create.
+
 ## [3.11.1-alpha.23] - 2026-08-13 (fix — ENC groups shared across Classify + targets)
 
 ### Fixed

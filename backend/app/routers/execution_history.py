@@ -65,6 +65,10 @@ class ExecutionHistoryResponse(BaseModel):
         from_attributes = True
 
 
+# Collection routes: register both "" and "/" so clients work with or without
+# a trailing slash. SPA catch-all returns 404 for unmatched /api/* and does
+# not apply Starlette slash redirects.
+@router.post("", response_model=ExecutionHistoryResponse, include_in_schema=False)
 @router.post("/", response_model=ExecutionHistoryResponse)
 async def create_execution_history(
     entry: ExecutionHistoryCreate,
@@ -133,6 +137,7 @@ def _cutoff_naive(days: int) -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
 
+@router.get("", response_model=List[ExecutionHistoryResponse], include_in_schema=False)
 @router.get("/", response_model=List[ExecutionHistoryResponse])
 async def get_execution_history(
     days: int = Query(14, ge=1, le=90, description="Number of days of history to retrieve"),
