@@ -11,7 +11,7 @@ or character patterns before being interpolated into PQL query strings
 to prevent PQL injection attacks.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,39 +68,47 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
         return
 
     latest_ok: dict[str, datetime] = {}
+    short_hits: dict[str, list] = {}
     for row in rows:
         # node_name may be a single certname or a comma list / "all"
         for part in str(row.node_name or "").split(","):
             key = part.strip().lower()
             if not key or key in ("all", "ungrouped"):
                 continue
-            if row.executed_at:
-                ts = row.executed_at
-                if getattr(ts, "tzinfo", None):
-                    ts = ts.replace(tzinfo=None)
-                for alias in (key, key.split(".")[0]):
-                    if alias and (alias not in latest_ok or ts > latest_ok[alias]):
-                        latest_ok[alias] = ts
+            if not row.executed_at:
+                continue
+            ts = row.executed_at
+            if getattr(ts, "tzinfo", None):
+                ts = ts.replace(tzinfo=None)
+            if key not in latest_ok or ts > latest_ok[key]:
+                latest_ok[key] = ts
+            short_hits.setdefault(key.split(".")[0], []).append((key, ts))
 
     if not latest_ok:
         return
 
     for node in nodes:
         key = str(node.get("certname") or "").strip().lower()
-        short = key.split(".")[0]
-        live_at = latest_ok.get(key) or latest_ok.get(short)
+        live_at = latest_ok.get(key)
         if not live_at:
-            # history stored the other form (short vs FQDN)
+            # Same host, other spelling (ovca1.pdxc-it… vs ovca1.pdxc-it.corp.int-x.ai)
             for hk, ts in latest_ok.items():
-                if key == hk or key.startswith(hk + ".") or hk.startswith(key + "."):
+                if key == hk or (key.startswith(hk + ".") and hk.count(".") >= 1):
                     live_at = ts
                     break
+        if not live_at:
+            # Short name only if it maps to exactly one certname (not both sites)
+            hits = short_hits.get(key.split(".")[0]) or []
+            fqdns = {h[0] for h in hits}
+            if len(fqdns) == 1:
+                live_at = max(h[1] for h in hits)
         if not live_at:
             continue
         report_at = _parse_ts(node.get("report_timestamp"))
         report_status = (node.get("latest_report_status") or "").lower()
+        # 90s grace: report processor often lands after Bolt returns
         stale_failed = report_status == "failed" and (
-            report_at is None or live_at > report_at
+            report_at is None or live_at + timedelta(seconds=90) >= report_at
         )
         if stale_failed:
             node["node_index_status"] = node.get("node_index_status") or report_status

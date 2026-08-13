@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.4] - 2026-08-13 (fix — ovca1 PDXC/ATLC status flap)
+
+### Fixed
+- **Overview | Nodes Failed flap on ovca1.pdxc and ovca1.atlc:** both
+  certnames share the short host `ovca1`. Status overlay treated that as
+  one node, so each refresh could apply the *other site's* latest report
+  (often `failed`). Exact certname wins; short-name fallback only when
+  unique. Live-run matching no longer maps `ovca1` across sites.
+
 ## [3.11.1-beta.3] - 2026-08-13 (fix — Orchestration YAML ^@ prefix)
 
 ### Fixed

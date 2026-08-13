@@ -47,7 +47,9 @@ def _validate_report_hash(report_hash: str) -> str:
 
 
 def _cert_aliases(certname: str) -> List[str]:
-    """FQDN and short hostname — reports and nodes often disagree on which is used."""
+    """Exact certname plus short host. Callers must not treat short names as
+    globally unique — ovca1.pdxc… and ovca1.atlc… share ``ovca1``.
+    """
     c = (certname or "").strip().lower()
     if not c:
         return []
@@ -58,10 +60,34 @@ def _cert_aliases(certname: str) -> List[str]:
     return names
 
 
+def _short_host(certname: str) -> str:
+    return (certname or "").strip().lower().split(".")[0]
+
+
 def _report_ts(row: Optional[Dict]) -> str:
     if not row:
         return ""
     return str(row.get("receive_time") or row.get("end_time") or row.get("start_time") or "")
+
+
+def _pick_report_for_node(certname: str, by_exact: Dict[str, Dict]) -> Optional[Dict]:
+    """Resolve a node's latest report without cross-site short-name collisions.
+
+    Prefer exact certname. Fall back to short hostname only when exactly one
+    report in *by_exact* uses that short name.
+    """
+    key = (certname or "").strip().lower()
+    if not key:
+        return None
+    if key in by_exact:
+        return by_exact[key]
+    short = _short_host(key)
+    if not short:
+        return None
+    matches = [row for cn, row in by_exact.items() if _short_host(cn) == short]
+    if len(matches) == 1:
+        return matches[0]
+    return None
 
 
 class PuppetDBService:
@@ -438,17 +464,16 @@ class PuppetDBService:
             key = str(row.get("certname") or "").strip().lower()
             if not key:
                 continue
-            # Index FQDN and short name so ovcompiler1 matches ovcompiler1.site…
-            for alias in _cert_aliases(key):
-                prev = out.get(alias)
-                if prev is None or _report_ts(row) >= _report_ts(prev):
-                    out[alias] = row
+            prev = out.get(key)
+            if prev is None or _report_ts(row) >= _report_ts(prev):
+                out[key] = row
         return out
 
     async def get_newest_report_for_certname(self, certname: str) -> Optional[Dict]:
         """Newest report for one certname by receive_time (not the node index)."""
-        names = [n for n in _cert_aliases(certname) if n]
-        if not names:
+        # Exact certname only — do not query bare "ovca1" (collides across sites).
+        names = [(certname or "").strip().lower()]
+        if not names[0]:
             return None
         best: Optional[Dict] = None
         for raw in names:
@@ -482,13 +507,7 @@ class PuppetDBService:
         for node in nodes:
             key = str(node.get("certname") or "").strip().lower()
             node["node_index_status"] = node.get("latest_report_status")
-            row = None
-            for alias in _cert_aliases(key):
-                cand = latest.get(alias)
-                if cand is None:
-                    continue
-                if row is None or _report_ts(cand) >= _report_ts(row):
-                    row = cand
+            row = _pick_report_for_node(key, latest)
             if not row:
                 node["status_source"] = "node_index"
                 continue
