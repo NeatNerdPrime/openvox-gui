@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.14] - 2026-08-13 (fix — ENC envs = control_repo branches via compilers)
+
+### Fixed
+- **ENC environments** are control_repo Git branches (r10k 1:1). Discovery on
+  dedicated consoles now: compiler HTTP race → **Bolt list of compiler codedir**
+  (`list-environments-remote.py`) → PuppetDB → local codedir only if co-located.
+- Environments tab copy: control_repo branches via compilers, not GUI disk.
+
 ## [3.11.1-alpha.13] - 2026-08-13 (docs/ui — ENC environments not on console disk)
 
 ### Fixed

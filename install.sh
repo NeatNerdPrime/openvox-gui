@@ -774,6 +774,7 @@ for script in \
     bootstrap-openvox-gui-db.sh \
     hiera-list-remote.py \
     list-classes-remote.py \
+    list-environments-remote.py \
     generate_bolt_token.py
 do
     if [ -f "${SCRIPT_DIR}/scripts/${script}" ]; then

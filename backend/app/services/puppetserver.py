@@ -216,12 +216,72 @@ class PuppetServerService:
                 for t in pending:
                     t.cancel()
 
-        # PuppetDB knows environments that have reported nodes
+        # Bolt: list control_repo environments on a compiler (r10k basedir).
+        # These directory names are 1:1 with control_repo Git branches after deploy.
+        try:
+            from .cluster_config import deploy_targets, is_clustered
+            from pathlib import Path as _Path
+
+            if is_clustered():
+                targets = deploy_targets()
+                script = _Path("/opt/openvox-gui/scripts/list-environments-remote.py")
+                if targets and script.is_file():
+                    from ..routers.bolt_runtime import run_bolt_command
+                    from ..routers.deploy import _extract_bolt_json, _script_body
+                    import json as _json
+
+                    host = targets[0]
+                    bolt = await run_bolt_command(
+                        [
+                            "script",
+                            "run",
+                            str(script),
+                            "--targets",
+                            host,
+                            "--run-as",
+                            "root",
+                            "--no-tty",
+                            "--format",
+                            "json",
+                        ],
+                        timeout=60,
+                    )
+                    data = _extract_bolt_json(bolt.get("stdout") or "")
+                    item: Dict[str, Any] = {}
+                    if isinstance(data, dict) and data.get("items"):
+                        item = (
+                            data["items"][0]
+                            if isinstance(data["items"][0], dict)
+                            else {}
+                        )
+                    body = (_script_body(item.get("value") or {}) or "").strip()
+                    if body.startswith("{"):
+                        parsed = _json.loads(body)
+                        names = [
+                            str(n)
+                            for n in (parsed.get("environments") or [])
+                            if n
+                        ]
+                        if names:
+                            logger.info(
+                                "environments from bolt@%s codedir count=%s",
+                                host,
+                                len(names),
+                            )
+                            return sorted(set(names))
+                    errors.append(f"bolt@{host}: empty environments scan")
+                elif is_clustered() and not targets:
+                    errors.append("clustered: no code_deploy_targets for env scan")
+        except Exception as e:
+            errors.append(f"bolt-envs: {e}")
+            logger.warning("Bolt environment list failed: %s", e)
+
+        # PuppetDB: only environments that have had node reports (subset)
         try:
             from .puppetdb import puppetdb_service
 
             pdb_envs = await puppetdb_service.get_environments()
-            names: List[str] = []
+            names = []
             if isinstance(pdb_envs, list):
                 for item in pdb_envs:
                     if isinstance(item, dict) and item.get("name"):
@@ -236,12 +296,13 @@ class PuppetServerService:
             errors.append(f"puppetdb: {e}")
             logger.warning("PuppetDB environments failed: %s", e)
 
+        # Co-located GUI only: walk local codedir (control_repo after r10k)
         local = self.list_environments_local()
         if local:
             logger.info("environments from local codedir count=%s", len(local))
             return local
         if errors:
-            logger.warning("No environments discovered; errors=%s", errors[:5])
+            logger.warning("No environments discovered; errors=%s", errors[:8])
         return local
 
     async def fetch_environment_modules(self, environment: str = "production") -> List[Dict[str, str]]:

@@ -657,11 +657,10 @@ function EnvironmentsTab() {
         <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add Environment</Button>
       </Group>
       <Alert variant="light" color="blue" mb="xs">
-        Environments are <strong>not</strong> read from this console&apos;s disk (there is no
-        control_repo here). They are discovered from catalog compilers via{' '}
-        <Code>/puppet/v3/environments</Code> (<Code>OPENVOX_GUI_PUPPET_SERVER_HOST</Code> and
-        Settings → Cluster compilers), then PuppetDB. Classes and parameters set here apply to
-        every node classified into that environment.
+        Environments are the <strong>control_repo Git branches</strong> (1:1 with r10k). This
+        console does not hold the control_repo. Names are discovered from compilers (
+        <Code>/puppet/v3/environments</Code> or the live codedir after Stage/Activate), then
+        PuppetDB. Classes and parameters set here apply to every node in that environment.
       </Alert>
       <Card withBorder shadow="sm">
         <Box style={{ maxHeight: 500, minHeight: 0, overflow: 'hidden' }}>
