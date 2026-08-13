@@ -243,13 +243,64 @@ export function MetricsPerformancePage({
 
   // Catch render errors from bad JMX data
   try {
-    return <MetricsPerformanceContent embedded={embedded} perfData={perfData} serverData={serverData} serverHistory={serverHistory} expanded={expanded} toggleExpand={toggleExpand} refreshRate={refreshRate} setRefreshRate={setRefreshRate} lastRefresh={lastRefresh} fetchData={() => refetch()} clearHistory={() => { setServerHistory([]); saveServerHistory([]); localStorage.setItem(SERVER_HISTORY_KEY + '_v', String(HISTORY_VERSION)); }} refreshing={refreshing} />;
+    return (
+      <MetricsPerformanceContent
+        embedded={embedded}
+        perfData={perfData}
+        serverData={serverData}
+        serverHistory={serverHistory}
+        expanded={expanded}
+        toggleExpand={toggleExpand}
+        refreshRate={refreshRate}
+        setRefreshRate={setRefreshRate}
+        lastRefresh={lastRefresh}
+        fetchData={() => refetch()}
+        clearHistory={() => {
+          setServerHistory([]);
+          saveServerHistory([]);
+          localStorage.setItem(SERVER_HISTORY_KEY + '_v', String(HISTORY_VERSION));
+        }}
+        refreshing={refreshing}
+        scope={scope}
+        setScope={setScope}
+      />
+    );
   } catch (e: any) {
     return <Alert color="red" title="Render Error">{String(e?.message || e)}</Alert>;
   }
 }
 
-function MetricsPerformanceContent({ embedded = false, perfData, serverData, serverHistory, expanded, toggleExpand, refreshRate, setRefreshRate, lastRefresh, fetchData, clearHistory, refreshing = false }: { embedded?: boolean; perfData: any; serverData: any; serverHistory: any[]; expanded: string | null; toggleExpand: (id: string) => void; refreshRate: string; setRefreshRate: (v: string) => void; lastRefresh: Date; fetchData: () => void; clearHistory: () => void; refreshing?: boolean }) {
+function MetricsPerformanceContent({
+  embedded = false,
+  perfData,
+  serverData,
+  serverHistory,
+  expanded,
+  toggleExpand,
+  refreshRate,
+  setRefreshRate,
+  lastRefresh,
+  fetchData,
+  clearHistory,
+  refreshing = false,
+  scope,
+  setScope,
+}: {
+  embedded?: boolean;
+  perfData: any;
+  serverData: any;
+  serverHistory: any[];
+  expanded: string | null;
+  toggleExpand: (id: string) => void;
+  refreshRate: string;
+  setRefreshRate: (v: string) => void;
+  lastRefresh: Date;
+  fetchData: () => void;
+  clearHistory: () => void;
+  refreshing?: boolean;
+  scope: ScopeSelection;
+  setScope: (s: ScopeSelection) => void;
+}) {
 
   // Agent-side data — stride + cap before Recharts bind
   const rawTrends = perfData.run_time_trends || [];

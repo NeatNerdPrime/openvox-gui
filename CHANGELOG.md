@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-alpha.10] - 2026-08-13 (fix — Monitoring Performance crash)
+
+### Fixed
+- **Insights | Monitoring / Run Performance:** `scope is not defined` crash —
+  `MetricsPerformanceContent` used `scope` without receiving it as a prop from
+  the parent page.
+
 ## [3.11.1-alpha.9] - 2026-08-13 (fix — Postgres user create / bcrypt)
 
 ### Fixed
