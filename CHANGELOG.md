@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.1] - 2026-08-13 (beta — clustered console train)
+
+### Added
+- Clustered Log Viewer host picker (compilers, OpenVoxDB, peer consoles) via Bolt.
+- Insights trickle refresh (Node Health / Compliance / dashboard cache).
+- ENC environments from control_repo; shared ENC catalog across Classify tabs.
+
+### Fixed
+- Deploy allowlist ships `read-logs-remote.py`.
+- Nodes/Reports status: FQDN vs short name, live run vs stale Failed, group badge.
+- ENC group create on Postgres (naive UTC timestamps).
+- Execution history 404 without trailing slash.
+- Bolt/r10k output spinner/`^@` noise.
+- Environments tab empty after false “synced” toast.
+
+Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
+
 ## [3.11.1-alpha.33] - 2026-08-13 (fix — ship read-logs-remote.py in installers)
 
 ### Fixed
