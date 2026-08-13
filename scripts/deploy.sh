@@ -189,8 +189,7 @@ if [ -d "${REPO_DIR}/docs" ]; then
     chmod -R a+rX "${INSTALL_DIR}/docs" 2>/dev/null || true
 fi
 mkdir -p "${INSTALL_DIR}/etc"
-for etcf in allowed-environments.txt.example installer-ip-allowlist.txt.example \
-            openvox-enc.sysconfig.example README.md; do
+for etcf in allowed-environments.txt.example installer-ip-allowlist.txt.example README.md; do
     if [ -f "${REPO_DIR}/etc/${etcf}" ]; then
         cp -f "${REPO_DIR}/etc/${etcf}" "${INSTALL_DIR}/etc/${etcf}"
     fi

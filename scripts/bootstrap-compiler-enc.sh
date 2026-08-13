@@ -34,8 +34,6 @@
 # Co-located single-server (GUI on the same host as puppetserver):
 #   install.sh calls this with --api-base https://localhost:${APP_PORT}
 #   and --enc-src ${INSTALL_DIR}/scripts/enc.py (dest still /usr/local/bin/enc.py)
-#
-# See docs/COMPILER_ENC.md
 ###############################################################################
 set -euo pipefail
 

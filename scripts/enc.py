@@ -26,8 +26,6 @@ Environment variables (must be set for the **puppetserver** process):
       Example (ATLC has ENC data, PDXC may be empty):
         https://openvox.atlc-it.corp.int-x.ai:4567,https://openvox.pdxc-it.corp.int-x.ai:4567
       Default if unset: https://localhost:4567
-
-See docs/COMPILER_ENC.md
 """
 import os
 import sys

@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.11.1-alpha.5**
+**OpenVox GUI Version 3.11.1-alpha.6**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -329,7 +329,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.11.1-alpha.5"}` if everything is working.
+You should see `{"status":"ok","version":"3.11.1-alpha.6"}` if everything is working.
 
 ---
 
@@ -737,21 +737,12 @@ When **Settings → Cluster** is set to **clustered**, OpenVox GUI can:
    - **Stage** code into a staging codedir on all targets (OpenBolt uploads `r10k-stage-activate.sh` into `/home/bolt/.bolt/tmp` — not `/tmp`, which CIS mounts `noexec` — and runs it as root on each FQDN). `install.sh` and `enable-console-orchestration.sh` create that directory on the console; compilers need the same path via `profiles::base::bolt_user` (or the one-shot `install -d` in TROUBLESHOOTING).  
    - **Activate** staged code to the live codedir so cutover is coordinated across the set.  
    - Compilers need r10k + `r10k.yaml` and SSH as `bolt@` (`profiles::base::bolt_user`). The console is not a compiler — Stage will not silently r10k the GUI host.  
-   - **First install (manual, until Puppet owns it):** on each compiler run `scripts/bootstrap-compiler.sh` (AIO `gem install r10k`, git, Bolt tmpdir). Copy `/etc/puppetlabs/r10k/r10k.yaml` from a working compiler — the script will not invent a control-repo URL. From a console after `bolt@` works: `bolt script run /opt/openvox-gui/scripts/bootstrap-compiler.sh --targets <compilers> --run-as root --no-tty`. Pass `--enc-api-base 'https://gui-with-data:4567,…'` (or run `bootstrap-compiler-enc.sh` alone) so compilers get **`/usr/local/bin/enc.py`**, **`/etc/sysconfig/openvox-enc`**, puppetserver `EnvironmentFile`, and `node_terminus=exec`. See **[docs/COMPILER_ENC.md](docs/COMPILER_ENC.md)**. `install.sh` also installs r10k on the console when AIO Ruby is present, and auto-wires ENC when local puppetserver is detected (`CONFIGURE_ENC=auto`).
+   - **First install (manual, until Puppet owns it):** on each compiler run `scripts/bootstrap-compiler.sh` (AIO `gem install r10k`, git, Bolt tmpdir). Copy `/etc/puppetlabs/r10k/r10k.yaml` from a working compiler — the script will not invent a control-repo URL. From a console after `bolt@` works: `bolt script run /opt/openvox-gui/scripts/bootstrap-compiler.sh --targets <compilers> --run-as root --no-tty`. Optional ENC: `--enc-api-base` or `bootstrap-compiler-enc.sh`. `install.sh` also installs r10k on the console when AIO Ruby is present, and auto-wires ENC when local puppetserver is detected (`CONFIGURE_ENC=auto`).
    - Single-host “Deploy Now” remains for classic r10k on the local box.  
    - **Data | Hiera Data Files** on a dedicated console reads the live
-     codedir on the first code-deploy target via Bolt (`hiera-list-remote.py`).
-     **Classification | Common Classes** uses the compiler VIP
-     (`OPENVOX_GUI_PUPPET_SERVER_HOST` → `/puppet/v3/environment_classes`)
-     with Bolt fallback (`list-classes-remote.py`). Do not copy the
+     codedir on the first code-deploy target via Bolt. Do not copy the
      control repo onto the GUI host. The stock
      `/etc/puppetlabs/puppet/hiera.yaml` is unused.
-   - **Install-time knobs (install.conf):** `PUPPET_SERVER_HOST` = compiler VIP;
-     `PUPPET_CA_HOST` = CA VIP when different; `CONFIGURE_ENC` / `ENC_API_BASE`
-     (primary classification console **first** without shared Postgres). Scripts
-     and docs land under `/opt/openvox-gui/scripts/` and
-     `/opt/openvox-gui/docs/` via `install.sh` / `update_local.sh` /
-     `deploy.sh` — no ad-hoc scp for ENC/class/Hiera helpers.
 
 4. **Classification segmentation**  
    Seeded ENC groups such as **Puppet Compiler** and **PuppetDB**, with configured FQDNs attached, so infrastructure roles are first-class in **Classification and Code → Classification**.

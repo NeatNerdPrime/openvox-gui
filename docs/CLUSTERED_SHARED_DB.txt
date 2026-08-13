@@ -1,22 +1,13 @@
 OpenVox GUI — two consoles, shared ENC database, clustered switchover
 =====================================================================
-Date: 2026-08-10 (superseded procedure detail: 2026-08-13)
+Date: 2026-08-10
 Estate: PDXC + ATLC
 Consoles: openvox.pdxc-it.corp.int-x.ai  AND  openvox.atlc-it.corp.int-x.ai
 PuppetDB Postgres: four ovdb* hosts (PG 17 + Spock)
 Code train: openvox-gui v3.11.0-alpha.9+ (this work)
 
-**Canonical procedure (database + Spock + VIP + productization notes):**
-  docs/OPENVOX_GUI_SHARED_DB.md
-
 Read this top to bottom tomorrow morning. Do not skip. Do not put GUI
 tables inside the PuppetDB database named "puppetdb".
-
-IMPORTANT: This is a separate DATABASE named openvox_gui — NOT a
-PostgreSQL TABLESPACE. Spock on database puppetdb does NOT create or
-replicate openvox_gui. CREATE DATABASE on ovdb1 does not appear on
-other ovdb nodes until you create it on each node and configure Spock
-inside openvox_gui (see OPENVOX_GUI_SHARED_DB.md).
 
 
 ------------------------------------------------------------------------

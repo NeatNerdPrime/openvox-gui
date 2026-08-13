@@ -769,23 +769,22 @@ do
 done
 log_ok "Copied scripts"
 
-# Operator docs (COMPILER_ENC, METRICS, PERFORMANCE, …) — live under INSTALL_DIR/docs
+# Operator docs (METRICS, PERFORMANCE, …) under INSTALL_DIR/docs
 if [ -d "${SCRIPT_DIR}/docs" ]; then
     rm -rf "${INSTALL_DIR}/docs"
     cp -a "${SCRIPT_DIR}/docs" "${INSTALL_DIR}/"
     chmod -R a+rX "${INSTALL_DIR}/docs" 2>/dev/null || true
-    log_ok "Copied docs/ (including COMPILER_ENC.md)"
+    log_ok "Copied docs/"
 fi
 
-# etc/ examples (sysconfig ENC, allowlists) — never overwrite operator live files
+# etc/ examples — never overwrite operator live files
 mkdir -p "${INSTALL_DIR}/etc"
-for etcf in allowed-environments.txt.example installer-ip-allowlist.txt.example \
-            openvox-enc.sysconfig.example README.md; do
+for etcf in allowed-environments.txt.example installer-ip-allowlist.txt.example README.md; do
     if [ -f "${SCRIPT_DIR}/etc/${etcf}" ]; then
         cp -f "${SCRIPT_DIR}/etc/${etcf}" "${INSTALL_DIR}/etc/${etcf}"
     fi
 done
-log_ok "Staged etc/ examples (openvox-enc.sysconfig.example, allowlists)"
+log_ok "Staged etc/ examples"
 
 # Copy the ovox CLI source tree (pip-installable package).
 # This will be installed into the venv so that /opt/openvox-gui/venv/bin/ovox exists.
@@ -1175,18 +1174,14 @@ if [ "$_do_enc" = "true" ]; then
             log_ok "Local ENC wired (external_nodes=/usr/local/bin/enc.py, OPENVOX_GUI_API_BASE=${_enc_base})"
             log_info "  Restart puppetserver when ready so the unit loads /etc/sysconfig/openvox-enc"
         else
-            log_warn "ENC bootstrap failed — see docs/COMPILER_ENC.md"
+            log_warn "ENC bootstrap failed — set node_terminus/external_nodes and OPENVOX_GUI_API_BASE manually"
         fi
     else
         log_warn "bootstrap-compiler-enc.sh missing — ENC not configured automatically"
     fi
 else
     log_info "Local ENC skipped (CONFIGURE_ENC=${CONFIGURE_ENC}; dedicated console?)"
-    log_info "  Wire compilers (required for catalogs to see Classification):"
-    log_info "    bolt script run ${INSTALL_DIR}/scripts/bootstrap-compiler-enc.sh --targets <compilers> \\"
-    log_info "      --run-as root -- --api-base 'https://$(hostname -f):${APP_PORT}' \\"
-    log_info "      --enc-src ${INSTALL_DIR}/scripts/enc.py --force --restart"
-    log_info "  See ${INSTALL_DIR}/docs/COMPILER_ENC.md or docs/COMPILER_ENC.md in the package"
+    log_info "  Compilers: bolt script run ${INSTALL_DIR}/scripts/bootstrap-compiler-enc.sh --api-base 'https://gui:4567,...'"
 fi
 
 # ─── Step 7: Systemd Service ─────────────────────────────────
@@ -1749,25 +1744,14 @@ if [ -d "/etc/letsencrypt/live" ]; then
     echo -e "      policy above) rather than editing the managed file."
 fi
 echo
-echo -e "  ${BOLD}ENC Integration (catalog compilers — required for Classification to apply):${NC}"
-echo -e "    Full guide: docs/COMPILER_ENC.md (also under ${INSTALL_DIR}/docs/ after install if copied)."
-echo -e "    Runtime on every compiler:"
-echo -e "      external_nodes = /usr/local/bin/enc.py"
-echo -e "      /etc/sysconfig/openvox-enc  →  OPENVOX_GUI_API_BASE=https://this-console:${APP_PORT},..."
-echo -e "      systemd drop-in: puppetserver EnvironmentFile=-/etc/sysconfig/openvox-enc"
-echo -e "    Single-server: CONFIGURE_ENC=auto wires the above when puppetserver is local."
-echo -e "    Dedicated console: wire compilers from here (do not run external_nodes on the console):"
+echo -e "  ${BOLD}ENC Integration:${NC}"
+echo -e "    Compilers need enc.py at compile time (not dedicated consoles)."
+echo -e "    Single-server / co-located: CONFIGURE_ENC=auto wires external_nodes when puppetserver is local."
+echo -e "    Dedicated console — push ENC to compilers:"
 echo -e "      sudo -u bolt bolt script run ${INSTALL_DIR}/scripts/bootstrap-compiler-enc.sh \\"
 echo -e "        --targets <compilers> --run-as root --no-tty --project /etc/puppetlabs/bolt -- \\"
-echo -e "        --api-base 'https://$(hostname -f):${APP_PORT}' \\"
-echo -e "        --enc-src ${INSTALL_DIR}/scripts/enc.py --force --restart"
-echo -e "    Multi-console without shared Postgres: put the console that has ENC data FIRST"
-echo -e "      in OPENVOX_GUI_API_BASE (first HTTP 200 wins; empty on the other is split SQLite)."
-echo -e "    Smoke on a compiler after restart:"
-echo -e "      set -a; . /etc/sysconfig/openvox-enc; set +a"
-echo -e "      /usr/local/bin/enc.py <agent-certname>"
-echo -e "    Class picker / Hiera on dedicated consoles need OpenBolt + Stage targets;"
-echo -e "    list-classes-remote.py and hiera-list-remote.py are under scripts/."
+echo -e "        --api-base 'https://$(hostname -f):${APP_PORT}' --enc-src ${INSTALL_DIR}/scripts/enc.py"
+echo -e "    puppet.conf [server]: node_terminus = exec ; external_nodes = /usr/local/bin/enc.py"
 echo
 
 if [ "$CONFIGURE_PKG_REPO" = "true" ]; then

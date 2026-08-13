@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.11.1-alpha.5**
+**OpenVox GUI Version 3.11.1-alpha.6**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -127,7 +127,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.11.1-alpha.5"}
+   # Should return: {"status":"ok","version":"3.11.1-alpha.6"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1212,38 +1212,12 @@ These commands run privileged operations (reading configs, restarting services).
 - Manual workaround in UI: “Add class by name” (3.11.1-alpha.2+).
 
 ### Problem: Compilers ignore ENC classes / agent gets empty catalog
-Full checklist: **`docs/COMPILER_ENC.md`** (also `/opt/openvox-gui/docs/COMPILER_ENC.md` after install/update).
-
 - **enc.py runs only on compilers** at catalog compile. Consoles store classification; they do not need `external_nodes` unless they also compile.
-- **Console curl ≠ compiler path.** `curl …/api/enc/classify/…` on the GUI only proves that console’s DB. Agents compile on the **compiler VIP**.
-- **Required on every compiler** (3.11.1-alpha.4+ defaults):
-  | Item | Value |
-  |------|--------|
-  | Script | **`/usr/local/bin/enc.py`** (not sbin; not only `/opt/openvox-gui/scripts/`) |
-  | Env | **`/etc/sysconfig/openvox-enc`** with `OPENVOX_GUI_API_BASE=…` |
-  | Unit | drop-in `EnvironmentFile=-/etc/sysconfig/openvox-enc` on **puppetserver** |
-  | puppet.conf | `node_terminus = exec` + `external_nodes = /usr/local/bin/enc.py` |
-- Without the sysconfig + drop-in, a root shell can show good `enc.py` output while **puppetserver** still uses default `https://localhost:4567` and empty classes.
-- Install-time:
-  - Co-located: `install.sh` `CONFIGURE_ENC=auto` → `bootstrap-compiler-enc.sh` → `/usr/local/bin/enc.py`
-  - Multi-compiler from a console:
-    ```bash
-    sudo -u bolt bolt script run /opt/openvox-gui/scripts/bootstrap-compiler-enc.sh \
-      --targets ovcompiler1.example.com,ovcompiler2.example.com \
-      --run-as root --no-tty --project /etc/puppetlabs/bolt -- \
-      --api-base 'https://openvox.site-with-data.example.com:4567,https://openvox.other.example.com:4567' \
-      --enc-src /opt/openvox-gui/scripts/enc.py --force --restart
-    ```
-- Smoke on a compiler:
-  ```bash
-  set -a; . /etc/sysconfig/openvox-enc; set +a
-  /usr/local/bin/enc.py someagent.example.com
-  grep -E 'node_terminus|external_nodes' /etc/puppetlabs/puppet/puppet.conf
-  systemctl show puppetserver -p EnvironmentFiles
-  ```
-- **Split SQLite:** each console has its own DB until shared Postgres. First URL in `OPENVOX_GUI_API_BASE` that returns HTTP 200 wins (including empty `classes: {}`). Put the console that has classification **first**. Curl both consoles separately to compare.
-- Restart **puppetserver** (not host reboot) after ENC env or drop-in changes.
-- ENC good but still no resources → Stage/Activate so the class exists under the live environment on the compiler.
+- Compilers need: `/usr/local/bin/enc.py`, `node_terminus=exec`, `external_nodes` pointing at that script, and `OPENVOX_GUI_API_BASE` available to **puppetserver** (e.g. `/etc/sysconfig/openvox-enc` + systemd `EnvironmentFile`).
+- Use `scripts/bootstrap-compiler-enc.sh` from a console via Bolt, or `install.sh` `CONFIGURE_ENC=auto` when puppetserver is co-located.
+- Smoke: `set -a; . /etc/sysconfig/openvox-enc; set +a; /usr/local/bin/enc.py <certname>`
+- Restart **puppetserver** after ENC env or drop-in changes.
+- ENC YAML good but no resources → code missing on the compiler (Stage/Activate).
 
 ### Problem: ENC Unclassified or Inventory still lists hosts after `ca clean`
 - **3.10.4** defines the live fleet as **active PuppetDB ∩ signed CA** (`get_live_nodes`). CA-cleaned hosts must not appear on Nodes, Inventory, ENC Unclassified, Dashboard, or Node Health. Open **Classification (ENC)** once after upgrade so SQLite reconciliation prunes stale ENC rows.
