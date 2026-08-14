@@ -20,6 +20,8 @@ import {
 } from 'recharts';
 import { metrics } from '../services/api';
 import { useApi } from '../hooks/useApi';
+import { timeAgo } from '../utils/timeAgo';
+import { CHART_LINE_TYPE, smoothTimeSeries } from '../utils/chartDefaults';
 import {
   FleetScopeSelect,
   loadStoredScope,
@@ -57,16 +59,6 @@ const MAX_WINDOW_HOURS = 168;
 export function clampWindowHours(n: number): number {
   if (!Number.isFinite(n)) return 24;
   return Math.min(MAX_WINDOW_HOURS, Math.max(MIN_WINDOW_HOURS, n));
-}
-
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function NodeList({ title, nodes, color }: { title: string; nodes: any[]; color: string }) {
@@ -172,7 +164,7 @@ export function MetricsCompliancePage({
 
   // Keep API hour buckets ("YYYY-MM-DDTHH") as-is; XAxis tickFormatter renders HH:00.
   // Do not Date.parse — partial timestamps become Invalid Date.
-  const trendData = data.trend || [];
+  const trendData = smoothTimeSeries(data.trend || [], 3);
 
   const statCards = [
     { label: 'Total Nodes', value: data.total, color: 'blue' },
@@ -285,7 +277,8 @@ export function MetricsCompliancePage({
         {/* Trend area chart */}
         <Grid.Col span={{ base: 12, md: 7 }}>
           <Card withBorder shadow="sm" padding="lg">
-            <Title order={4} mb="md">Compliance Trend</Title>
+            <Title order={4} mb={4}>Compliance Trend</Title>
+            <Text size="xs" c="dimmed" mb="md">3-hour moving average of hourly buckets</Text>
             <ResponsiveContainer width="100%" height={400}>
               <AreaChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
@@ -302,9 +295,9 @@ export function MetricsCompliancePage({
                 <YAxis allowDecimals={false} />
                 <ReTooltip contentStyle={{ backgroundColor: "rgba(20,20,33,0.95)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.3)", padding: "10px 14px", fontSize: 12, color: "#e0e0e0" }} labelStyle={{ fontWeight: 600, color: "#fff", marginBottom: 4 }} />
                 <Legend />
-                <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="compliant" stroke={STATUS_COLORS.compliant} fill={STATUS_COLORS.compliant} fillOpacity={0.4} strokeWidth={2} name="Compliant" />
-                <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="drifted" stroke={STATUS_COLORS.drifted} fill={STATUS_COLORS.drifted} fillOpacity={0.4} strokeWidth={2} name="Drifted" />
-                <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="failed" stroke={STATUS_COLORS.failed} fill={STATUS_COLORS.failed} fillOpacity={0.4} strokeWidth={2} name="Failed" />
+                <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="compliant" stroke={STATUS_COLORS.compliant} fill={STATUS_COLORS.compliant} fillOpacity={0.4} strokeWidth={2} name="Compliant" />
+                <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="drifted" stroke={STATUS_COLORS.drifted} fill={STATUS_COLORS.drifted} fillOpacity={0.4} strokeWidth={2} name="Drifted" />
+                <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="failed" stroke={STATUS_COLORS.failed} fill={STATUS_COLORS.failed} fillOpacity={0.4} strokeWidth={2} name="Failed" />
               </AreaChart>
             </ResponsiveContainer>
           </Card>

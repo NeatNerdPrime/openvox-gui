@@ -15,7 +15,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend,
 } from 'recharts';
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
-import { downsampleSeries } from '../utils/chartDefaults';
+import { CHART_LINE_TYPE, downsampleSeries, smoothTimeSeries } from '../utils/chartDefaults';
 import { useApi } from '../hooks/useApi';
 import { performance as perfApi, metrics } from '../services/api';
 import {
@@ -304,13 +304,15 @@ function MetricsPerformanceContent({
 
   // Agent-side data — stride + cap before Recharts bind
   const rawTrends = perfData.run_time_trends || [];
-  const trends = downsampleSeries(
-    rawTrends.filter((_: any, i: number) => i % 2 === 0).slice(-240),
-    120,
+  const trends = smoothTimeSeries(
+    downsampleSeries(
+      rawTrends.filter((_: any, i: number) => i % 2 === 0).slice(-240),
+      120,
+    ),
   );
-  // Live JMX series can grow; bind a downsampled view so 10+ charts stay cheap
+  // Live JMX series can grow; bind a downsampled + SMA view so 10+ charts stay cheap
   const serverHistoryChart = useMemo(
-    () => downsampleSeries(serverHistory, 120),
+    () => smoothTimeSeries(downsampleSeries(serverHistory, 120)),
     [serverHistory],
   );
   const nodeComparison = (perfData.node_comparison || [])
@@ -392,7 +394,7 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatSeconds(v), n]} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="total" stroke="#0D6EFD" fill="url(#gT)" strokeWidth={2} dot={false} name="Total" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="total" stroke="#0D6EFD" fill="url(#gT)" strokeWidth={2} dot={false} name="Total" />
         </AreaChart>
       ),
     },
@@ -405,10 +407,10 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatSeconds(v), n]} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="fact_generation" stroke="#2ecc71" fill="none" strokeWidth={1.5} dot={false} name="Fact Gen" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="plugin_sync" stroke="#9b59b6" fill="none" strokeWidth={1.5} dot={false} name="Plugin Sync" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="config_retrieval" stroke="#e67e22" fill="none" strokeWidth={1.5} dot={false} name="Config Retrieval" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="catalog_application" stroke="#e74c3c" fill="none" strokeWidth={1.5} dot={false} name="Catalog Apply" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="fact_generation" stroke="#2ecc71" fill="none" strokeWidth={1.5} dot={false} name="Fact Gen" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="plugin_sync" stroke="#9b59b6" fill="none" strokeWidth={1.5} dot={false} name="Plugin Sync" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="config_retrieval" stroke="#e67e22" fill="none" strokeWidth={1.5} dot={false} name="Config Retrieval" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="catalog_application" stroke="#e74c3c" fill="none" strokeWidth={1.5} dot={false} name="Catalog Apply" />
         </AreaChart>
       ),
     },
@@ -422,7 +424,7 @@ function MetricsPerformanceContent({
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatSeconds(v), n]} />
           <Legend wrapperStyle={{ fontSize: 9 }} />
           {nodeComparison.map((n: any, i: number) => (
-            <Area isAnimationActive={false} animationDuration={0} key={n.certname} type="natural" dataKey={n.certname}
+            <Area isAnimationActive={false} animationDuration={0} key={n.certname} type={CHART_LINE_TYPE} dataKey={n.certname}
               stroke={COLORS[i % COLORS.length]} fill="none" strokeWidth={1.5}
               dot={false} connectNulls name={shortName(n.certname)} />
           ))}
@@ -439,9 +441,9 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="catalog_ms" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Catalog" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="facts_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Facts" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="report_ms" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Report" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="catalog_ms" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Catalog" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="facts_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Facts" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="report_ms" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Report" />
         </AreaChart>
       ),
     },
@@ -454,9 +456,9 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="store_catalog_ms" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Catalog" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="store_facts_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Facts" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="store_report_ms" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Report" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="store_catalog_ms" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Catalog" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="store_facts_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Facts" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="store_report_ms" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Report" />
         </AreaChart>
       ),
     },
@@ -469,12 +471,12 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} allowDecimals={false} />
           <ReTooltip {...TOOLTIP_STYLE} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="write_active" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Write Active" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="write_idle" stroke="#2ecc71" fill="none" strokeWidth={1.5} dot={false} name="Write Idle" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="read_active" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Read Active" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="read_idle" stroke="#1abc9c" fill="none" strokeWidth={1.5} dot={false} name="Read Idle" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="write_pending" stroke="#f39c12" fill="none" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Write Pending" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="read_pending" stroke="#9b59b6" fill="none" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Read Pending" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="write_active" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Write Active" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="write_idle" stroke="#2ecc71" fill="none" strokeWidth={1.5} dot={false} name="Write Idle" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="read_active" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Read Active" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="read_idle" stroke="#1abc9c" fill="none" strokeWidth={1.5} dot={false} name="Read Idle" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="write_pending" stroke="#f39c12" fill="none" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Write Pending" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="read_pending" stroke="#9b59b6" fill="none" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Read Pending" />
         </AreaChart>
       ),
     },
@@ -487,8 +489,8 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="http_query_ms" stroke="#3498db" fill="none" strokeWidth={2} dot={false} name="Query API" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="http_cmd_ms" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Command API" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="http_query_ms" stroke="#3498db" fill="none" strokeWidth={2} dot={false} name="Query API" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="http_cmd_ms" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Command API" />
         </AreaChart>
       ),
     },
@@ -502,8 +504,8 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="hash_match_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Hash Match" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="hash_miss_ms" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Hash Miss" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="hash_match_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Hash Match" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="hash_miss_ms" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Hash Miss" />
         </AreaChart>
       ),
     },
@@ -520,8 +522,8 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} />
           <ReTooltip {...TOOLTIP_STYLE} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="gc_young_count" stroke="#3498db" fill="none" strokeWidth={2} dot={false} name="Young Gen Collections" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="gc_old_count" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Old Gen Collections" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="gc_young_count" stroke="#3498db" fill="none" strokeWidth={2} dot={false} name="Young Gen Collections" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="gc_old_count" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Old Gen Collections" />
         </AreaChart>
       ),
     },
@@ -539,8 +541,8 @@ function MetricsPerformanceContent({
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} />
           <ReTooltip {...TOOLTIP_STYLE} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="nodes" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Nodes" />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="avg_resources" stroke="#2ecc71" fill="none" strokeWidth={1.5} dot={false} name="Avg Resources/Node" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="nodes" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Nodes" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="avg_resources" stroke="#2ecc71" fill="none" strokeWidth={1.5} dot={false} name="Avg Resources/Node" />
         </AreaChart>
       ),
     },

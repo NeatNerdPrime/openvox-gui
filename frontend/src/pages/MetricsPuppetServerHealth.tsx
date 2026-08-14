@@ -26,6 +26,7 @@ import {
 import { IconServer, IconRefresh, IconTrash, IconArrowsMaximize, IconArrowsMinimize, IconChartLine } from '@tabler/icons-react';
 import { useApi } from '../hooks/useApi';
 import { metrics } from '../services/api';
+import { CHART_LINE_TYPE, smoothTimeSeries } from '../utils/chartDefaults';
 
 interface HistoryPoint {
   time: string;
@@ -244,58 +245,58 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
   const currentReport = (data.http_metrics || []).find((h: any) => (h.route || '').includes('report'))?.mean ?? data.http_report_mean ?? '—';
   const currentFile = (data.http_metrics || []).find((h: any) => (h.route || '').includes('file_content'))?.mean ?? data.http_file_mean ?? '—';
 
-  // Prepare chart data for expanded set (more streams)
-  const heapData = history.map(h => ({
+  // Prepare chart data — SMA so live JMX noise does not spline-overshoot.
+  const heapData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     used: h.heap_used_mb,
     pct: h.heap_pct,
-  }));
+  })));
 
-  const nonheapData = history.map(h => ({
+  const nonheapData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     used: h.nonheap_used_mb,
     pct: h.nonheap_pct,
-  }));
+  })));
 
-  const compileData = history.map(h => ({
+  const compileData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     compile: h.compile_time_ms,
-  }));
+  })));
 
-  const reportData = history.map(h => ({
+  const reportData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     mean: h.http_report_mean,
-  }));
+  })));
 
-  const fileData = history.map(h => ({
+  const fileData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     mean: h.http_file_mean,
-  }));
+  })));
 
-  const jrubyData = history.map(h => ({
+  const jrubyData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     active: h.jruby_active,
-  }));
+  })));
 
-  const gcYoungData = history.map(h => ({
+  const gcYoungData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     time_ms: h.gc_young_time,
-  }));
+  })));
 
-  const gcOldData = history.map(h => ({
+  const gcOldData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     time_ms: h.gc_old_time,
-  }));
+  })));
 
-  const cpuData = history.map(h => ({
+  const cpuData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     load: h.process_cpu_load != null ? h.process_cpu_load * 100 : undefined,
-  }));
+  })));
 
-  const fdsData = history.map(h => ({
+  const fdsData = smoothTimeSeries(history.map(h => ({
     time: h.time,
     fds: h.open_fds,
-  }));
+  })));
 
   const hasHistory = history.length > 2;
 
@@ -323,7 +324,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" MB" />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v} MB`, '']} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="used" stroke="#0D6EFD" fill="url(#gPsHeap)" strokeWidth={2} dot={false} name="Used" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="used" stroke="#0D6EFD" fill="url(#gPsHeap)" strokeWidth={2} dot={false} name="Used" />
         </AreaChart>
       ),
     },
@@ -340,7 +341,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" MB" />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v} MB`, '']} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="used" stroke="#8e44ad" fillOpacity={0.25} strokeWidth={2} dot={false} name="Non-heap used" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="used" stroke="#8e44ad" fillOpacity={0.25} strokeWidth={2} dot={false} name="Non-heap used" />
         </AreaChart>
       ),
     },
@@ -354,7 +355,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="compile" stroke="#e67e22" strokeWidth={2} dot={false} name="Catalog mean (ms)" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="compile" stroke="#e67e22" strokeWidth={2} dot={false} name="Catalog mean (ms)" />
         </LineChart>
       ),
     },
@@ -368,7 +369,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="mean" stroke="#27ae60" strokeWidth={2} dot={false} name="Report mean (ms)" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="mean" stroke="#27ae60" strokeWidth={2} dot={false} name="Report mean (ms)" />
         </LineChart>
       ),
     },
@@ -382,7 +383,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="mean" stroke="#3498db" fillOpacity={0.3} strokeWidth={2} dot={false} name="File mean (ms)" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="mean" stroke="#3498db" fillOpacity={0.3} strokeWidth={2} dot={false} name="File mean (ms)" />
         </AreaChart>
       ),
     },
@@ -396,7 +397,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="active" stroke="#9b59b6" fillOpacity={0.3} strokeWidth={2} dot={false} name="Total mean (ms)" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="active" stroke="#9b59b6" fillOpacity={0.3} strokeWidth={2} dot={false} name="Total mean (ms)" />
         </AreaChart>
       ),
     },
@@ -410,7 +411,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="time_ms" stroke="#e74c3c" strokeWidth={2} dot={false} name="Young GC ms" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="time_ms" stroke="#e74c3c" strokeWidth={2} dot={false} name="Young GC ms" />
         </LineChart>
       ),
     },
@@ -424,7 +425,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="time_ms" stroke="#c0392b" strokeWidth={2} dot={false} name="Old GC ms" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="time_ms" stroke="#c0392b" strokeWidth={2} dot={false} name="Old GC ms" />
         </LineChart>
       ),
     },
@@ -438,7 +439,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" %" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="load" stroke="#f39c12" fillOpacity={0.25} strokeWidth={2} dot={false} name="CPU %" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="load" stroke="#f39c12" fillOpacity={0.25} strokeWidth={2} dot={false} name="CPU %" />
         </AreaChart>
       ),
     },
@@ -452,7 +453,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="fds" stroke="#16a085" strokeWidth={2} dot={false} name="Open FDs" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="fds" stroke="#16a085" strokeWidth={2} dot={false} name="Open FDs" />
         </LineChart>
       ),
     },

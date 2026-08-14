@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.8] - 2026-08-13 (fix — Monitoring charts as moving averages)
+
+### Fixed
+- **Insights | Monitoring graphs looked wrongly plotted:** Recharts
+  `type="natural"` cubic splines overshot noisy live JMX and hourly
+  buckets. Time series are now a trailing simple moving average with
+  **linear** interpolation (Compliance, Run Performance, Server Health,
+  OpenVoxDB Health).
+
 ## [3.11.1-beta.7] - 2026-08-13 (fix — ship timeAgo helper)
 
 ### Fixed

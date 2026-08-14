@@ -36,3 +36,71 @@ export function downsampleSeries<T>(points: T[] | null | undefined, max = MAX_CH
   }
   return out;
 }
+
+/** Linear interpolation — natural/monotone cubics overshoot noisy ops series. */
+export const CHART_LINE_TYPE = 'linear' as const;
+
+const TIME_KEYS = new Set([
+  'time', 'timestamp', 'ts', 'hour', 'label', 'name', 'certname',
+]);
+
+/** Window length that tracks trend without washing out a short series. */
+export function defaultMaWindow(n: number): number {
+  if (n < 4) return 1;
+  if (n < 12) return 3;
+  if (n < 40) return 5;
+  if (n < 120) return 7;
+  return 11;
+}
+
+/**
+ * Trailing simple moving average over *keys*.
+ * Non-finite values are skipped in the window. Labels/time fields are copied through.
+ */
+export function movingAverageSeries<T extends Record<string, unknown>>(
+  points: T[] | null | undefined,
+  keys: string[],
+  window?: number,
+): T[] {
+  if (!points || points.length === 0) return [];
+  if (!keys.length) return points;
+  const w = Math.max(1, window ?? defaultMaWindow(points.length));
+  if (w === 1 || points.length < 2) return points;
+
+  return points.map((row, i) => {
+    const start = Math.max(0, i - w + 1);
+    const next: Record<string, unknown> = { ...row };
+    for (const key of keys) {
+      let sum = 0;
+      let count = 0;
+      for (let j = start; j <= i; j++) {
+        const v = points[j][key];
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          sum += v;
+          count += 1;
+        }
+      }
+      if (count > 0) next[key] = sum / count;
+    }
+    return next as T;
+  });
+}
+
+/**
+ * SMA every numeric field except time/label keys. Use this before binding
+ * live JMX / hourly trend rows to Recharts.
+ */
+export function smoothTimeSeries<T extends Record<string, unknown>>(
+  points: T[] | null | undefined,
+  window?: number,
+): T[] {
+  if (!points || points.length === 0) return [];
+  const keys = new Set<string>();
+  for (const row of points) {
+    for (const [k, v] of Object.entries(row)) {
+      if (TIME_KEYS.has(k)) continue;
+      if (typeof v === 'number' && Number.isFinite(v)) keys.add(k);
+    }
+  }
+  return movingAverageSeries(points, [...keys], window);
+}

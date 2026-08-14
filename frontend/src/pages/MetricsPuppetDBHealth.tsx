@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { IconDatabase, IconRefresh, IconArrowsMaximize, IconArrowsMinimize } from '@tabler/icons-react';
 import { metrics } from '../services/api';
+import { CHART_LINE_TYPE, smoothTimeSeries } from '../utils/chartDefaults';
 
 interface HeapDataPoint {
   time: string;
@@ -178,15 +179,15 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
   const heapPct = jvm.pct ?? 0;
   const statusColor = data.status === 'running' ? 'green' : 'red';
 
-  // Prepare series from history (now carries DB interaction means)
-  const pdbHeapData = heapHistory.map(h => ({ time: h.time, used: h.used_mb, pct: h.pct }));
-  const pdbNonheapData = heapHistory.map(h => ({ time: h.time, used: h.nonheap_used_mb }));
-  const queueData = heapHistory.map(h => ({ time: h.time, depth: h.queue_depth }));
-  const catSaveData = heapHistory.map(h => ({ time: h.time, mean: h.catalog_save_mean }));
-  const reportProcData = heapHistory.map(h => ({ time: h.time, mean: h.report_process_mean }));
-  const repCatData = heapHistory.map(h => ({ time: h.time, mean: h.replace_catalog_mean }));
-  const storeRepData = heapHistory.map(h => ({ time: h.time, mean: h.store_report_mean }));
-  const repFactsData = heapHistory.map(h => ({ time: h.time, mean: h.replace_facts_mean }));
+  // SMA of live poll points — raw series + natural splines looked broken.
+  const pdbHeapData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, used: h.used_mb, pct: h.pct })));
+  const pdbNonheapData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, used: h.nonheap_used_mb })));
+  const queueData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, depth: h.queue_depth })));
+  const catSaveData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, mean: h.catalog_save_mean })));
+  const reportProcData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, mean: h.report_process_mean })));
+  const repCatData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, mean: h.replace_catalog_mean })));
+  const storeRepData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, mean: h.store_report_mean })));
+  const repFactsData = smoothTimeSeries(heapHistory.map(h => ({ time: h.time, mean: h.replace_facts_mean })));
 
   // Rich chart set for OpenVoxDB Health (DB interaction + core PDB health)
   const dbCharts: Array<{ id: string; title: string; stats?: any[]; render: () => React.ReactNode }> = [
@@ -201,7 +202,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" MB" />
           <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number) => [`${v} MB`, '']} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="used" stroke="#0D6EFD" fill="url(#gPdbH)" strokeWidth={2} dot={false} name="Heap used" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="used" stroke="#0D6EFD" fill="url(#gPdbH)" strokeWidth={2} dot={false} name="Heap used" />
         </AreaChart>
       ),
     },
@@ -215,7 +216,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" MB" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="used" stroke="#8e44ad" fillOpacity={0.25} strokeWidth={2} dot={false} name="Non-heap" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="used" stroke="#8e44ad" fillOpacity={0.25} strokeWidth={2} dot={false} name="Non-heap" />
         </AreaChart>
       ),
     },
@@ -229,7 +230,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="depth" stroke="#e67e22" strokeWidth={2} dot={false} name="Queue" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="depth" stroke="#e67e22" strokeWidth={2} dot={false} name="Queue" />
         </LineChart>
       ),
     },
@@ -243,7 +244,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="mean" stroke="#2980b9" strokeWidth={2} dot={false} name="catalog_save" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="mean" stroke="#2980b9" strokeWidth={2} dot={false} name="catalog_save" />
         </LineChart>
       ),
     },
@@ -257,7 +258,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="mean" stroke="#16a085" strokeWidth={2} dot={false} name="report_process" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="mean" stroke="#16a085" strokeWidth={2} dot={false} name="report_process" />
         </LineChart>
       ),
     },
@@ -271,7 +272,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="mean" stroke="#e74c3c" fillOpacity={0.25} strokeWidth={2} dot={false} name="replace_catalog" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="mean" stroke="#e74c3c" fillOpacity={0.25} strokeWidth={2} dot={false} name="replace_catalog" />
         </AreaChart>
       ),
     },
@@ -285,7 +286,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Area isAnimationActive={false} animationDuration={0} type="natural" dataKey="mean" stroke="#c0392b" fillOpacity={0.25} strokeWidth={2} dot={false} name="store_report" />
+          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="mean" stroke="#c0392b" fillOpacity={0.25} strokeWidth={2} dot={false} name="store_report" />
         </AreaChart>
       ),
     },
@@ -299,7 +300,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} unit=" ms" />
           <ReTooltip {...TOOLTIP_STYLE} />
-          <Line isAnimationActive={false} animationDuration={0} type="natural" dataKey="mean" stroke="#9b59b6" strokeWidth={2} dot={false} name="replace_facts" />
+          <Line isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="mean" stroke="#9b59b6" strokeWidth={2} dot={false} name="replace_facts" />
         </LineChart>
       ),
     },

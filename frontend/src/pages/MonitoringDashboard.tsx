@@ -199,8 +199,9 @@ export function MonitoringDashboardPage() {
           <div>
             <Title order={2}>Monitoring</Title>
             <Text size="sm" c="dimmed">
-              NOC wallboard — same charts as Fleet Compliance, Run Performance, OpenVox Server Health,
-              and OpenVoxDB Health. Host scope (location / REGEX packs) applies to fleet charts only.
+              NOC wallboard — same charts as the Insights catalog. Time series are
+              a trailing moving average (linear), not raw cubic splines. Host scope
+              applies to fleet charts only.
             </Text>
           </div>
           <Badge variant="light" color="blue">Live</Badge>
