@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.11] - 2026-08-14 (fix — Bolt estate inventory; remote infra settings)
+
+### Fixed
+- **Dedicated console Bolt:** stop reading root-only
+  `/etc/puppetlabs/bolt/inventory.yaml` (PDB plugin inventory). GUI writes
+  `/opt/openvox-gui/data/bolt-inventory.estate.yaml` from **cluster_config
+  FQDNs** + SSH defaults (user `bolt`) for infra health, log viewer, and HA
+  `pcs` probes.
+- **HA probe** uses `run_bolt_command` (same path) instead of raw bolt + `-i /etc/...`.
+
+### Added
+- **`ovox infra settings show` (clustered):** samples JRuby/heap/pools from
+  remote compiler and OpenVoxDB members via Bolt `command run` + root cat of
+  conf files when local configs are absent.
+
 ## [3.12.0-rc.10] - 2026-08-14 (feat — full estate members + VIPs in infra health)
 
 ### Changed

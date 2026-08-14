@@ -226,13 +226,6 @@ async def get_infra_settings(
     result: Dict[str, Any] = {
         "deployment_mode": "clustered" if is_clustered() else "single",
     }
-    if is_clustered():
-        result["note"] = (
-            "Clustered console: local /etc/puppetlabs/puppetserver|puppetdb "
-            "settings are usually absent. Use ovox infra health for remote "
-            "HTTP probes; apply tuning on each compiler/ovdb host (or future "
-            "Bolt-based tune)."
-        )
 
     try:
         if not component or component in ("server", "puppetserver"):
@@ -258,6 +251,41 @@ async def get_infra_settings(
                 "jvm": jvm,
                 "local_config_present": bool(pools),
             }
+
+        # Dedicated console: pull live values from remote members via Bolt
+        if is_clustered():
+            result["note"] = (
+                "Clustered console: settings sampled from remote hosts via Bolt "
+                "(cluster_config FQDNs). Static /etc bolt inventory.yaml is not used."
+            )
+            try:
+                from ..services.infra_remote import sample_remote_infra_settings
+
+                remote = await sample_remote_infra_settings()
+                result["remote"] = remote
+                ps = (remote.get("puppetserver") or {}).get("sample")
+                if ps and not result.get("puppetserver", {}).get("local_config_present"):
+                    result["puppetserver"] = {
+                        "jruby_max_active_instances": ps.get("jruby_max_active_instances"),
+                        "jvm": ps.get("jvm") or {},
+                        "local_config_present": False,
+                        "source_host": ps.get("host"),
+                        "source": "bolt",
+                    }
+                pdb = (remote.get("puppetdb") or {}).get("sample")
+                if pdb and not result.get("puppetdb", {}).get("local_config_present"):
+                    result["puppetdb"] = {
+                        "pools": pdb.get("pools") or {},
+                        "jvm": pdb.get("jvm") or {},
+                        "local_config_present": False,
+                        "source_host": pdb.get("host"),
+                        "source": "bolt",
+                    }
+                if remote.get("errors"):
+                    result["warnings"] = remote["errors"]
+            except Exception as e:
+                logger.warning("remote infra settings via bolt failed: %s", e)
+                result.setdefault("warnings", []).append(str(e))
     except Exception as e:
         logger.exception("Failed to collect infra settings")
         raise HTTPException(

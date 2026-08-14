@@ -380,41 +380,79 @@ async def probe_ha_cluster(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 result["drbd"]["local_role"] = m.group(1)
         return result
 
-    # Remote via bolt to first CA node
-    ca_nodes = cfg.get("ca_nodes") or []
-    bolt = shutil.which("bolt")
-    if bolt and ca_nodes:
-        target = ca_nodes[0]
-        bolt_cmd = [
-            bolt,
-            "command",
-            "run",
-            "pcs status 2>&1; echo '---DRBD---'; drbdadm status 2>&1 || true",
-            "--targets",
-            target,
-            "--no-host-key-check",
-        ]
-        inv = Path("/etc/puppetlabs/bolt/inventory.yaml")
-        if inv.exists():
-            bolt_cmd.extend(["-i", str(inv)])
-        bolt_run = await _run_cmd(bolt_cmd, timeout=45.0)
-        result["method"] = f"bolt:{target}"
-        out = bolt_run["stdout"] or bolt_run["stderr"]
-        result["available"] = bolt_run["returncode"] == 0 and bool(out.strip())
-        if "---DRBD---" in out:
-            pcs_part, drbd_part = out.split("---DRBD---", 1)
-        else:
-            pcs_part, drbd_part = out, ""
-        result["pcs"] = _parse_pcs_status(pcs_part)
-        result["drbd"] = {"raw": drbd_part[:4000]} if drbd_part.strip() else None
-        if not result["available"]:
-            result["error"] = (bolt_run["stderr"] or "bolt pcs status failed")[:500]
-        return result
+    # Remote via Bolt to first CA *member* (not VIP). Inventory is generated
+    # under /opt/openvox-gui/data from cluster_config FQDNs — never /etc
+    # inventory.yaml (often root-only; fleet targets come from PDB plugin there).
+    ca_nodes = list(cfg.get("ca_nodes") or [])
+    if not ca_nodes:
+        try:
+            from .estate_inventory import discover_serving_estate
+
+            ca_nodes = list(discover_serving_estate().get("ca_nodes") or [])
+        except Exception:
+            ca_nodes = []
+
+    if ca_nodes:
+        try:
+            from ..routers.bolt_runtime import find_bolt, run_bolt_command
+
+            if find_bolt():
+                target = ca_nodes[0]
+                bolt_run = await run_bolt_command(
+                    [
+                        "command",
+                        "run",
+                        "pcs status 2>&1; echo '---DRBD---'; drbdadm status 2>&1 || true",
+                        "--targets",
+                        target,
+                        "--run-as",
+                        "root",
+                        "--format",
+                        "json",
+                    ],
+                    timeout=45,
+                )
+                result["method"] = f"bolt:{target}"
+                # Prefer human stdout from bolt item if json wrapper
+                out = bolt_run.get("stdout") or bolt_run.get("stderr") or ""
+                if out.strip().startswith("{"):
+                    try:
+                        import json as _json
+
+                        data = _json.loads(out[out.find("{") :])
+                        items = data.get("items") or []
+                        if items and isinstance(items[0], dict):
+                            val = items[0].get("value") or {}
+                            out = str(val.get("stdout") or val.get("merged_output") or out)
+                    except Exception:
+                        pass
+                result["available"] = bolt_run.get("returncode") == 0 and bool(
+                    (out or "").strip()
+                )
+                if "---DRBD---" in out:
+                    pcs_part, drbd_part = out.split("---DRBD---", 1)
+                else:
+                    pcs_part, drbd_part = out, ""
+                result["pcs"] = _parse_pcs_status(pcs_part)
+                result["drbd"] = (
+                    {"raw": drbd_part[:4000]} if drbd_part.strip() else None
+                )
+                if not result["available"]:
+                    result["error"] = (
+                        bolt_run.get("stderr") or "bolt pcs status failed"
+                    )[:500]
+                return result
+        except Exception as e:
+            result["error"] = f"bolt HA probe failed: {e}"[:500]
+            # fall through to final message
 
     result["error"] = (
-        "pcs not found on this host and no bolt+ca_nodes for remote status. "
-        "Install pcs on the GUI host (if co-located with CA) or configure ca_nodes "
-        "and bolt inventory."
+        result.get("error")
+        or (
+            "pcs not on this console and Bolt could not reach a CA member. "
+            "Configure ca_nodes in Settings → Cluster and ensure bolt SSH "
+            "(user bolt) works to those hosts. Static inventory.yaml is not used."
+        )
     )
     return result
 
