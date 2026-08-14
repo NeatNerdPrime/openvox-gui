@@ -17,7 +17,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from ..config import settings
 
@@ -34,10 +34,17 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "puppetdb_nodes": [],  # list of FQDNs (OpenVoxDB application hosts)
     "ca_nodes": [],  # list of CA member FQDNs (ovca1, ovca2 per site)
     "ca_vips": [],  # optional CA VIP FQDNs (ovca.pdxc…, ovca.corp…)
+    # Compiler / PDB / other HAProxy or DNS VIP FQDNs (ovcompilers.pdxc…, etc.).
+    # Not real agents — excluded from live fleet (Nodes, Inventory, Dashboard, …).
+    "infra_vips": [],
+    # Extra certnames to hide from live fleet (in addition to ca_vips / infra_vips /
+    # console vip_hosts). Use for one-off LB names or mis-issued VIP certnames.
+    "fleet_exclude": [],
     "code_deploy_targets": [],  # FQDNs that receive r10k stage/activate (defaults to compilers)
     "consoles": [],  # GUI FQDNs (openvox.pdxc…, openvox.atlc…)
     # Public VIP / LB hostnames for the console (not individual node FQDNs).
     # Used for access_mode=vip (session-safe SPA polling behind the VIP).
+    # Also excluded from live fleet (not agent nodes).
     "vip_hosts": [],
     "database_backend": "sqlite",  # sqlite | postgresql
     "enc_api_urls": [],  # ENC script failover list, e.g. https://openvox.pdxc…:4567
@@ -87,6 +94,8 @@ def _normalize(data: Dict[str, Any]) -> Dict[str, Any]:
         "puppetdb_nodes",
         "ca_nodes",
         "ca_vips",
+        "infra_vips",
+        "fleet_exclude",
         "code_deploy_targets",
         "consoles",
         "vip_hosts",
@@ -187,3 +196,43 @@ def deploy_targets() -> List[str]:
         return []
     targets = cfg.get("code_deploy_targets") or cfg.get("compilers") or []
     return list(targets)
+
+
+def fleet_excluded_certnames() -> Set[str]:
+    """Certnames that must never appear as live-fleet *nodes*.
+
+    HAProxy / DNS VIPs (ovcompilers.pdxc…, ovca.corp…, console VIP) often
+    have OpenVoxDB reports or leftover signed certs but are not agents.
+    Overview | Nodes, Inventory, Dashboard membership, ENC unclassified,
+    and Node Health all use ``get_live_nodes()``, which filters these out.
+
+    Sources (union, case-insensitive):
+      - cluster ``ca_vips``, ``infra_vips``, ``vip_hosts``, ``fleet_exclude``
+      - env ``OPENVOX_GUI_FLEET_EXCLUDE`` (comma/space/newline separated)
+    """
+    out: Set[str] = set()
+    try:
+        cfg = load_cluster_config()
+        for key in ("ca_vips", "infra_vips", "vip_hosts", "fleet_exclude"):
+            for h in cfg.get(key) or []:
+                n = str(h).strip().lower()
+                if n:
+                    out.add(n)
+    except Exception as e:
+        logger.debug("fleet_exclude from cluster_config: %s", e)
+
+    raw = (getattr(settings, "fleet_exclude", None) or "").strip()
+    if raw:
+        for part in raw.replace(",", " ").replace("\n", " ").split():
+            n = part.strip().lower().split(":")[0]
+            if n:
+                out.add(n)
+    return out
+
+
+def is_fleet_excluded(certname: Optional[str]) -> bool:
+    """True if *certname* is a VIP/LB name (or explicit fleet_exclude)."""
+    n = (certname or "").strip().lower()
+    if not n:
+        return False
+    return n in fleet_excluded_certnames()

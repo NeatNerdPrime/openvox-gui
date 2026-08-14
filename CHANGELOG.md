@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.4] - 2026-08-14 (feat — exclude infra VIPs from live fleet)
+
+### Added
+- **Fleet exclusions for HAProxy/DNS VIPs:** Settings → Cluster fields
+  `infra_vips` and `fleet_exclude` (plus existing `ca_vips` / console
+  `vip_hosts`). Names are stripped in `get_live_nodes()` so Overview |
+  Nodes, Inventory, Dashboard membership, ENC unclassified, and Node
+  Health no longer show LB hostnames that only have VIP reports in
+  OpenVoxDB (e.g. `ovcompilers.pdxc-it.corp.int-x.ai`).
+- Env override: `OPENVOX_GUI_FLEET_EXCLUDE=host1,host2`.
+
 ## [3.12.0-rc.3] - 2026-08-14 (docs — full feature inventory & stale-doc refresh)
 
 ### Changed

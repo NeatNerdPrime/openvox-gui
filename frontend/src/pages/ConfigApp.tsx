@@ -558,6 +558,8 @@ function ClusterTab() {
   const [puppetdbNodes, setPuppetdbNodes] = useState('');
   const [caNodes, setCaNodes] = useState('');
   const [caVips, setCaVips] = useState('');
+  const [infraVips, setInfraVips] = useState('');
+  const [fleetExclude, setFleetExclude] = useState('');
   const [deployTargets, setDeployTargets] = useState('');
   const [consoles, setConsoles] = useState('');
   const [vipHosts, setVipHosts] = useState('');
@@ -578,6 +580,8 @@ function ClusterTab() {
     setPuppetdbNodes((data.puppetdb_nodes || []).join('\n'));
     setCaNodes((data.ca_nodes || []).join('\n'));
     setCaVips((data.ca_vips || []).join('\n'));
+    setInfraVips((data.infra_vips || []).join('\n'));
+    setFleetExclude((data.fleet_exclude || []).join('\n'));
     setDeployTargets((data.code_deploy_targets || []).join('\n'));
     setConsoles((data.consoles || []).join('\n'));
     setVipHosts((data.vip_hosts || []).join('\n'));
@@ -601,6 +605,8 @@ function ClusterTab() {
         puppetdb_nodes: lines(puppetdbNodes),
         ca_nodes: lines(caNodes),
         ca_vips: lines(caVips),
+        infra_vips: lines(infraVips),
+        fleet_exclude: lines(fleetExclude),
         code_deploy_targets: lines(deployTargets),
         consoles: lines(consoles),
         vip_hosts: lines(vipHosts),
@@ -709,11 +715,27 @@ function ClusterTab() {
               />
               <Textarea
                 label="CA VIP FQDNs (optional)"
-                description="e.g. ovca.pdxc-it.corp.int-x.ai, ovca.corp.int-x.ai — health on :8140"
+                description="e.g. ovca.pdxc-it.corp.int-x.ai, ovca.corp.int-x.ai — health on :8140. Also hidden from Overview | Nodes (not agents)."
                 minRows={2}
                 value={caVips}
                 onChange={(e) => setCaVips(e.currentTarget.value)}
                 placeholder="ovca.corp.int-x.ai"
+              />
+              <Textarea
+                label="Infrastructure VIP FQDNs (compiler / PDB LBs)"
+                description="HAProxy or DNS VIP names such as ovcompilers.pdxc-it…. These are not agents — excluded from live fleet (Nodes, Inventory, Dashboard membership) even if OpenVoxDB has reports under that certname."
+                minRows={2}
+                value={infraVips}
+                onChange={(e) => setInfraVips(e.currentTarget.value)}
+                placeholder={"ovcompilers.pdxc-it.corp.int-x.ai\novcompilers.atlc-it.corp.int-x.ai\novcompilers.corp.int-x.ai"}
+              />
+              <Textarea
+                label="Extra fleet exclusions (optional)"
+                description="Any other certnames to hide from Nodes / Inventory. Merged with CA VIPs, infra VIPs, and console VIP hosts. Env alternative: OPENVOX_GUI_FLEET_EXCLUDE."
+                minRows={2}
+                value={fleetExclude}
+                onChange={(e) => setFleetExclude(e.currentTarget.value)}
+                placeholder="legacy-lb.example.com"
               />
               <Textarea
                 label="Code deploy targets (optional)"

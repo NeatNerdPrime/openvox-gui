@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     # VIP poll floor (ms) advertised to the SPA — minimum auto-refresh interval
     # when access_mode=vip. Direct node FQDNs keep their page defaults.
     vip_poll_floor_ms: int = 45000
+    # Comma/space-separated certnames to hide from live fleet (HAProxy/DNS VIPs).
+    # Merged with cluster_config ca_vips / infra_vips / vip_hosts / fleet_exclude.
+    # Example: ovcompilers.pdxc-it.corp.int-x.ai,ovcompilers.atlc-it.corp.int-x.ai
+    fleet_exclude: Optional[str] = None
 
     # ── Filesystem paths ──────────────────────────────────────
     data_dir: str = "/opt/openvox-gui/data"

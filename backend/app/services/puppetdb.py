@@ -253,20 +253,36 @@ class PuppetDBService:
             )
             return active
 
+        # HAProxy / DNS VIPs are not agents — hide from Nodes / Inventory / etc.
+        try:
+            from .cluster_config import fleet_excluded_certnames
+
+            excluded = fleet_excluded_certnames()
+        except Exception:
+            excluded = set()
+        if excluded:
+            signed = {c for c in signed if c not in excluded}
+
         if len(active) == 0 and len(signed) > 0:
             logger.info(
                 "get_live_nodes: PuppetDB returned no active nodes; falling back to signed CA certs (%d) for live fleet.",
                 len(signed),
             )
-            live = [{"certname": cn} for cn in sorted(signed)]
+            live = [{"certname": cn} for cn in sorted(signed) if cn not in excluded]
             await self._overlay_latest_report_status(live)
         else:
             live = [
                 n
                 for n in active
                 if str(n.get("certname", "")).strip().lower() in signed
+                and str(n.get("certname", "")).strip().lower() not in excluded
             ]
             live.sort(key=lambda n: str(n.get("certname", "")).lower())
+        if excluded:
+            logger.debug(
+                "get_live_nodes: excluded %d VIP/fleet_exclude name(s)",
+                len(excluded),
+            )
         return live
 
     async def get_fleet_nodes(self) -> List[Dict]:

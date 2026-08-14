@@ -374,6 +374,10 @@ class ClusterConfigUpdate(BaseModel):
     puppetdb_nodes: List[str] = []
     ca_nodes: List[str] = []
     ca_vips: List[str] = []
+    # Compiler/PDB HAProxy or DNS VIP FQDNs — excluded from live fleet
+    infra_vips: List[str] = []
+    # Extra certnames to hide from Nodes / Inventory / Dashboard membership
+    fleet_exclude: List[str] = []
     code_deploy_targets: List[str] = []
     consoles: List[str] = []
     # Public VIP / LB hostnames (SPA access_mode=vip when Host matches)

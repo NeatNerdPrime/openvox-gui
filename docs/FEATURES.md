@@ -356,7 +356,26 @@ Same RBAC as the web UI via session or service token.
 
 Unless a page is **CA-authoritative** (Certificates) or explicitly historical:
 
-**Shown nodes = active in OpenVoxDB ∩ currently signed on the CA.**
+**Shown nodes = active in OpenVoxDB ∩ currently signed on the CA − fleet exclusions.**
+
+### HAProxy / DNS VIPs (not agents)
+
+VIP names such as `ovcompilers.pdxc-it.corp.int-x.ai` often appear in OpenVoxDB
+(reports under the LB certname) but are **not** real nodes. Exclude them via
+**Settings → Application → Cluster**:
+
+| Field | Purpose |
+|-------|---------|
+| **CA VIP FQDNs** (`ca_vips`) | CA load-balancer names |
+| **Infrastructure VIP FQDNs** (`infra_vips`) | Compiler/PDB HAProxy or DNS VIPs |
+| **Console VIP** (`vip_hosts`) | GUI LB hostnames |
+| **Extra fleet exclusions** (`fleet_exclude`) | Anything else |
+
+Or env: `OPENVOX_GUI_FLEET_EXCLUDE=ovcompilers.pdxc-it.corp.int-x.ai,…`
+
+These are stripped inside `get_live_nodes()` (Nodes, Inventory, Dashboard
+membership, ENC unclassified, Node Health). Certificates page still shows
+signed cert inventory if a VIP cert exists on the CA.
 
 After `ca clean` or PDB deactivate/expire, hosts must disappear from Dashboard, Nodes, Inventory, ENC unclassified reconciliation, and Node Health. Open ENC once after mass clean so SQLite rows prune.
 

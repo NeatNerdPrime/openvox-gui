@@ -397,6 +397,8 @@ export const config = {
     puppetdb_nodes: string[];
     ca_nodes?: string[];
     ca_vips?: string[];
+    infra_vips?: string[];
+    fleet_exclude?: string[];
     code_deploy_targets: string[];
     consoles?: string[];
     vip_hosts?: string[];
