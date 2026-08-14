@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.7] - 2026-08-13 (fix — ship timeAgo helper)
+
+### Fixed
+- **Vite build: Could not resolve `../utils/timeAgo`:** Nodes.tsx imported
+  the helper but the file was never committed. Add
+  `frontend/src/utils/timeAgo.ts` so production builds resolve.
+
 ## [3.11.1-beta.6] - 2026-08-13 (feat — production UI facelift)
 
 ### Added
