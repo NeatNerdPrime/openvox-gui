@@ -1,6 +1,7 @@
 # OpenVox Agent Installer
 
-**Available since**: openvox-gui 3.6.0
+**Available since:** openvox-gui 3.6.0 · **UI:** Infrastructure → Agent Install (`/installer`)  
+**Current product train:** see root `VERSION` (doc refreshed 3.12)
 
 This guide covers the **agent installer** feature: a local OpenVox
 package mirror, a one-line bootstrap script for Linux and Windows

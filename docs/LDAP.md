@@ -1,8 +1,8 @@
 # LDAP / Active Directory Authentication Guide
 
-**OpenVox GUI Version 3.6.7**
+**OpenVox GUI Version:** see root `VERSION` (doc refreshed for **3.12** train; LDAP behaviour stable since 3.6+)
 
-This guide explains how to configure OpenVox GUI to authenticate users against an LDAP directory server (OpenLDAP, 389 Directory Server, Red Hat Directory Server, or Microsoft Active Directory).
+This guide explains how to configure OpenVox GUI to authenticate users against an LDAP directory server (OpenLDAP, 389 Directory Server, Red Hat Directory Server, or Microsoft Active Directory). Configure via **Settings → Application Configuration → LDAP**, or the API. Sessions use httpOnly JWT cookies (see [VIP_SESSIONS.md](VIP_SESSIONS.md) for multi-console).
 
 ## Table of Contents
 

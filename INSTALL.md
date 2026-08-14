@@ -1,8 +1,10 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.0-rc.2**
+**OpenVox GUI Version 3.12.0-rc.3**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
+
+**After install, read:** [docs/FEATURES.md](docs/FEATURES.md) (what every page does) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (single vs clustered).
 
 ## Table of Contents
 
@@ -20,15 +22,16 @@ This guide will walk you through installing OpenVox GUI on your server. Don't wo
 
 ### What You Need
 
-> **Important:** OpenVox GUI must be installed directly **on your OpenVox Server**. It requires local access to configuration files, SSL certificates, and system services to function. Remote installation on a separate host is not currently supported.
+> **Singleton (default):** install on the OpenVox **Server** host (local conf, CA tools, Bolt, SSL).  
+> **Clustered (3.11+):** install on a dedicated **console** with an agent cert, Bolt to compilers, `OPENVOX_GUI_PUPPET_CA_HOST` / PDB hosts, and Postgres **`openvox_gui`** — see Advanced Installations and [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). A random laptop with no Puppet SSL is still **not** supported.
 
 Think of these as the ingredients before you start cooking:
 
-1. **Your OpenVox Server** — This is where you'll install OpenVox GUI
+1. **Target host** — OpenVox Server (singleton) or dedicated console (clustered)
    - Red Hat 8 or newer, CentOS 8 or newer, Ubuntu 20.04 or newer
-   - At least 2GB of memory (RAM)
-   - About 1GB of free disk space
-   - A working OpenVox Server and OpenVoxDB already installed and running on this machine
+   - At least 2GB of memory (RAM); more for large fleets / package mirror
+   - About 1GB free for the app; **many GB** if you enable the agent package mirror
+   - Working OpenVox estate (Server/compilers, CA, OpenVoxDB) reachable as designed for your mode
 
 2. **Administrator Access**
    - You need to be able to run commands with `sudo` (administrator privileges)
@@ -329,7 +332,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.0-rc.2"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.0-rc.3"}` if everything is working.
 
 ---
 

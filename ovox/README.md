@@ -30,8 +30,9 @@ ovox --help
 The project follows **Semantic Versioning (SemVer 2.0.0) + pre-releases** (canonized across AGENTS.md, skills, scripts, and docs).
 
 - Stable releases: clean `MAJOR.MINOR.PATCH` (e.g. **3.10.6**). These are intentional and high-signal ("only when necessary").
-- Development trains: pre-release identifiers on the upcoming stable, e.g. `3.10.7-dev.1`, `3.10.5-dev.5`, `3.9.0-dev.42`, or `3.9.0-rc.N`.
-  - Daily workflow = ordinary git pushes. The `/commit` skill handles pre-release version bumps, CHANGELOG, conventional commits, annotated tags (for "tryable but unreleased" versions), and deploys.
+- Development trains: pre-release identifiers on the upcoming stable, e.g. `3.12.0-rc.N`, `3.11.1-beta.N`, `3.10.5-dev.N`.
+  - Daily workflow = ordinary git pushes with root `VERSION` lockstep. Prefer PEP 440 labels (`rc`/`a`/`b`/`dev`) so `pip install` of this package succeeds.
+- GUI feature map: [docs/FEATURES.md](../docs/FEATURES.md).
 - Promotion to stable: Use the `/release` skill (or an explicit maintainers promote) when a pre-release train is ready for users. It promotes to clean stable SemVer, creates the stable tag, pushes it, and prepares the manual GitHub Release.
 - GitHub Releases: separate, manual, only for shippable stable versions (on schedule). Never automatic from /commit alone.
 

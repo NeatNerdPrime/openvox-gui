@@ -6,20 +6,25 @@ This document describes the high-level architecture of OpenVox GUI, with special
 
 OpenVox GUI is a full-stack application that provides both a **web interface** and a **command-line interface** (`ovox`) for managing an OpenVox (open-source Puppet) infrastructure.
 
-**Current stable line:** **3.10.4** (see root `VERSION` and [CHANGELOG.md](../CHANGELOG.md)). The 3.10 effort layered security hardening, clearer backend service boundaries, and operator-focused UI (Insights **Monitoring** NOC, shared **OpsTable** / filters, orchestration UX). **3.10.4** adds consistent **live fleet** membership (`get_live_nodes`: active PuppetDB ∩ signed CA) for Nodes, Inventory, ENC, Dashboard, and Node Health. Installation remains **on the OpenVox Server host** (local filesystem, CA, Bolt, systemd) — remote-host GUI install is not supported yet.
+**Version line:** see root `VERSION` and [CHANGELOG.md](../CHANGELOG.md). **Last widely deployed stable:** 3.10.6. **Active pre-release:** 3.12.0-rc (clustered console + VIP sessions). Canonical feature list: [FEATURES.md](FEATURES.md).
 
-The system is deliberately designed with two primary user interfaces that are treated as equals:
+The system has two primary user interfaces that are treated as equals:
 
-- **Web GUI** — React + Mantine frontend (Vite build; lazy routes with retry on deploy chunk mismatches)
-- **ovox CLI** — Python/Typer client (version lockstep with the GUI since 3.7.3)
+- **Web GUI** — React + Mantine (Vite; lazy routes with retry on deploy chunk mismatches); httpOnly JWT cookie
+- **ovox CLI** — Python/Typer thin client (version lockstep via root `VERSION`)
 
-**`ovox` is a feature**, in-line with the GUI itself. It is not categorized under "API". Both the web interface and the CLI are first-class ways for humans (and automation) to interact with the system.
+Both are clients of one FastAPI backend. There is no separate public vs internal API tier.
 
-Both interfaces are clients of the same backend. There is no "API tier" that is separate from the GUI — the FastAPI application *is* the core of the system.
+**Navigation (3.10+ IA, current labels):** Overview → Infrastructure → Classification & Code → Data → Explore → Insights → Settings. Reports live under Overview; Inventory and Log Viewer under Insights; metric deep-links under Insights catalog.
 
-**Navigation mental model (3.10 UI):** Dashboard & Nodes → Infrastructure (CA, Orchestration, Agent Install, Cert Audit) → Code (ENC, r10k deploy) → Data (Hiera) → Tools (PQL / explorers) → **Insights** (Monitoring wallboard + metrics catalog + reports/logs) → Configuration (OpenVox + Application/SSL).
+| Deployment | GUI host | App DB | Code / CA |
+|------------|----------|--------|-----------|
+| **single** | OpenVox Server (co-located) | SQLite or Postgres | Local fs, local CA tools |
+| **clustered** | Dedicated console(s) | **Postgres `openvox_gui` required** | Compilers via Bolt/HTTP; CA via `OPENVOX_GUI_PUPPET_CA_HOST` |
 
-**3.12 VIP sessions:** dual consoles behind a public VIP require identical `SECRET_KEY`, shared Postgres `openvox_gui`, and configured `vip_hosts` (cluster JSON or `OPENVOX_GUI_VIP_HOSTS`). The SPA uses `access_mode=vip|direct` from `/api/auth/status` to soften polls and never hard-reloads on 401. See [VIP_SESSIONS.md](VIP_SESSIONS.md).
+**Live fleet rule:** `get_live_nodes()` = active OpenVoxDB ∩ signed CA for Dashboard, Nodes, Inventory, ENC reconciliation, Node Health. Certificates page remains CA-authoritative.
+
+**3.12 VIP sessions:** dual consoles behind one LB hostname need identical `SECRET_KEY`, shared Postgres, and `vip_hosts` / `OPENVOX_GUI_VIP_HOSTS`. SPA `access_mode=vip|direct` softens polls and never hard-reloads on 401. See [VIP_SESSIONS.md](VIP_SESSIONS.md).
 
 ## High-Level Component Diagram
 
@@ -33,34 +38,33 @@ Both interfaces are clients of the same backend. There is no "API tier" that is 
 │   │   (React + Mantine)   │         │   (Python + Typer)    │   │
 │   └───────────┬───────────┘         └───────────┬───────────┘   │
 │               │                                 │               │
-│               │ HTTP(S) + JWT                   │ HTTP(S) +     │
-│               │ Bearer Token                    │ JWT / Token   │
+│               │ HTTP(S) + cookie JWT            │ HTTP(S) +     │
+│               │ (httpOnly)                      │ cookie/token  │
 │               ▼                                 ▼               │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Backend (FastAPI)                        │
-│   (Python, uvicorn, runs as 'puppet' user under systemd)        │
+│   (Python, uvicorn multi-worker, systemd, user usually puppet)  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   • Authentication (Local bcrypt + LDAP/AD)                     │
-│   • Authorization (role-based: admin / operator / certops / viewer) │
-│   • Business logic for all features                             │
-│   • Thin orchestration layer                                    │
+│   • Auth: local bcrypt + LDAP/AD; roles admin/operator/certops/viewer │
+│   • Business logic (ENC, deploy, certs, insights, bolt, …)      │
+│   • App DB: SQLite (singleton) or Postgres openvox_gui (cluster)│
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              │ (local calls, sudo where needed)
+                              │ mTLS / sudo / Bolt / local FS
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    External Systems & Data                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   • Puppet Server (catalogs, CA, config)                        │
-│   • PuppetDB (facts, reports, queries, PQL)                     │
+│   • OpenVox Server / compilers (catalogs, metrics)              │
+│   • OpenVox CA (certificate_status HTTP or local ca CLI)        │
+│   • OpenVoxDB (facts, reports, PQL) — not the GUI app DB        │
 │   • Bolt / OpenBolt (tasks, plans, commands, inventory)         │
-│   • Filesystem (Hiera data, configs, logs)                      │
-│   • SQLite (local users, sessions, execution history, ENC)      │
+│   • Filesystem (Hiera, conf, logs, host_metrics/, package mirror)│
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```

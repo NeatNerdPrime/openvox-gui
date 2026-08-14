@@ -6,13 +6,14 @@ We actively support security and operational updates for the latest stable and p
 
 | Version | Supported          |
 | ------- | ------------------ |
-| **3.10.x** stable (current: **3.10.2**) and newer | :white_check_mark: |
-| 3.10.x pre-releases / betas (e.g. `3.10.1.b2`) while testing | :white_check_mark: (lab/test only) |
-| 3.9.x | :white_check_mark: (security fixes as feasible; prefer upgrade to 3.10.2+) |
+| **3.12.x** pre-release (`3.12.0-rc.N`) and future 3.12 stable | :white_check_mark: (lab / early production by intent) |
+| **3.10.x** stable (current GitHub stable: **3.10.6**) | :white_check_mark: |
+| 3.11.x betas | :white_check_mark: (lab/test; prefer 3.12.0-rc+ for clustered+VIP) |
+| 3.9.x | Security fixes as feasible; prefer upgrade to 3.10.6+ |
 | 3.0 – 3.8.x | Limited — upgrade when you can |
 | < 3.0   | :x: (end of life)  |
 
-We recommend running the **latest stable** GitHub Release ([v3.10.2](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.2) as of this policy refresh). Use pre-release tags only on lab/test systems unless you have a deliberate beta rollout. Patch releases within a minor series receive priority security backports where feasible.
+We recommend production estates on the **latest stable** GitHub Release ([v3.10.6](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6)) unless you deliberately run the **3.12** train for clustered consoles / VIP session fixes. Pre-release tags are for lab or agreed beta rollouts.
 
 ## Reporting a Vulnerability
 

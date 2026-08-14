@@ -1,8 +1,8 @@
 # OpenVox GUI performance tuning
 
-> **Shipped in stable [3.10.6](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6)** (July 2026). Pre-release train: `3.10.5-dev.1`–`dev.5`.
+> **Baseline:** stable **3.10.6** performance train. Still current through **3.12** (VIP poll floors layer on top — [VIP_SESSIONS.md](VIP_SESSIONS.md)).
 
-How to keep the web UI snappy as fleets and chart pages grow. This is about the **GUI application** (FastAPI + React + uvicorn), not Puppet Server / PuppetDB JVM tuning — for those, see [TUNING.md](TUNING.md) and `ovox infra`.
+How to keep the web UI snappy as fleets and chart pages grow. This is about the **GUI application** (FastAPI + React + uvicorn), not OpenVox Server / OpenVoxDB JVM tuning — for those, see [TUNING.md](TUNING.md) and `ovox infra`.
 
 ## Symptoms and likely causes
 

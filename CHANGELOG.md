@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.3] - 2026-08-14 (docs — full feature inventory & stale-doc refresh)
+
+### Changed
+- **Documentation overhaul for release prep:** new canonical
+  [docs/FEATURES.md](docs/FEATURES.md) (every nav page, Insights catalog,
+  API map, roles, metrics persistence, live-fleet rule).
+- **README.md** — badges/links for 3.12 train; features + versioning
+  rewritten; removed long 3.6.x historical narrative (kept in CHANGELOG).
+- **ARCHITECTURE, INSTALL, UPDATE, TROUBLESHOOTING, SECURITY, LDAP,
+  METRICS, HOST_HEALTH, PERFORMANCE, INSTALLER, VIP_SESSIONS, ovox/README**
+  version headers and content aligned with clustered console, VIP sessions,
+  CA remote API, and current IA (Overview / Explore / Insights).
+- TROUBLESHOOTING: VIP thrash, CA “already signed” / “no CSR” log noise,
+  pep440 `gamma` note.
+
 ## [3.12.0-rc.2] - 2026-08-14 (fix — PQL examples Select crash)
 
 ### Fixed

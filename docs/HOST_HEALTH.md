@@ -1,5 +1,8 @@
 # Host Health (Serving Estate)
 
+**Route:** Insights catalog → Host Health (`/insights/host-health`), also embeddable on Monitoring.  
+**Since:** 3.11+ Host Health collector; disk ring under `data/host_metrics/`.
+
 **Insights → Host Health** shows OS-level saturation for the **OpenVox serving estate** only:
 
 | Included | Not included |

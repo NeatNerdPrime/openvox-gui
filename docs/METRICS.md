@@ -1,8 +1,11 @@
 # Metrics Setup
 
-This document explains how to configure your OpenVox Server and OpenVoxDB so that the **Metrics** section in OpenVox GUI has full, rich data.
+**UI path:** Insights → Monitoring (`/insights`) and Insights catalog (`/insights/all`).  
+**Doc train:** 3.12 (features since 3.7+). Full page list: [FEATURES.md](FEATURES.md).
 
-For **OS-level Host Health** on the serving estate (sysstat/pidstat//proc, not agents), see **[HOST_HEALTH.md](HOST_HEALTH.md)**.
+This document explains how to configure OpenVox Server and OpenVoxDB so that **JMX / Jolokia** Insights charts (Run Performance, OpenVox Server Health, OpenVoxDB Health) have full data.
+
+For **OS-level Host Health** on the serving estate (`/proc`, sysstat/pidstat — not agents), see **[HOST_HEALTH.md](HOST_HEALTH.md)**. Host Health is the only Insights time series the GUI **persists on server disk** (`data/host_metrics/`).
 
 Without these changes, pages like **Run Performance**, **PuppetDB Health**, and **OpenVox Server Health** will show limited, partial, or empty charts.
 

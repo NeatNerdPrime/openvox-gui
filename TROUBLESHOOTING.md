@@ -1,21 +1,25 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.2**
+**OpenVox GUI Version 3.12.0-rc.3**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
+
+**Related docs:** [FEATURES.md](docs/FEATURES.md) · [VIP_SESSIONS.md](docs/VIP_SESSIONS.md) · [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Table of Contents
 
 1. [Quick Fixes (Try These First!)](#quick-fixes-try-these-first)
 2. [Login and Access Problems](#login-and-access-problems)
-3. [Service Won't Start](#service-wont-start)
-4. [Connection Problems](#connection-problems)
-5. [Performance Issues](#performance-issues)
-6. [Display and UI Problems](#display-and-ui-problems)
-7. [Data and Report Issues](#data-and-report-issues)
-8. [Certificate Problems](#certificate-problems)
-9. [Update and Deployment Issues](#update-and-deployment-issues)
-10. [Getting More Help](#getting-more-help)
+3. [VIP / dual-console session thrash (3.12+)](#vip--dual-console-session-thrash-312)
+4. [Service Won't Start](#service-wont-start)
+5. [Connection Problems](#connection-problems)
+6. [Performance Issues](#performance-issues)
+7. [Display and UI Problems](#display-and-ui-problems)
+8. [Data and Report Issues](#data-and-report-issues)
+9. [Certificate Problems](#certificate-problems)
+10. [CA log noise (already signed / no CSR)](#ca-log-noise-already-signed--no-csr)
+11. [Update and Deployment Issues](#update-and-deployment-issues)
+12. [Getting More Help](#getting-more-help)
 
 ---
 
@@ -127,7 +131,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.2"}
+   # Should return: {"status":"ok","version":"3.12.0-rc.3"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -181,7 +185,34 @@ sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py a
 2. Click "Proceed to site" or "Accept Risk and Continue"
 3. The warning will appear each time unless you add an exception
 
-To use a real certificate, see the Configuration documentation.
+To use a real certificate, see the Configuration documentation (SSL wizard under Settings → Application Configuration).
+
+---
+
+## VIP / dual-console session thrash (3.12+)
+
+### Problem: Direct console FQDN works; VIP URL keeps refreshing or logs you out
+
+**Symptoms:**
+
+- `https://openvox.pdxc-…:4567` and `https://openvox.atlc-…:4567` are fine
+- Via the load-balancer VIP, Insights/Dashboard auto-refresh “storms” and session ends early
+
+**Cause (3.12 fixed the client amplifier):** multi-backend RR + intermittent 401 used to call `window.location.reload()` on every poll. Remaining infra issues: mismatched `OPENVOX_GUI_SECRET_KEY`, non-shared app DB, different GUI versions per console, or missing VIP hostname config.
+
+**Fix:**
+
+1. Upgrade **both** consoles to **3.12.0-rc.1+** (same version).
+2. Identical `OPENVOX_GUI_SECRET_KEY` and shared Postgres `openvox_gui` DSN.
+3. Set console VIP hostnames: Settings → Cluster → **Console VIP / public LB hostnames**, or `OPENVOX_GUI_VIP_HOSTS=…` on both hosts.
+4. Prefer LB sticky sessions **and** keep app RR-safe.
+5. Verify: `curl -sk https://VIP:4567/api/auth/status` → `"access_mode":"vip"`.
+
+Full write-up: [docs/VIP_SESSIONS.md](docs/VIP_SESSIONS.md).
+
+### Problem: `project.version` / pep440 error on deploy (ovox install)
+
+Use PEP 440 pre-release labels only (`rc`, `a`, `b`, `dev`). The string `gamma` is **not** valid for pip/setuptools — the product train may be called “gamma” in notes but the version file must be e.g. `3.12.0-rc.1`.
 
 ---
 
@@ -604,6 +635,8 @@ Use `sudo puppet config print ssldir`.
    sudo puppetserver ca sign --certname node.example.com
    ```
 
+4. **Dedicated console:** signing uses the **remote CA HTTP API**. Set `OPENVOX_GUI_PUPPET_CA_HOST` to the **CA VIP** (not the compiler VIP). Confirm the console agent cert is allowed in CA `auth.conf` for certificate status/sign paths.
+
 ### Problem: Certificate Expiration Warnings
 
 **Solutions:**
@@ -625,6 +658,24 @@ Use `sudo puppet config print ssldir`.
    # On the server:
    sudo puppetserver ca sign --certname node.example.com
    ```
+
+---
+
+## CA log noise (already signed / no CSR)
+
+These messages appear on the **CA** (`puppetserver` journal), not as GUI bugs.
+
+### `already has a signed certificate; ignoring certificate request`
+
+A client (agent/compiler) is **uploading a CSR** for a name the CA already signed. The CA correctly ignores it. Fix the **client** local SSL (missing `hostcert`, stale CSR, wrong `ssldir` / second tree). Download the signed cert or re-bootstrap once; do not “sign again” forever from the GUI.
+
+### `No certificate request for … at …/ca/requests/….pem`
+
+Something called **sign/reject** (GUI, CLI, or script) but there is **no pending CSR** on disk (already signed, never submitted, or ignore-path above never wrote `requests/`). Harmless if the name is already under `signed/`. Only sign names from `puppetserver ca list` (pending), not from a static host list.
+
+### Dedicated console CA page empty or errors
+
+Console has no local `puppetserver` CA. Requires working mTLS to `OPENVOX_GUI_PUPPET_CA_HOST` and matching auth.conf allow lists for the console certname(s).
 
 ---
 

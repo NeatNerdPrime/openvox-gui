@@ -1,6 +1,6 @@
 # Update Guide
 
-**OpenVox GUI Version 3.12.0-rc.2**
+**OpenVox GUI Version 3.12.0-rc.3**
 
 This guide explains how to update your existing OpenVox GUI installation to the latest version. Updates bring new features, bug fixes, and security improvements.
 
@@ -191,7 +191,7 @@ The script automatically:
 curl -k https://localhost:4567/health
 
 # Should show something like:
-# {"status":"ok","version":"3.12.0-rc.2"}
+# {"status":"ok","version":"3.12.0-rc.3"}
 ```
 
 Open your browser and refresh the page. You might need to clear your browser cache:
@@ -614,27 +614,32 @@ If you're stuck:
 
 OpenVox GUI uses **Semantic Versioning (SemVer 2.0.0)** plus optional **pre-releases**:
 
-- **Stable:** `MAJOR.MINOR.PATCH` (example: **3.10.6** — current stable on `main`)
-- **Pre-release / beta trains:** e.g. `3.10.6`, `3.10.3b14`, `3.9.0-dev.42`, historical alpha labels such as `3.10.04.a8` on feature branches
-- **ovox CLI** version always matches the GUI (root `VERSION` file) as of 3.7.3
+- **Stable:** `MAJOR.MINOR.PATCH` (example: **3.10.6** — latest GitHub stable Release)
+- **Pre-release trains on `main`:** e.g. `3.12.0-rc.N` (current), `3.11.1-beta.N`, `3.10.5-dev.N`
+- **ovox CLI** version always matches the GUI (root `VERSION` file)
+- **Feature inventory:** [docs/FEATURES.md](docs/FEATURES.md)
 
 Rules of thumb:
 
 - **MAJOR** — big changes that might break compatibility
 - **MINOR** — new features that are backwards compatible
 - **PATCH** — bug fixes and small improvements
-- Prefer the latest **stable** GitHub Release for production; use betas only on lab/test unless you mean to
+- Prefer the latest **stable** GitHub Release for production; use `rc` / beta only on lab or agreed pilots
 
 Examples:
+- `3.10.6` → `3.12.0-rc.N`: clustered console, VIP sessions, Host Health, docs refresh
 - `3.10.4` → `3.10.6`: GUI performance (Dashboard lean PDB extract, multi-worker uvicorn, graph-page SWR)
-- `3.10.2` → `3.10.4`: Live fleet consistency + 3.10.3 beta train (Log Viewer, ENC, Inventory, export, Executive Summary)
-- `3.10.3b14` → `3.10.4`: Beta train promoted to stable (same code family)
-- `3.9.7` → `3.10.2`: Feature line promotion (Insights NOC, ops UI, Orchestration #38)
-- `1.4.8` → `2.0.0`: Major new feature (LDAP authentication) — see CHANGELOG for historical detail
+- `3.10.2` → `3.10.4`: Live fleet consistency + Log Viewer / ENC / Inventory polish
+- `3.9.7` → `3.10.2`: Insights NOC, ops UI, Orchestration single-run (#38)
 
 ### Recent Versions
 
-**Version 3.10.6 (Current stable — July 2026)**
+**Version 3.12.0-rc (current `main` pre-release)**
+- Dual-console **VIP** session safety, cluster `vip_hosts`, sliding JWT, denylist fail-open — [docs/VIP_SESSIONS.md](docs/VIP_SESSIONS.md)
+- Continues 3.11 clustered console work (remote CA API, stage/activate, Postgres `openvox_gui`)
+- Full page map: [docs/FEATURES.md](docs/FEATURES.md)
+
+**Version 3.10.6 (Latest stable GitHub Release — July 2026)**
 - Promotes **3.10.5-dev.1–dev.5** on **`main`** ([GitHub Release](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6))
 - **Performance:** Dashboard lean PuppetDB trend extract; multi-worker uvicorn (`OPENVOX_GUI_UVICORN_WORKERS`); API TTL caches; GZip; graph-page session SWR — see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
 - After upgrade: hard-refresh browsers once; confirm `systemctl cat openvox-gui` shows `--workers N`
