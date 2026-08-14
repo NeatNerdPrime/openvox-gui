@@ -175,6 +175,9 @@ export function AppShellLayout() {
   const [activeSessions, setActiveSessions] = useState<any>(null);
   const [appName, setAppName] = useState('OpenVox GUI');
   const [nodeNames, setNodeNames] = useState<string[]>([]);
+  /** Which console backend served this session (footer under active users). */
+  const [consoleHost, setConsoleHost] = useState<string>('');
+  const [consoleIp, setConsoleIp] = useState<string>('');
   // Sidebar sections: persist expand/collapse; not locked open while on a child page
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
     ...loadStoredNavGroups(),
@@ -230,6 +233,18 @@ export function AppShellLayout() {
     fetchSessions();
     const interval = setInterval(fetchSessions, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Public /api/version — hostname + facter-style ipaddress for this console
+    fetch('/api/version', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        if (data.hostname) setConsoleHost(String(data.hostname));
+        if (data.ipaddress) setConsoleIp(String(data.ipaddress));
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -497,6 +512,29 @@ export function AppShellLayout() {
                 )}
               </HoverCard.Dropdown>
             </HoverCard>
+            {(consoleHost || consoleIp) && (
+              <Tooltip
+                label="This OpenVox GUI console (backend host). Behind a VIP, this is the node that served the page."
+                multiline
+                maw={280}
+              >
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  mt={4}
+                  ff="monospace"
+                  style={{ lineHeight: 1.35, wordBreak: 'break-all' }}
+                >
+                  {consoleHost || 'console'}
+                  {consoleIp ? (
+                    <>
+                      <br />
+                      {consoleIp}
+                    </>
+                  ) : null}
+                </Text>
+              </Tooltip>
+            )}
           </Box>
         </MantineAppShell.Section>
       </MantineAppShell.Navbar>

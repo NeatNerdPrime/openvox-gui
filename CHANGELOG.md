@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.7] - 2026-08-14 (feat — console host/IP footer marker)
+
+### Added
+- **Nav footer:** under active users, show this GUI console's FQDN and
+  primary IP (`facter ipaddress` / `networking.ip` when available) so dual
+  consoles (openvox.pdxc… vs openvox.atlc…) are obvious behind a VIP.
+  Data from `GET /api/version` (`hostname`, `ipaddress`).
+
 ## [3.12.0-rc.6] - 2026-08-14 (fix — Log Viewer empty result is not 502)
 
 ### Fixed

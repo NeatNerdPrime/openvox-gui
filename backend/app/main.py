@@ -371,10 +371,70 @@ async def ready_check():
         )
 
 
+def _console_identity() -> dict:
+    """FQDN + primary IPv4 for the footer 'which console am I on?' marker.
+
+    ``ipaddress`` mirrors Facter's classic fact (default outbound IPv4), not
+    every interface. Falls back to gethostbyname / empty string.
+    """
+    import socket
+    import subprocess
+
+    hostname = ""
+    try:
+        hostname = socket.getfqdn() or socket.gethostname() or ""
+    except OSError:
+        hostname = ""
+
+    ipaddress = ""
+    # Prefer facter when present (same value ops expect).
+    for cmd in (
+        ["/opt/puppetlabs/bin/facter", "networking.ip"],
+        ["/opt/puppetlabs/bin/facter", "ipaddress"],
+        ["facter", "networking.ip"],
+        ["facter", "ipaddress"],
+    ):
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            val = (proc.stdout or "").strip()
+            if proc.returncode == 0 and val and val.lower() not in ("", "nil", "null"):
+                ipaddress = val.splitlines()[0].strip()
+                break
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+
+    if not ipaddress:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("8.8.8.8", 80))
+                ipaddress = s.getsockname()[0]
+            finally:
+                s.close()
+        except OSError:
+            try:
+                if hostname:
+                    ipaddress = socket.gethostbyname(hostname)
+            except OSError:
+                ipaddress = ""
+
+    return {"hostname": hostname, "ipaddress": ipaddress}
+
+
 @app.get("/api/version")
 async def get_version():
-    """Public endpoint returning the application version. No auth required."""
-    return {"version": __version__}
+    """Public endpoint: app version + this console's hostname/IP (footer marker)."""
+    ident = _console_identity()
+    return {
+        "version": __version__,
+        "hostname": ident["hostname"],
+        "ipaddress": ident["ipaddress"],
+    }
 
 
 @app.get("/metrics")
