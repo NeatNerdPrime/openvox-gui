@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.13] - 2026-08-14 (fix — bolt inventory readable by user bolt)
+
+### Fixed
+- **Bolt estate inventory unreadable:** write
+  `bolt-inventory.estate.yaml` as mode **644** and ensure
+  `/opt/openvox-gui/data` is traversable by others so `sudo -u bolt`
+  can read it. Optionally copy to
+  `/etc/puppetlabs/bolt/openvox-gui-estate.yaml`.
+
 ## [3.12.0-rc.12] - 2026-08-14 (fix — infra settings show remote Bolt values)
 
 ### Fixed
