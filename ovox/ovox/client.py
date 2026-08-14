@@ -11,7 +11,10 @@ The client is deliberately small; complex orchestration stays on the server.
 """
 
 import json
+import os
+import ipaddress
 from typing import Any, Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 import httpx
 from rich.console import Console
@@ -21,6 +24,65 @@ from .version import VERSION
 
 
 console = Console()
+
+
+def _hostname_bypasses_proxy(hostname: str) -> bool:
+    """True if GUI base URL host must not use HTTP(S)_PROXY.
+
+    httpx honors NO_PROXY when trust_env=True, but operators often only list
+    one console FQDN while ovox uses another name (corp vs twitter.biz,
+    short name, VIP). Internal OpenVox traffic must never go through the
+    corporate proxy (407 / broken mTLS).
+    """
+    h = (hostname or "").strip().lower().rstrip(".")
+    if not h:
+        return False
+    if h in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+        if ip.is_loopback or ip.is_private or ip.is_link_local:
+            return True
+    except ValueError:
+        pass
+
+    # Explicit env (both cases). Comma/space separated; leading-dot suffixes OK.
+    raw = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+    for part in raw.replace(",", " ").split():
+        p = part.strip().lower().rstrip(".")
+        if not p:
+            continue
+        if p.startswith("."):
+            if h.endswith(p) or h == p[1:]:
+                return True
+        elif h == p or h.endswith("." + p):
+            return True
+
+    # Built-in internal estate suffixes (xAI / lab). Still honor env first above.
+    internal_suffixes = (
+        ".corp.int-x.ai",
+        ".int-x.ai",
+        ".twitter.biz",
+        ".twttr.net",
+        ".questy.org",
+        ".local",
+    )
+    for suf in internal_suffixes:
+        if h.endswith(suf) or h == suf[1:]:
+            return True
+    return False
+
+
+def _client_proxy_setting(base_url: str) -> Any:
+    """Return httpx proxy= value: None to force bypass, True to use trust_env."""
+    try:
+        host = urlparse(base_url).hostname or ""
+    except Exception:
+        host = ""
+    if _hostname_bypasses_proxy(host):
+        return None
+    # Let httpx read HTTP_PROXY / HTTPS_PROXY / NO_PROXY from the environment.
+    return True
 
 
 class OvoxAPIError(Exception):
@@ -79,15 +141,25 @@ class OvoxClient:
 
         self.timeout = timeout or cfg.timeout
 
-        self._client = httpx.Client(
-            base_url=self.base_url,
-            timeout=self.timeout,
-            verify=self.verify,
-            headers={
+        # Proxy: never send console/API calls to internal hosts via corp proxy
+        # (fixes 407 when HTTPS_PROXY is set but NO_PROXY is incomplete).
+        proxy_setting = _client_proxy_setting(self.base_url)
+        client_kwargs: Dict[str, Any] = {
+            "base_url": self.base_url,
+            "timeout": self.timeout,
+            "verify": self.verify,
+            "headers": {
                 "User-Agent": f"ovox/{VERSION}",
                 "Accept": "application/json",
             },
-        )
+            "trust_env": True,
+        }
+        # httpx: proxy=None disables proxies; omit or trust_env for env proxies.
+        if proxy_setting is None:
+            client_kwargs["proxy"] = None
+            client_kwargs["trust_env"] = False  # do not re-pick HTTPS_PROXY
+
+        self._client = httpx.Client(**client_kwargs)
 
     def close(self) -> None:
         self._client.close()

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.9] - 2026-08-14 (fix — ovox bypass corp proxy for internal GUI)
+
+### Fixed
+- **`ovox` 407 Proxy Authentication Required:** HTTP client no longer
+  sends requests for internal console URLs (localhost, private IPs,
+  `*.corp.int-x.ai`, `*.twitter.biz`, `*.questy.org`, plus `NO_PROXY`)
+  through `HTTP(S)_PROXY`. Dedicated consoles with corp proxy env vars
+  can run `ovox infra health` against the local GUI again.
+
 ## [3.12.0-rc.8] - 2026-08-14 (fix — clustered ovox infra health)
 
 ### Fixed
