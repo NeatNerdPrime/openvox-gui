@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.5] - 2026-08-14 (feat — sortable PQL result columns)
+
+### Changed
+- **PQL Console results:** table uses shared **OpsTable** — click column
+  headers to sort (asc/desc), client pagination, sticky header. Timestamp
+  columns sort as dates; count-like columns as numbers. Same pattern as
+  Inventory / Cert Audit / reporting tables.
+
 ## [3.12.0-rc.4] - 2026-08-14 (feat — exclude infra VIPs from live fleet)
 
 ### Added

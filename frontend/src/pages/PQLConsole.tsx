@@ -5,18 +5,56 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Title, Card, Stack, Group, Text, Button, Textarea, Alert, Loader, Center,
-  Code, Badge, Select, Table, ScrollArea, Paper, ActionIcon, Tooltip, Grid,
+  Title, Card, Stack, Group, Text, Button, Textarea, Alert, Loader,
+  Code, Badge, Select, Paper, ActionIcon, Tooltip, Grid,
 } from '@mantine/core';
-import { IconTerminal, IconPlayerPlay, IconTrash, IconLink } from '@tabler/icons-react';
+import { IconTerminal, IconPlayerPlay, IconLink } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { pql, nodes as nodesApi } from '../services/api';
 import { useAppTheme } from '../hooks/ThemeContext';
 import { PrettyJson } from '../components/PrettyJson';
 import { ExportActions } from '../components/ExportActions';
+import { OpsTable, OpsColumn } from '../components/OpsTable';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { useActivity } from '../hooks/ActivityContext';
-import { OutputPane } from '../components/OutputPane';
+
+/** Heuristic sort type for PQL result columns (report/event timestamps, counts). */
+function pqlColumnSortType(col: string): 'string' | 'number' | 'date' {
+  const c = col.toLowerCase();
+  if (
+    c.includes('time') ||
+    c.includes('timestamp') ||
+    c.endsWith('_at') ||
+    c === 'deactivated' ||
+    c === 'expired'
+  ) {
+    return 'date';
+  }
+  if (
+    c.includes('count') ||
+    c.endsWith('_mb') ||
+    c.endsWith('_pct') ||
+    c === 'line' ||
+    c === 'offset'
+  ) {
+    return 'number';
+  }
+  return 'string';
+}
+
+function cellDisplay(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function cellSortValue(value: unknown): string | number | null {
+  if (value == null) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
 
 /* ═══════════════════════════════════════════════════════════════
    QUERY-O-TRON 7000 — the PQL query machine
@@ -196,15 +234,73 @@ export function PQLConsolePage() {
     setRunning(false);
   };
 
-  const columns: string[] = [];
-  if (results?.results?.length > 0) {
-    const first = results.results[0];
-    if (typeof first === 'object' && first !== null) {
-      Object.keys(first).forEach((k) => {
-        if (!columns.includes(k)) columns.push(k);
-      });
+  // Stable column set from first row keys + any extra keys seen later.
+  const columns = useMemo(() => {
+    const cols: string[] = [];
+    const rows = results?.results;
+    if (!Array.isArray(rows) || rows.length === 0) return cols;
+    const first = rows[0];
+    if (typeof first !== 'object' || first === null) return cols;
+    for (const k of Object.keys(first)) {
+      if (!cols.includes(k)) cols.push(k);
     }
-  }
+    // Include keys that only appear on later rows (sparse PQL projections).
+    for (let i = 1; i < Math.min(rows.length, 50); i++) {
+      const row = rows[i];
+      if (typeof row !== 'object' || row === null) continue;
+      for (const k of Object.keys(row)) {
+        if (!cols.includes(k)) cols.push(k);
+      }
+    }
+    return cols;
+  }, [results]);
+
+  const tableRows = useMemo(() => {
+    const rows = results?.results;
+    if (!Array.isArray(rows)) return [] as Record<string, unknown>[];
+    return rows.map((row, i) => {
+      if (typeof row === 'object' && row !== null) {
+        return { ...row, __pql_i: i } as Record<string, unknown>;
+      }
+      return { value: row, __pql_i: i } as Record<string, unknown>;
+    });
+  }, [results]);
+
+  const opsColumns: OpsColumn<Record<string, unknown>>[] = useMemo(
+    () =>
+      columns.map((col) => ({
+        key: col,
+        header: col,
+        sortable: true,
+        sortType: pqlColumnSortType(col),
+        sortValue: (row) => cellSortValue(row[col]),
+        render: (row) => {
+          const cell = cellDisplay(row[col]);
+          return (
+            <Tooltip
+              label={cell.length > 80 ? cell : undefined}
+              multiline
+              maw={480}
+              disabled={cell.length <= 80}
+              openDelay={400}
+            >
+              <Text
+                size="xs"
+                ff="monospace"
+                style={{
+                  whiteSpace: 'nowrap',
+                  display: 'inline-block',
+                  minWidth: 'max-content',
+                }}
+              >
+                {cell}
+              </Text>
+            </Tooltip>
+          );
+        },
+      })),
+    [columns],
+  );
 
   return (
     <Stack>
@@ -325,83 +421,18 @@ export function PQLConsolePage() {
           </Group>
 
           {columns.length > 0 ? (
-            <ScrollArea
-              h="calc(100vh - 350px)"
-              mih={300}
-              mah={800}
-              type="auto"
-              offsetScrollbars
-              scrollbarSize={10}
-            >
-              {/* minWidth max-content + nowrap cells: horizontal scroll for long Value/certname lines (no ellipsis truncation) */}
-              <Table
-                striped
-                highlightOnHover
-                withTableBorder
-                style={{ minWidth: 'max-content', width: '100%' }}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    {columns.map((col) => (
-                      <Table.Th
-                        key={col}
-                        style={{
-                          whiteSpace: 'nowrap',
-                          position: 'sticky',
-                          top: 0,
-                          background: 'var(--mantine-color-body)',
-                          zIndex: 1,
-                        }}
-                      >
-                        {col}
-                      </Table.Th>
-                    ))}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {results.results.map((row: any, i: number) => (
-                    <Table.Tr key={i}>
-                      {columns.map((col) => {
-                        const cell =
-                          typeof row[col] === 'object'
-                            ? JSON.stringify(row[col])
-                            : String(row[col] ?? '');
-                        return (
-                          <Table.Td
-                            key={col}
-                            style={{
-                              whiteSpace: 'nowrap',
-                              verticalAlign: 'top',
-                              maxWidth: 'none',
-                            }}
-                          >
-                            <Tooltip
-                              label={cell.length > 80 ? cell : undefined}
-                              multiline
-                              maw={480}
-                              disabled={cell.length <= 80}
-                              openDelay={400}
-                            >
-                              <Text
-                                size="xs"
-                                ff="monospace"
-                                style={{
-                                  whiteSpace: 'nowrap',
-                                  display: 'inline-block',
-                                  minWidth: 'max-content',
-                                }}
-                              >
-                                {cell}
-                              </Text>
-                            </Tooltip>
-                          </Table.Td>
-                        );
-                      })}
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </ScrollArea>
+            <OpsTable<Record<string, unknown>>
+              key={`pql-${columns.join('|')}-${results.count}`}
+              columns={opsColumns}
+              data={tableRows}
+              rowKey={(row) => String(row.__pql_i ?? 0)}
+              defaultPageSize={100}
+              pageSizeOptions={['50', '100', '200', '500', '1000']}
+              maxHeight="calc(100vh - 350px)"
+              minHeight={300}
+              emptyTitle="No rows"
+              emptyDescription="Query returned an empty result set."
+            />
           ) : (
             <>
               <Group justify="flex-end" mb="xs">
@@ -413,9 +444,7 @@ export function PQLConsolePage() {
                   showDownload
                 />
               </Group>
-              <ScrollArea h="calc(100vh - 350px)" mih={300} mah={800}>
-                <PrettyJson data={results.results} maxHeight="calc(100vh - 350px)" />
-              </ScrollArea>
+              <PrettyJson data={results.results} maxHeight="calc(100vh - 350px)" />
             </>
           )}
         </Card>
