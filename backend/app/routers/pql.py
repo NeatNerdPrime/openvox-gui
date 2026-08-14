@@ -118,16 +118,23 @@ async def execute_pql(
 @router.get("/examples")
 async def get_pql_examples():
     """Return example PQL queries for the UI."""
+    # Each `query` must be unique: Mantine Select uses it as option value and
+    # throws if duplicates appear (see Failed nodes vs catalog-errors clash).
     return {
         "examples": [
             {"label": "All nodes", "query": "nodes {}"},
             {"label": "Failed nodes", "query": 'nodes { latest_report_status = "failed" }'},
+            {"label": "Changed nodes", "query": 'nodes { latest_report_status = "changed" }'},
+            {"label": "Unchanged nodes", "query": 'nodes { latest_report_status = "unchanged" }'},
             {"label": "All facts for a node", "query": 'facts { certname = "NODENAME" }'},
             {"label": "OS distribution across fleet", "query": 'facts { name = "os" }'},
             {"label": "Nodes with specific class", "query": 'resources { type = "Class" and title = "Ntp" }'},
             {"label": "Recent failed reports", "query": 'reports { status = "failed" }'},
             {"label": "All environments", "query": "environments {}"},
-            {"label": "Nodes with catalog errors", "query": 'nodes { latest_report_status = "failed" }'},
+            {
+                "label": "Cached catalog fallbacks",
+                "query": 'reports { cached_catalog_status = "on_failure" }',
+            },
             {"label": "Resource event failures", "query": 'events { status = "failure" }'},
             {"label": "Package resources", "query": 'resources { type = "Package" }'},
             {"label": "File resources on a node", "query": 'resources { type = "File" and certname = "NODENAME" }'},

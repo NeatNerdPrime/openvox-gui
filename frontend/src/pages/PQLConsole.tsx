@@ -3,7 +3,7 @@
  * 
  * Component documentation to be expanded.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Title, Card, Stack, Group, Text, Button, Textarea, Alert, Loader, Center,
   Code, Badge, Select, Table, ScrollArea, Paper, ActionIcon, Tooltip, Grid,
@@ -144,6 +144,19 @@ export function PQLConsolePage() {
     nodesApi.list().then((ns: any[]) => setCertnames(ns.map((n) => n.certname).sort())).catch(() => {});
   }, []);
 
+  // Mantine Select forbids duplicate `value`s — de-dupe by query string.
+  const exampleOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { value: string; label: string }[] = [];
+    for (const e of examples) {
+      const value = String(e?.query ?? '').trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      out.push({ value, label: String(e?.label || value) });
+    }
+    return out;
+  }, [examples]);
+
   const handleNodeSelect = (certname: string | null) => {
     setSelectedNode(certname);
     if (certname && query.includes('NODENAME')) {
@@ -229,7 +242,7 @@ export function PQLConsolePage() {
               <Select
                 label="Examples"
                 placeholder="Load an example query..."
-                data={examples.map((e: any) => ({ value: e.query, label: e.label }))}
+                data={exampleOptions}
                 onChange={handleExampleSelect}
                 clearable
                 searchable

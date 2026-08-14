@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.2] - 2026-08-14 (fix — PQL examples Select crash)
+
+### Fixed
+- **PQL Console:** Mantine threw on mount when two example queries shared
+  the same string (`nodes { latest_report_status = "failed" }` labeled
+  both "Failed nodes" and "Nodes with catalog errors"). Unique example
+  queries on the backend; frontend de-dupes Select `value`s defensively.
+
 ## [3.12.0-rc.1] - 2026-08-14 (feat — VIP-safe sessions; gamma train)
 
 Pre-release toward a testable dual-console release (gamma-class train;
