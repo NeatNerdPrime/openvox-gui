@@ -27,6 +27,7 @@ import { IconServer, IconRefresh, IconTrash, IconArrowsMaximize, IconArrowsMinim
 import { useApi } from '../hooks/useApi';
 import { metrics } from '../services/api';
 import { CHART_LINE_TYPE, smoothTimeSeries } from '../utils/chartDefaults';
+import { effectivePollIntervalMs } from '../utils/accessMode';
 
 interface HistoryPoint {
   time: string;
@@ -212,7 +213,7 @@ export function MetricsPuppetServerHealthPage({ embedded = false }: { embedded?:
   const fetchData = useCallback(() => { refetch(); }, [refetch]);
 
   useEffect(() => {
-    const rate = parseInt(refreshRate) * 1000;
+    const rate = effectivePollIntervalMs(parseInt(refreshRate, 10) * 1000) ?? 0;
     if (rate <= 0) return;
     intervalRef.current = setInterval(fetchData, rate);
     return () => {

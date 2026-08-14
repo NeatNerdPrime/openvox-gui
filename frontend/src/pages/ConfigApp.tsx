@@ -560,6 +560,7 @@ function ClusterTab() {
   const [caVips, setCaVips] = useState('');
   const [deployTargets, setDeployTargets] = useState('');
   const [consoles, setConsoles] = useState('');
+  const [vipHosts, setVipHosts] = useState('');
   const [dbBackend, setDbBackend] = useState<'sqlite' | 'postgresql'>('sqlite');
   const [encUrls, setEncUrls] = useState('');
   const [databaseUrl, setDatabaseUrl] = useState('');
@@ -579,6 +580,7 @@ function ClusterTab() {
     setCaVips((data.ca_vips || []).join('\n'));
     setDeployTargets((data.code_deploy_targets || []).join('\n'));
     setConsoles((data.consoles || []).join('\n'));
+    setVipHosts((data.vip_hosts || []).join('\n'));
     setDbBackend((data.database_backend === 'postgresql' ? 'postgresql' : 'sqlite'));
     setEncUrls((data.enc_api_urls || []).join('\n'));
   }, [data]);
@@ -601,6 +603,7 @@ function ClusterTab() {
         ca_vips: lines(caVips),
         code_deploy_targets: lines(deployTargets),
         consoles: lines(consoles),
+        vip_hosts: lines(vipHosts),
         database_backend: mode === 'clustered' ? 'postgresql' : dbBackend,
         enc_api_urls: lines(encUrls),
         database_url: databaseUrl || undefined,
@@ -744,10 +747,18 @@ function ClusterTab() {
               />
               <Textarea
                 label="GUI console FQDNs (optional, one per line)"
-                description="This console and any future consoles. Compilers can use a VIP or these URLs for enc.py."
+                description="Individual console nodes (openvox.pdxc…, openvox.atlc…). Direct access keeps full poll rates."
                 minRows={2}
                 value={consoles}
                 onChange={(e) => setConsoles(e.currentTarget.value)}
+                placeholder={"openvox.pdxc-it.corp.int-x.ai\nopenvox.atlc-it.corp.int-x.ai"}
+              />
+              <Textarea
+                label="Console VIP / public LB hostnames"
+                description="Hostnames users hit via the load balancer. SPA uses gentler polling and session-safe 401 handling when Host matches. Also set OPENVOX_GUI_VIP_HOSTS on both consoles if preferred."
+                minRows={2}
+                value={vipHosts}
+                onChange={(e) => setVipHosts(e.currentTarget.value)}
                 placeholder="openvox.corp.int-x.ai"
               />
               <Textarea

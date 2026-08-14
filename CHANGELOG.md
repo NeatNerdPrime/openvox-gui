@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-gamma.1] - 2026-08-14 (feat — VIP-safe sessions; gamma train)
+
+Pre-release toward a testable dual-console release. Minor bump from the
+3.11.1 beta train.
+
+### Fixed
+- **VIP refresh/logout storm:** API `401` no longer calls
+  `window.location.reload()`. Single-flight session gate probes
+  `/api/auth/me` and soft-lands on the login screen once
+  (`frontend/src/utils/sessionGate.ts`).
+- **Denylist fail-closed on DB blips:** signature-valid JWTs are no
+  longer mass-revoked when the denylist lookup errors (multi-console
+  thrash under VIP). Confirmed denylist hits still 401.
+- **Version check behind VIP:** compares `/api/version` JSON instead of
+  per-node `index.html` ETag/Last-Modified (false “update available”).
+
+### Added
+- **Access mode** `direct` | `vip` from request Host vs configured VIP
+  hostnames (`OPENVOX_GUI_VIP_HOSTS` and/or cluster `vip_hosts`).
+  Exposed on `GET /api/auth/status` with session TTL and VIP poll floor.
+- **Settings → Cluster:** “Console VIP / public LB hostnames” field.
+- **Sliding session renew:** when JWT remaining life &lt; 25%, middleware
+  sets a fresh httpOnly cookie (active users stay signed in).
+- Docs: `docs/VIP_SESSIONS.md`.
+
+### Changed
+- JWT lifetime still default **24h**, never below **4h**; cookie
+  `max_age` matches. `auth_session_timeout` default **14400** (4h
+  product floor for forced logout).
+- **VIP polls:** floor ~45s (`OPENVOX_GUI_VIP_POLL_FLOOR_MS`); focus
+  refetch debounced 15s. Direct node FQDNs keep prior intervals.
+- Insights/Logs/Dashboard interval pages honor the VIP poll floor.
+
+### Ops notes
+- Dual console + VIP requires **identical** `OPENVOX_GUI_SECRET_KEY`,
+  shared Postgres `openvox_gui`, same GUI version, and VIP hostnames
+  configured. Prefer LB sticky sessions in addition to app RR-safety.
+
 ## [3.11.1-beta.12] - 2026-08-14 (fix — remote logs without script JSON)
 
 ### Fixed

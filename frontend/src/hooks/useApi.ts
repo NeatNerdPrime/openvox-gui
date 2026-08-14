@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { readSessionCache, writeSessionCache } from '../utils/sessionCache';
+import { effectivePollIntervalMs, isVipAccess } from '../utils/accessMode';
+import { isSessionSuspect } from '../utils/sessionGate';
 
 interface UseApiResult<T> {
   data: T | null;
@@ -105,6 +107,10 @@ export function useApi<T>(
   cacheValidateRef.current = cacheValidate;
 
   const refetch = useCallback(() => {
+    // Pause background work while session is suspect/expired (VIP thrash guard).
+    if (isSessionSuspect()) {
+      return;
+    }
     const showFullLoader = !(keepPrevRef.current && hasDataRef.current);
     if (showFullLoader) {
       setLoading(true);
@@ -153,28 +159,41 @@ export function useApi<T>(
 
   // Live surface: silent refetch on focus / tab visible, plus optional trickle.
   // Never flips the full-page loader — prior data stays on screen (SWR).
+  // VIP: raise poll floor + debounce focus refetch (multi-backend thrash).
   useEffect(() => {
+    let focusTimer: number | undefined;
     const soft = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
+      if (isSessionSuspect()) return;
       refetch();
     };
+    const softFocus = () => {
+      if (isVipAccess()) {
+        if (focusTimer) window.clearTimeout(focusTimer);
+        focusTimer = window.setTimeout(soft, 15000);
+        return;
+      }
+      soft();
+    };
     const onVis = () => {
-      if (!document.hidden) soft();
+      if (!document.hidden) softFocus();
     };
     if (refetchOnFocus) {
-      window.addEventListener('focus', soft);
+      window.addEventListener('focus', softFocus);
       document.addEventListener('visibilitychange', onVis);
     }
     let id: number | undefined;
-    if (pollIntervalMs && pollIntervalMs >= 5000) {
-      id = window.setInterval(soft, pollIntervalMs);
+    const effective = effectivePollIntervalMs(pollIntervalMs);
+    if (effective && effective >= 5000) {
+      id = window.setInterval(soft, effective);
     }
     return () => {
       if (refetchOnFocus) {
-        window.removeEventListener('focus', soft);
+        window.removeEventListener('focus', softFocus);
         document.removeEventListener('visibilitychange', onVis);
       }
       if (id) window.clearInterval(id);
+      if (focusTimer) window.clearTimeout(focusTimer);
     };
   }, [pollIntervalMs, refetch, refetchOnFocus]);
 

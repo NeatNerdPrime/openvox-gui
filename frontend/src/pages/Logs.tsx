@@ -14,6 +14,7 @@ import {
   IconFileText, IconRefresh, IconSearch, IconDownload, IconPlayerStop,
 } from '@tabler/icons-react';
 import { logs } from '../services/api';
+import { effectivePollIntervalMs } from '../utils/accessMode';
 
 /** Fallback labels when /logs/sources has not loaded yet (OpenVox-oriented defaults). */
 const DEFAULT_LOG_SOURCES = [
@@ -153,10 +154,11 @@ export function LogsPage() {
     fetchLogs();
   }, [activeTab, selectedHost]);
 
-  // Auto-refresh
+  // Auto-refresh (VIP raises floor above 5s)
   useEffect(() => {
     if (autoRefresh) {
-      intervalRef.current = setInterval(() => fetchLogs(), 5000);
+      const ms = effectivePollIntervalMs(5000) ?? 5000;
+      intervalRef.current = setInterval(() => fetchLogs(), ms);
     } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;

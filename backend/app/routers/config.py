@@ -376,6 +376,8 @@ class ClusterConfigUpdate(BaseModel):
     ca_vips: List[str] = []
     code_deploy_targets: List[str] = []
     consoles: List[str] = []
+    # Public VIP / LB hostnames (SPA access_mode=vip when Host matches)
+    vip_hosts: List[str] = []
     database_backend: str = "sqlite"
     enc_api_urls: List[str] = []
     staging_codedir: Optional[str] = None

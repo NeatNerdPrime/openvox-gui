@@ -19,6 +19,8 @@ Both interfaces are clients of the same backend. There is no "API tier" that is 
 
 **Navigation mental model (3.10 UI):** Dashboard & Nodes → Infrastructure (CA, Orchestration, Agent Install, Cert Audit) → Code (ENC, r10k deploy) → Data (Hiera) → Tools (PQL / explorers) → **Insights** (Monitoring wallboard + metrics catalog + reports/logs) → Configuration (OpenVox + Application/SSL).
 
+**3.12 VIP sessions:** dual consoles behind a public VIP require identical `SECRET_KEY`, shared Postgres `openvox_gui`, and configured `vip_hosts` (cluster JSON or `OPENVOX_GUI_VIP_HOSTS`). The SPA uses `access_mode=vip|direct` from `/api/auth/status` to soften polls and never hard-reloads on 401. See [VIP_SESSIONS.md](VIP_SESSIONS.md).
+
 ## High-Level Component Diagram
 
 ```

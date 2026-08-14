@@ -15,6 +15,7 @@ import {
 import { IconGitBranch, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { metrics } from '../services/api';
 import { useApi } from '../hooks/useApi';
+import { effectivePollIntervalMs } from '../utils/accessMode';
 
 const STATUS_COLORS: Record<string, string> = {
   unchanged: '#2ecc71',
@@ -103,7 +104,7 @@ export function MetricsEnvironmentsPage() {
   const fetchData = useCallback(() => { refetch(); }, [refetch]);
 
   useEffect(() => {
-    const rate = parseInt(refreshRate) * 1000;
+    const rate = effectivePollIntervalMs(parseInt(refreshRate, 10) * 1000) ?? 0;
     if (rate <= 0) return;
     intervalRef.current = setInterval(fetchData, rate);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };

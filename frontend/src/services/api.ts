@@ -4,43 +4,32 @@
  * Every backend call in the frontend goes through this module. It provides
  * a thin wrapper around the browser's fetch() API that handles:
  *
- *   1. Automatic injection of the JWT bearer token from localStorage into
- *      every request's Authorization header.
- *   2. Automatic session expiry detection — if the backend responds with
- *      HTTP 401, the stored token is cleared and the page is reloaded so
- *      the user sees the login screen.
- *   3. Consistent error handling — non-2xx responses are converted into
- *      thrown Error objects with the status code and response body.
- *   4. Transparent handling of HTTP 204 No Content responses (returned by
- *      DELETE endpoints), which have no response body to parse as JSON.
+ *   1. Cookie-based session auth (httpOnly openvox_token; same-origin).
+ *   2. Session expiry via sessionGate — 401 probes /api/auth/me once and
+ *      notifies AuthContext (no full-page reload storm behind VIP).
+ *   3. Consistent error handling — non-2xx → thrown Error with detail.
+ *   4. HTTP 204 No Content → empty object (DELETE endpoints).
  *
  * The module is organised into namespaced objects (dashboard, nodes,
- * reports, etc.) that mirror the backend's router structure, making it
- * easy to find the client function for any given API endpoint.
+ * reports, etc.) that mirror the backend's router structure.
  */
+import { handleUnauthorized } from '../utils/sessionGate';
+
 const API_BASE = '/api';
 
 /**
  * Build the standard headers object for an authenticated API request.
- * Includes Content-Type: application/json and, if the user is logged in,
- * the Bearer token read from localStorage.
+ * Cookie is sent automatically for same-origin requests.
  */
 function getAuthHeaders(): Record<string, string> {
-  // Prefer httpOnly cookie set by backend on login (XSS protection).
-  // No longer read raw token from localStorage for Authorization header.
-  // Cookie is sent automatically for same-origin requests.
   return { 'Content-Type': 'application/json' };
 }
 
 /**
  * Core fetch wrapper used by every API function in this module.
  *
- * Prepends the API_BASE path, injects auth headers, and handles error
- * responses uniformly. If the backend returns 401 (token expired or
- * invalid), the token is cleared from localStorage and the page is
- * force-reloaded so the login screen appears — this is the simplest
- * way to handle session expiry without introducing a complex token
- * refresh flow.
+ * On 401: single-flight session gate (probe /auth/me). Does **not**
+ * call window.location.reload() — that caused VIP multi-console thrash.
  */
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${url}`, {
@@ -49,9 +38,7 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (response.status === 401) {
-    // Session invalid (cookie or token). Clear any legacy local state and reload.
-    localStorage.removeItem('openvox_token');
-    window.location.reload();
+    await handleUnauthorized();
     throw new Error('Session expired. Please log in again.');
   }
   if (!response.ok) {
@@ -81,16 +68,31 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 // ─── Auth (session cookie; used by AuthContext — srdevarch1 MP3) ───
 
 export const auth = {
-  /** Session probe — does NOT force reload on 401 (AuthContext handles unauthenticated). */
+  /** Session probe — does NOT invoke session gate on 401 (AuthContext handles it). */
   me: async () => {
-    const response = await fetch(`${API_BASE}/auth/me`, { headers: getAuthHeaders() });
+    const response = await fetch(`${API_BASE}/auth/me`, {
+      credentials: 'same-origin',
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) throw new Error(`API Error ${response.status}`);
     return response.json();
   },
   status: async () => {
-    const response = await fetch(`${API_BASE}/auth/status`, { headers: getAuthHeaders() });
+    const response = await fetch(`${API_BASE}/auth/status`, {
+      credentials: 'same-origin',
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) throw new Error(`API Error ${response.status}`);
-    return response.json() as Promise<{ auth_required?: boolean; auth_backend?: string }>;
+    return response.json() as Promise<{
+      auth_required?: boolean;
+      auth_backend?: string;
+      access_mode?: 'direct' | 'vip';
+      session_ttl_seconds?: number;
+      session_min_seconds?: number;
+      vip_poll_floor_ms?: number;
+      request_host?: string;
+      vip_hosts_configured?: string[];
+    }>;
   },
   login: (username: string, password: string) =>
     fetchJSON<{ user: { username: string; role: string }; token?: string }>('/auth/login', {
@@ -98,7 +100,11 @@ export const auth = {
       body: JSON.stringify({ username, password }),
     }),
   logout: () =>
-    fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: getAuthHeaders() }).then(() => undefined),
+    fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: getAuthHeaders(),
+    }).then(() => undefined),
 };
 
 export const dashboard = {
@@ -393,6 +399,7 @@ export const config = {
     ca_vips?: string[];
     code_deploy_targets: string[];
     consoles?: string[];
+    vip_hosts?: string[];
     database_backend?: string;
     enc_api_urls?: string[];
     database_url?: string;
@@ -539,13 +546,12 @@ function sslUpload(url: string, files: Record<string, File | null>, fields?: Rec
       formData.append(key, val);
     }
   }
-  // Rely on httpOnly cookie for auth; no localStorage token.
+  // Rely on httpOnly cookie for auth; do not set Content-Type (boundary).
   return fetch(`${API_BASE}${url}`, {
-    method: 'POST', headers, body: formData,
+    method: 'POST', body: formData, credentials: 'same-origin',
   }).then(async (r) => {
     if (r.status === 401) {
-      localStorage.removeItem('openvox_token');
-      window.location.reload();
+      await handleUnauthorized();
       throw new Error('Session expired');
     }
     if (!r.ok) throw new Error(`API Error ${r.status}: ${await r.text()}`);

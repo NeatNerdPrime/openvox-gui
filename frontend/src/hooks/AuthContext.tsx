@@ -1,10 +1,14 @@
 /**
  * OpenVox GUI - AuthContext.tsx
  *
- * Session via httpOnly cookie; all HTTP goes through services/api.ts (srdevarch1 MP3).
+ * Session via httpOnly cookie; all HTTP goes through services/api.ts.
+ * Subscribes to sessionGate so VIP 401 storms soft-land on the login
+ * screen once (no window.location.reload loop).
  */
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth } from '../services/api';
+import { loadAccessMode } from '../utils/accessMode';
+import { onSessionEvent, resetSessionGate } from '../utils/sessionGate';
 
 interface User {
   username: string;
@@ -37,6 +41,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // VIP vs direct — softens polls when Host is a configured VIP.
+    loadAccessMode().catch(() => {});
+
     auth
       .me()
       .then((data) => {
@@ -55,14 +62,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Soft session expiry (no full page reload).
+  useEffect(() => {
+    return onSessionEvent((event) => {
+      if (event === 'expired') {
+        setUser(null);
+        setToken(null);
+      }
+    });
+  }, []);
+
   const login = async (username: string, password: string) => {
+    resetSessionGate();
     const data = await auth.login(username, password);
     setUser(data.user);
     localStorage.removeItem('openvox_token');
+    // Refresh access mode after login (Host unchanged, but keeps state fresh).
+    loadAccessMode().catch(() => {});
   };
 
   const logout = () => {
     auth.logout().catch(() => {});
+    resetSessionGate();
     setUser(null);
     setToken(null);
     localStorage.removeItem('openvox_token');

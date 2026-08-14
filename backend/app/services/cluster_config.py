@@ -36,6 +36,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "ca_vips": [],  # optional CA VIP FQDNs (ovca.pdxc…, ovca.corp…)
     "code_deploy_targets": [],  # FQDNs that receive r10k stage/activate (defaults to compilers)
     "consoles": [],  # GUI FQDNs (openvox.pdxc…, openvox.atlc…)
+    # Public VIP / LB hostnames for the console (not individual node FQDNs).
+    # Used for access_mode=vip (session-safe SPA polling behind the VIP).
+    "vip_hosts": [],
     "database_backend": "sqlite",  # sqlite | postgresql
     "enc_api_urls": [],  # ENC script failover list, e.g. https://openvox.pdxc…:4567
     "staging_codedir": "/etc/puppetlabs/code-staging",
@@ -79,8 +82,18 @@ def _normalize(data: Dict[str, Any]) -> Dict[str, Any]:
                 urls.append(s)
     out["enc_api_urls"] = list(dict.fromkeys(urls))
 
-    for key in ("compilers", "puppetdb_nodes", "ca_nodes", "ca_vips", "code_deploy_targets", "consoles"):
+    for key in (
+        "compilers",
+        "puppetdb_nodes",
+        "ca_nodes",
+        "ca_vips",
+        "code_deploy_targets",
+        "consoles",
+        "vip_hosts",
+    ):
         raw = data.get(key) or []
+        if isinstance(raw, str):
+            raw = [p.strip() for p in raw.replace(",", "\n").splitlines() if p.strip()]
         if not isinstance(raw, list):
             raw = []
         cleaned: List[str] = []

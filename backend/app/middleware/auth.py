@@ -352,4 +352,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # while the database write happens concurrently.
         asyncio.create_task(_track_session(request, user))
 
-        return await call_next(request)
+        response = await call_next(request)
+
+        # Sliding session renew (session cookie JWTs only — this path is
+        # not taken for service tokens, which return earlier). When life
+        # is under 25% remaining, mint a fresh cookie so active VIP users
+        # are not forced out at hard exp.
+        try:
+            from .auth_local import apply_auth_cookie, maybe_renew_token_from_request
+
+            new_tok = maybe_renew_token_from_request(request)
+            if new_tok:
+                apply_auth_cookie(response, new_tok)
+        except Exception as exc:
+            logger.debug("Sliding session renew skipped: %s", exc)
+
+        return response

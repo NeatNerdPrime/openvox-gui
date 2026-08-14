@@ -15,6 +15,7 @@ from ..middleware.auth_local import (
     verify_password, create_token, verify_token,
     add_user, remove_user, list_users, change_password, change_role,
     get_user_role, get_user_auth_source, change_auth_source,
+    apply_auth_cookie,
 )
 from ..middleware.service_tokens import create_service_token, verify_service_token
 from ..dependencies import require_role
@@ -118,14 +119,23 @@ class ApiTokenResponse(BaseModel):
 
 
 @router.get("/status")
-async def auth_status():
-    """Check current auth configuration, including LDAP status."""
+async def auth_status(request: Request):
+    """Check current auth configuration, including LDAP status and VIP access mode."""
     ldap_cfg = await get_ldap_config()
-    return {
+    payload = {
         "auth_backend": settings.auth_backend,
         "auth_required": settings.auth_backend != "none",
         "ldap_enabled": ldap_cfg.enabled if ldap_cfg else False,
     }
+    try:
+        from ..services.access_mode import access_status_payload
+        payload.update(access_status_payload(request))
+    except Exception as exc:
+        logger.debug("access_mode payload unavailable: %s", exc)
+        payload.setdefault("access_mode", "direct")
+        payload.setdefault("session_min_seconds", 14400)
+        payload.setdefault("vip_poll_floor_ms", 0)
+    return payload
 
 
 @router.post("/login")
@@ -153,11 +163,7 @@ async def login(request: Request, login_request: LoginRequest):
         #             from "lax" which still sends cookies on top-level navigations.)
         #   secure:   Ensures the cookie is only sent over HTTPS (disabled in debug
         #             mode so localhost development works without TLS).
-        response.set_cookie(
-            key="openvox_token", value=token,
-            httponly=True, samesite="strict", max_age=86400,
-            secure=not settings.debug
-        )
+        apply_auth_cookie(response, token)
         return response
 
     login_username = login_request.username.strip()
@@ -204,11 +210,7 @@ async def login(request: Request, login_request: LoginRequest):
                 "auth_source": "ldap",
             },
         })
-        response.set_cookie(
-            key="openvox_token", value=token,
-            httponly=True, samesite="strict", max_age=86400,
-            secure=not settings.debug
-        )
+        apply_auth_cookie(response, token)
         logger.info(f"User '{login_username}' authenticated via LDAP (role: {ldap_result['role']})")
         return response
 
@@ -223,11 +225,7 @@ async def login(request: Request, login_request: LoginRequest):
         "token": token,
         "user": {"username": login_username, "role": role, "auth_source": "local"},
     })
-    response.set_cookie(
-        key="openvox_token", value=token,
-        httponly=True, samesite="strict", max_age=86400,
-        secure=not settings.debug
-    )
+    apply_auth_cookie(response, token)
     return response
 
 
@@ -258,7 +256,7 @@ async def logout(request: Request):
             logger.warning(f"Logout: could not revoke token: {exc}")
 
     response = JSONResponse(content={"status": "ok"})
-    response.delete_cookie("openvox_token")
+    response.delete_cookie("openvox_token", path="/")
     return response
 
 

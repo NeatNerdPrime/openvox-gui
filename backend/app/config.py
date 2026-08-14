@@ -88,7 +88,21 @@ class Settings(BaseSettings):
     # ── Authentication ────────────────────────────────────────
     # Supported backends: none | local | ldap  (saml and oidc planned)
     auth_backend: str = "none"
-    auth_session_timeout: int = 3600  # seconds
+    # Minimum session lifetime (seconds). Forced logout must not fire
+    # before this floor after login (VIP multi-console thrash protection).
+    # Default 4 hours. JWT lifetime is auth_token_hours (separate, longer).
+    auth_session_timeout: int = 14400  # seconds (≥ 4h enforced in code)
+    # JWT absolute lifetime in hours (default 24). Never below 4.
+    auth_token_hours: int = 24
+    # Comma-separated VIP / public FQDNs for the console load balancer.
+    # When the request Host matches one of these, the API reports
+    # access_mode=vip so the SPA can soften polling and avoid reload storms.
+    # Also mergeable via cluster_config.json "vip_hosts".
+    # Example: openvox.corp.int-x.ai,openvox.pdxc-it.corp.int-x.ai
+    vip_hosts: Optional[str] = None
+    # VIP poll floor (ms) advertised to the SPA — minimum auto-refresh interval
+    # when access_mode=vip. Direct node FQDNs keep their page defaults.
+    vip_poll_floor_ms: int = 45000
 
     # ── Filesystem paths ──────────────────────────────────────
     data_dir: str = "/opt/openvox-gui/data"

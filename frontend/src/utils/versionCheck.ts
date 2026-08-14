@@ -60,27 +60,26 @@ class VersionChecker {
   
   private async checkVersion() {
     try {
-      // Fetch the main index.html to check for version changes
-      const response = await fetch('/index.html', {
-        method: 'HEAD',
+      // Prefer JSON /api/version (stable across VIP backends) over
+      // index.html ETag/Last-Modified which differs per console node.
+      const response = await fetch('/api/version', {
+        credentials: 'same-origin',
         cache: 'no-cache',
       });
-      
-      // Check the etag or last-modified header
-      const etag = response.headers.get('etag');
-      const lastModified = response.headers.get('last-modified');
-      const versionIndicator = etag || lastModified || '';
-      
+      if (!response.ok) return;
+      const data = await response.json();
+      const versionIndicator = String(data?.version || '').trim();
+      if (!versionIndicator) return;
+
       // Store the initial version indicator
       if (!window.sessionStorage.getItem('app-version')) {
         window.sessionStorage.setItem('app-version', versionIndicator);
         return;
       }
-      
+
       // Check if version has changed
       const storedVersion = window.sessionStorage.getItem('app-version');
-      if (storedVersion && storedVersion !== versionIndicator && versionIndicator) {
-        // Version has changed, notify user
+      if (storedVersion && storedVersion !== versionIndicator) {
         notifications.show({
           id: 'version-update-check',
           title: 'Update Available',
@@ -89,11 +88,8 @@ class VersionChecker {
           autoClose: false,
           withCloseButton: true,
         });
-        
-        // Update stored version
+
         window.sessionStorage.setItem('app-version', versionIndicator);
-        
-        // Stop checking after detecting an update
         this.stop();
       }
     } catch (error) {

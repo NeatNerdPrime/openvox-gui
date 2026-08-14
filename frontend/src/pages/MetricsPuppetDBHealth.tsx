@@ -18,6 +18,7 @@ import {
 import { IconDatabase, IconRefresh, IconArrowsMaximize, IconArrowsMinimize } from '@tabler/icons-react';
 import { metrics } from '../services/api';
 import { CHART_LINE_TYPE, smoothTimeSeries } from '../utils/chartDefaults';
+import { effectivePollIntervalMs } from '../utils/accessMode';
 
 interface HeapDataPoint {
   time: string;
@@ -164,7 +165,7 @@ export function MetricsPuppetDBHealthPage({ embedded = false }: { embedded?: boo
   const fetchData = useCallback(() => { refetch(); }, [refetch]);
 
   useEffect(() => {
-    intervalRef.current = setInterval(fetchData, 30000);
+    intervalRef.current = setInterval(fetchData, effectivePollIntervalMs(30000) ?? 30000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };

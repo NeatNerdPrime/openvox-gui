@@ -31,11 +31,30 @@ logger = logging.getLogger(__name__)
 
 # Token configuration
 ALGORITHM = "HS256"
+# Default JWT lifetime (hours). Actual value comes from settings via
+# token_expire_hours() — never below 4h (VIP/session product floor).
 TOKEN_EXPIRE_HOURS = 24
 
 # Legacy flat-file paths (used only for migration)
 HTPASSWD_PATH = Path(settings.data_dir) / "htpasswd"
 ROLES_PATH = Path(settings.data_dir) / "htpasswd.roles"
+
+
+def token_expire_hours() -> int:
+    """Effective JWT lifetime in hours (≥ 4)."""
+    try:
+        from ..services.access_mode import token_expire_hours as _teh
+        return _teh()
+    except Exception:
+        try:
+            h = int(getattr(settings, "auth_token_hours", TOKEN_EXPIRE_HOURS) or TOKEN_EXPIRE_HOURS)
+        except (TypeError, ValueError):
+            h = TOKEN_EXPIRE_HOURS
+        return max(4, h)
+
+
+def token_max_age_seconds() -> int:
+    return token_expire_hours() * 3600
 
 
 def _hash_password(password: str) -> str:
@@ -58,15 +77,78 @@ def create_token(username: str, role: str) -> str:
     used by the denylist mechanism (3.3.5-29) to invalidate this
     specific token on /api/auth/logout. Without jti there's no way
     to revoke a JWT before its natural expiry.
+
+    Also includes `iat` so clients/backends can enforce a minimum
+    session floor (no forced logout before 4h after login).
     """
-    expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
+    now = datetime.now(timezone.utc)
+    hours = token_expire_hours()
     payload = {
         "sub": username,
         "role": role,
-        "exp": expire,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(hours=hours)).timestamp()),
         "jti": _stdlib_secrets.token_urlsafe(16),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def apply_auth_cookie(response, token: str) -> None:
+    """Set the standard httpOnly session cookie (login + sliding renew)."""
+    response.set_cookie(
+        key="openvox_token",
+        value=token,
+        httponly=True,
+        samesite="strict",
+        max_age=token_max_age_seconds(),
+        secure=not settings.debug,
+        path="/",
+    )
+
+
+def should_slide_renew(payload: Dict[str, Any]) -> bool:
+    """True when remaining JWT life is under 25% of total lifetime."""
+    exp = payload.get("exp")
+    iat = payload.get("iat")
+    if exp is None:
+        return False
+    now = datetime.now(timezone.utc).timestamp()
+    try:
+        exp_ts = float(exp) if not isinstance(exp, datetime) else exp.timestamp()
+    except (TypeError, ValueError):
+        return False
+    remaining = exp_ts - now
+    if remaining <= 0:
+        return False
+    if iat is not None:
+        try:
+            iat_ts = float(iat) if not isinstance(iat, datetime) else iat.timestamp()
+            total = max(1.0, exp_ts - iat_ts)
+        except (TypeError, ValueError):
+            total = float(token_max_age_seconds())
+    else:
+        total = float(token_max_age_seconds())
+    return remaining < (0.25 * total)
+
+
+def maybe_renew_token_from_request(request: Request) -> Optional[str]:
+    """If the current cookie JWT should slide-renew, return a new token string."""
+    token = request.cookies.get("openvox_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if not token:
+        return None
+    payload = _decode_token_payload(token)
+    if not payload or not should_slide_renew(payload):
+        return None
+    username = payload.get("sub")
+    role = payload.get("role", "viewer")
+    if not username:
+        return None
+    # Do not slide-renew revoked tokens (caller already authenticated).
+    return create_token(str(username), str(role))
 
 
 def _decode_token_payload(token: str) -> Optional[Dict[str, Any]]:
@@ -98,10 +180,16 @@ async def _is_jti_revoked(jti: str) -> bool:
             result = await db.execute(stmt)
             return result.scalar_one_or_none() is not None
     except Exception as exc:
-        # Don't let a DB hiccup let revoked tokens through. Log and
-        # treat as "unknown -> deny" to fail safe.
-        logger.warning("Token denylist lookup failed: %s; failing safe.", exc)
-        return True
+        # Multi-console / VIP: a transient DB blip must NOT mass-revoke
+        # every valid JWT (that caused reload/logout storms). Signature
+        # verification already passed before this check; fail *open* on
+        # lookup errors and log loudly for ops. Confirmed denylist hits
+        # still revoke.
+        logger.warning(
+            "Token denylist lookup failed: %s; failing open (signature-valid JWT accepted).",
+            exc,
+        )
+        return False
 
 
 def verify_token(token: str) -> Optional[Dict[str, Any]]:
@@ -122,6 +210,7 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
     return {
         "user_id": username, "username": username, "name": username,
         "role": role, "jti": payload.get("jti"),
+        "iat": payload.get("iat"), "exp": payload.get("exp"),
     }
 
 
@@ -157,7 +246,7 @@ async def revoke_token(token: str) -> bool:
         return False
     exp = payload.get("exp")
     expires_at = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else (
-        datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
+        datetime.now(timezone.utc) + timedelta(hours=token_expire_hours())
     )
     try:
         async with async_session() as db:

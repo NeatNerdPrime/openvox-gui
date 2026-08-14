@@ -21,6 +21,7 @@ import {
 } from '@tabler/icons-react';
 import { useApi } from '../hooks/useApi';
 import { metrics } from '../services/api';
+import { effectivePollIntervalMs } from '../utils/accessMode';
 
 const REFRESH_OPTIONS = [
   { value: '15', label: '15s' },
@@ -76,7 +77,8 @@ export function MetricsHostHealthPage({ embedded = false }: { embedded?: boolean
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => { refetch(); }, Number(refreshRate) * 1000);
+    const ms = effectivePollIntervalMs(Number(refreshRate) * 1000) ?? Number(refreshRate) * 1000;
+    intervalRef.current = setInterval(() => { refetch(); }, ms);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };

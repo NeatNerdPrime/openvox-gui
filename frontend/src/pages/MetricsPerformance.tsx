@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { CHART_LINE_TYPE, downsampleSeries, smoothTimeSeries } from '../utils/chartDefaults';
+import { effectivePollIntervalMs } from '../utils/accessMode';
 import { useApi } from '../hooks/useApi';
 import { performance as perfApi, metrics } from '../services/api';
 import {
@@ -225,9 +226,9 @@ export function MetricsPerformancePage({
     setLastRefresh(new Date());
   }, [serverData]);
 
-  // Auto-refresh at configurable rate
+  // Auto-refresh at configurable rate (VIP floor via effectivePollIntervalMs)
   useEffect(() => {
-    const rate = parseInt(refreshRate) * 1000;
+    const rate = effectivePollIntervalMs(parseInt(refreshRate, 10) * 1000) ?? 0;
     if (rate <= 0) return;
     const interval = setInterval(() => refetch(), rate);
     return () => clearInterval(interval);
