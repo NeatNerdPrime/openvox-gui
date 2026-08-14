@@ -1,6 +1,6 @@
 # VIP console sessions (multi-console HA)
 
-**Since:** 3.12.0-gamma.1
+**Since:** 3.12.0-rc.1
 
 When users hit the GUI through a **load-balanced VIP** (two or more console
 nodes behind one hostname), sessions and auto-refresh must not thrash.

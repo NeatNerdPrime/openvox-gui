@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
-## [3.12.0-gamma.1] - 2026-08-14 (feat — VIP-safe sessions; gamma train)
+## [3.12.0-rc.1] - 2026-08-14 (feat — VIP-safe sessions; gamma train)
 
-Pre-release toward a testable dual-console release. Minor bump from the
-3.11.1 beta train.
+Pre-release toward a testable dual-console release (gamma-class train;
+versioned as **rc.1** because PEP 440 / pip reject the identifier `gamma`).
+Minor bump from the 3.11.1 beta train.
 
 ### Fixed
 - **VIP refresh/logout storm:** API `401` no longer calls
