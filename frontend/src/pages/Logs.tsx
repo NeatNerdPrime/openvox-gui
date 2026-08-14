@@ -19,7 +19,8 @@ import { logs } from '../services/api';
 const DEFAULT_LOG_SOURCES = [
   { value: 'openvox-gui', label: 'OpenVox GUI', color: 'blue' },
   { value: 'puppet', label: 'OpenVox Agent', color: 'orange' },
-  { value: 'puppetserver', label: 'OpenVox Server', color: 'green' },
+  { value: 'openvox-ca', label: 'OpenVox CA', color: 'violet' },
+  { value: 'openvox-compiler', label: 'OpenVox Compilers', color: 'green' },
   { value: 'puppetdb', label: 'OpenVoxDB', color: 'cyan' },
   { value: 'syslog', label: 'System Log', color: 'gray' },
 ];
@@ -28,6 +29,8 @@ const SOURCE_COLORS: Record<string, string> = {
   'openvox-gui': 'blue',
   puppet: 'orange',
   puppetserver: 'green',
+  'openvox-ca': 'violet',
+  'openvox-compiler': 'green',
   puppetdb: 'cyan',
   syslog: 'gray',
 };
@@ -68,7 +71,7 @@ export function LogsPage() {
     [hostsBySource, activeTab],
   );
   const selectedHost = hostByTab[activeTab] || hostsForTab[0]?.fqdn || 'local';
-  const showHostPicker = hostsForTab.length > 1 || (clustered && ['puppetserver', 'puppetdb', 'openvox-gui'].includes(activeTab));
+  const showHostPicker = hostsForTab.length > 1 || (clustered && ['openvox-ca', 'openvox-compiler', 'puppetserver', 'puppetdb', 'openvox-gui'].includes(activeTab));
 
   // Stack-aware tab labels (OpenVox vs Puppet OSS) from backend package detection
   useEffect(() => {

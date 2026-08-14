@@ -89,6 +89,21 @@ _LOG_SOURCES: Dict[str, Dict[str, Any]] = {
             "/var/log/puppetlabs/puppetserver/puppetserver.log",
         ],
     },
+    # Same journal/file as puppetserver; host lists differ (CA vs compilers).
+    "openvox-ca": {
+        "unit": "puppetserver",
+        "units": ["puppetserver"],
+        "files": [
+            "/var/log/puppetlabs/puppetserver/puppetserver.log",
+        ],
+    },
+    "openvox-compiler": {
+        "unit": "puppetserver",
+        "units": ["puppetserver"],
+        "files": [
+            "/var/log/puppetlabs/puppetserver/puppetserver.log",
+        ],
+    },
     "openvox-gui": {
         "unit": "openvox-gui",
         "units": ["openvox-gui"],
@@ -108,16 +123,29 @@ _STACK_LABELS = {
         "openvox-gui": "OpenVox GUI",
         "puppet": "OpenVox Agent",
         "puppetserver": "OpenVox Server",
+        "openvox-ca": "OpenVox CA",
+        "openvox-compiler": "OpenVox Compilers",
         "puppetdb": "OpenVoxDB",
         "syslog": "System Log",
     },
     "puppet": {
         "openvox-gui": "OpenVox GUI",
         "puppet": "Puppet Agent",
-        "puppetserver": "PuppetServer",
+        "puppetserver": "Puppet Server",
+        "openvox-ca": "Puppet CA",
+        "openvox-compiler": "Puppet Compilers",
         "puppetdb": "PuppetDB",
         "syslog": "System Log",
     },
+}
+
+# Clustered UI hides the combined Server tab; singleton hides the split tabs.
+_CLUSTERED_ONLY_SOURCES = frozenset({"openvox-ca", "openvox-compiler"})
+_SINGLETON_ONLY_SOURCES = frozenset({"puppetserver"})
+# Remote script only knows puppetserver / puppetdb / …
+_REMOTE_SOURCE_ALIAS = {
+    "openvox-ca": "puppetserver",
+    "openvox-compiler": "puppetserver",
 }
 
 
@@ -465,22 +493,27 @@ def _hosts_by_source() -> Tuple[bool, Dict[str, List[Dict[str, str]]]]:
         "puppet": [local_entry],
         "syslog": [local_entry],
         "openvox-gui": [dict(local_entry)],
-        "puppetserver": [],
+        "puppetserver": [dict(local_entry)],
+        "openvox-ca": [],
+        "openvox-compiler": [],
         "puppetdb": [],
     }
     if not clustered:
         return False, by_src
 
     cfg = load_cluster_config()
+    by_src["puppetserver"] = []
     for fqdn in cfg.get("compilers") or []:
-        by_src["puppetserver"].append(
+        by_src["openvox-compiler"].append(
             {"fqdn": fqdn, "label": fqdn, "transport": "bolt"}
         )
+        by_src["puppetserver"].append(
+            {"fqdn": fqdn, "label": f"{fqdn} (compiler)", "transport": "bolt"}
+        )
     for fqdn in cfg.get("ca_nodes") or []:
-        if fqdn not in {h["fqdn"] for h in by_src["puppetserver"]}:
-            by_src["puppetserver"].append(
-                {"fqdn": fqdn, "label": f"{fqdn} (CA)", "transport": "bolt"}
-            )
+        by_src["openvox-ca"].append(
+            {"fqdn": fqdn, "label": fqdn, "transport": "bolt"}
+        )
     for fqdn in cfg.get("puppetdb_nodes") or []:
         by_src["puppetdb"].append(
             {"fqdn": fqdn, "label": fqdn, "transport": "bolt"}
@@ -504,6 +537,46 @@ def _cache_key(source: str, host: str, lines: int, since: Optional[str], grep: O
     return f"{source}|{host}|{lines}|{since or ''}|{grep or ''}"
 
 
+def _json_object_with_lines(text: str) -> Optional[Dict[str, Any]]:
+    """Find a JSON object that looks like read-logs-remote.py output."""
+    import json as _json
+
+    cleaned = (text or "").replace("\x00", "").strip()
+    if not cleaned:
+        return None
+    starts = [cleaned.find("{")]
+    marker = cleaned.find('{"source"')
+    if marker >= 0:
+        starts.append(marker)
+    for idx in starts:
+        if idx < 0:
+            continue
+        chunk = cleaned[idx:]
+        try:
+            parsed = _json.loads(chunk)
+        except Exception:
+            continue
+        if isinstance(parsed, dict) and "lines" in parsed:
+            return parsed
+    return None
+
+
+def _parse_remote_log_payload(bolt: Dict[str, Any], item: Dict[str, Any]) -> Dict[str, Any]:
+    """Bolt often puts JSON on stdout and noise on stderr — never prefer stderr."""
+    candidates: List[str] = []
+    val = item.get("value") if isinstance(item.get("value"), dict) else {}
+    for key in ("stdout", "merged_output"):
+        candidates.append(str(val.get(key) or ""))
+    candidates.append(str(bolt.get("stdout") or ""))
+    candidates.append(str(val.get("stderr") or ""))
+    candidates.append(str(bolt.get("stderr") or ""))
+    for text in candidates:
+        parsed = _json_object_with_lines(text)
+        if parsed:
+            return parsed
+    return {}
+
+
 async def _fetch_remote_logs(
     source: str,
     host: str,
@@ -512,16 +585,17 @@ async def _fetch_remote_logs(
     grep: Optional[str],
 ) -> Dict[str, Any]:
     from .bolt_runtime import run_bolt_command
-    from .deploy import _extract_bolt_json, _script_body
+    from .deploy import _extract_bolt_json
 
     if not _SCRIPT.is_file():
         raise HTTPException(status_code=500, detail=f"Missing {_SCRIPT}")
 
+    remote_source = _REMOTE_SOURCE_ALIAS.get(source, source)
     args = [
         "script",
         "run",
         str(_SCRIPT),
-        source,
+        remote_source,
         "--lines",
         str(lines),
     ]
@@ -544,24 +618,23 @@ async def _fetch_remote_logs(
     if isinstance(data, dict) and data.get("items"):
         first = data["items"][0]
         item = first if isinstance(first, dict) else {}
-    body = (_script_body(item.get("value") or {}) or "").strip()
-    parsed: Dict[str, Any] = {}
-    if body.startswith("{"):
-        import json as _json
-
-        try:
-            parsed = _json.loads(body)
-        except Exception:
-            parsed = {}
-    if not parsed:
-        err = (bolt.get("stderr") or item.get("value", {}) or {})
-        if isinstance(err, dict):
-            err = err.get("_error", {}).get("msg") or bolt.get("stderr") or "Bolt returned no log JSON"
-        raise HTTPException(
-            status_code=502,
-            detail=f"Could not read logs on {host}: {err}",
+    parsed = _parse_remote_log_payload(bolt, item)
+    if parsed:
+        return parsed
+    err = (item.get("value") or {})
+    if isinstance(err, dict):
+        err = (
+            (err.get("_error") or {}).get("msg")
+            or err.get("stderr")
+            or bolt.get("stderr")
+            or "Bolt returned no log JSON"
         )
-    return parsed
+    else:
+        err = bolt.get("stderr") or "Bolt returned no log JSON"
+    raise HTTPException(
+        status_code=502,
+        detail=f"Could not read logs on {host}: {err}",
+    )
 
 
 @router.get("/sources")
@@ -569,13 +642,17 @@ async def list_sources(_user: str = Depends(_ADMIN_ONLY)):
     """Return available log sources with stack-aware display labels."""
     flavor = detect_stack_flavor()
     labels = stack_labels(flavor)
+    clustered, hosts_by_source = _hosts_by_source()
     sources = []
     for key in _LOG_SOURCES.keys():
+        if clustered and key in _SINGLETON_ONLY_SOURCES:
+            continue
+        if not clustered and key in _CLUSTERED_ONLY_SOURCES:
+            continue
         sources.append({
             "id": key,
             "label": labels.get(key, key),
         })
-    clustered, hosts_by_source = _hosts_by_source()
     return {
         "stack": flavor,
         "sources": [s["id"] for s in sources],

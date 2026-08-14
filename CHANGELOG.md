@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.11] - 2026-08-14 (fix — Log Viewer CA vs compilers)
+
+### Fixed
+- **Insights | Logs 502 “Bolt returned no log JSON”:** Bolt puts
+  `read-logs-remote.py` JSON on **stdout** and journal/Bolt noise on
+  **stderr**. The parser preferred stderr, so a good read looked like
+  a 502. Prefer stdout / `{"source":…,"lines":…}`.
+
+### Changed
+- Clustered Log Viewer splits **OpenVox Server** into **OpenVox CA**
+  (`ca_nodes`) and **OpenVox Compilers** (`compilers`). Same
+  puppetserver journal/file; different host pickers. Singleton still
+  shows one local Server tab.
+
 ## [3.11.1-beta.10] - 2026-08-14 (feat — Wave 1 console + deploy/disk)
 
 ### Changed

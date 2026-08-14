@@ -19,6 +19,16 @@ import sys
 from pathlib import Path
 
 SOURCES = {
+    "openvox-ca": {
+        "units": ["puppetserver"],
+        "files": ["/var/log/puppetlabs/puppetserver/puppetserver.log"],
+        "prefer_journal": False,
+    },
+    "openvox-compiler": {
+        "units": ["puppetserver"],
+        "files": ["/var/log/puppetlabs/puppetserver/puppetserver.log"],
+        "prefer_journal": False,
+    },
     "puppetserver": {
         "units": ["puppetserver"],
         "files": ["/var/log/puppetlabs/puppetserver/puppetserver.log"],
