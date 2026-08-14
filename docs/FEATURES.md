@@ -1,9 +1,10 @@
 # OpenVox GUI — Feature Reference
 
-**Document version:** matches root `VERSION` (currently **3.12.0-rc.3**)  
+**Document version:** matches root `VERSION` (see repo `VERSION` file; 3.12.0-rc train)  
 **Audience:** operators, reviewers, and release prep  
 **Scope:** every primary **page**, **capability**, and **supporting subsystem** in the product as shipped on `main`.
 
+**Where we are:** [STATUS.md](STATUS.md) (AIO vs clustered readiness).  
 This is the canonical “what does the product do?” inventory. Installation and ops runbooks live in [INSTALL.md](../INSTALL.md), [UPDATE.md](../UPDATE.md), and [TROUBLESHOOTING.md](../TROUBLESHOOTING.md). Architecture and multi-console design: [ARCHITECTURE.md](ARCHITECTURE.md), [VIP_SESSIONS.md](VIP_SESSIONS.md), [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 
 ---
@@ -401,4 +402,4 @@ When cutting a stable release, verify this file still matches:
 4. `backend/app/routers/` prefixes  
 5. Root `VERSION` and [CHANGELOG.md](../CHANGELOG.md) headline features  
 
-*Last full inventory pass: 3.12.0-rc documentation refresh.*
+*Last full inventory pass: 3.12.0-rc.14 release-tidy (2026-08-14).*

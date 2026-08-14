@@ -2,7 +2,17 @@
 
 This document explains how to monitor and safely tune your OpenVox Server and OpenVoxDB using the `ovox infra` command-line tools.
 
-> **GUI application performance** (uvicorn workers, dashboard cache, chart rendering): see **[PERFORMANCE.md](PERFORMANCE.md)**.
+> **GUI application performance** (uvicorn workers, dashboard cache, chart rendering): see **[PERFORMANCE.md](PERFORMANCE.md)**.  
+> **Where we are (AIO vs clustered):** [STATUS.md](STATUS.md).
+
+## All-in-one vs clustered
+
+| Install | `ovox infra health` | `ovox infra settings show` | `ovox infra tune` / settings set |
+|---------|---------------------|----------------------------|-----------------------------------|
+| **All-in-one** (GUI on server) | Local + configured host HTTP | Local conf files | Applies **on this host** (backup + restart) |
+| **Clustered** (dedicated console) | HTTP probes **each** compiler/ovdb/CA member **and** VIP from cluster config | Bolt-samples remote conf when local missing | **Refused** on console (would only change GUI); apply on each compiler/ovdb |
+
+**Most sites are all-in-one** — use this doc’s original flow on the server. Clustered operators: fill Settings → Cluster member lists first, ensure Bolt SSH as `bolt` works, then `ovox infra health` / `settings show`.
 
 ## Why Tuning Matters
 

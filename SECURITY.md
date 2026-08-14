@@ -6,14 +6,16 @@ We actively support security and operational updates for the latest stable and p
 
 | Version | Supported          |
 | ------- | ------------------ |
-| **3.12.x** pre-release (`3.12.0-rc.N`) and future 3.12 stable | :white_check_mark: (lab / early production by intent) |
-| **3.10.x** stable (current GitHub stable: **3.10.6**) | :white_check_mark: |
-| 3.11.x betas | :white_check_mark: (lab/test; prefer 3.12.0-rc+ for clustered+VIP) |
-| 3.9.x | Security fixes as feasible; prefer upgrade to 3.10.6+ |
+| **3.10.x** stable (**3.10.6** — current GitHub Release; **default for AIO production**) | :white_check_mark: |
+| **3.12.0-rc.N** pre-release on `main` (AIO + clustered early production by intent) | :white_check_mark: (lab / agreed pilots) |
+| 3.11.x betas | Prefer 3.12.0-rc+ |
+| 3.9.x | Prefer upgrade to 3.10.6+ |
 | 3.0 – 3.8.x | Limited — upgrade when you can |
 | < 3.0   | :x: (end of life)  |
 
-We recommend production estates on the **latest stable** GitHub Release ([v3.10.6](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6)) unless you deliberately run the **3.12** train for clustered consoles / VIP session fixes. Pre-release tags are for lab or agreed beta rollouts.
+**Default recommendation:** run the latest **stable** GitHub Release (**[v3.10.6](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6)**) for all-in-one production. Use **3.12.0-rc** when you need clustered consoles, VIP session fixes, or the current ovox estate health work — and track [docs/STATUS.md](docs/STATUS.md).
+
+**Dependency audits (2026-08-14):** frontend `npm audit` clean after nanoid ≥3.3.16. Backend `pip-audit` should run in CI with pinned/hashed requirements before claiming a clean Python CVE posture for stable 3.12.0.
 
 ## Reporting a Vulnerability
 

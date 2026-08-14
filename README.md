@@ -4,20 +4,21 @@
 
 **A web-based management interface for OpenVox/Puppet infrastructure**
 
-[![Version](https://img.shields.io/badge/version-3.12.0--rc-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases)
+[![Version](https://img.shields.io/badge/version-3.12.0--rc.14-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases](https://github.com/cvquesty/openvox-gui/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![React](https://img.shields.io/badge/react-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Postgres](https://img.shields.io/badge/Postgres-openvox__gui-336791?style=for-the-badge&logo=postgresql&logoColor=white)](docs/CLUSTERED_SHARED_DB.txt)
-[![SQLite](https://img.shields.io/badge/SQLite-singleton-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
+[![SQLite](https://img.shields.io/badge/SQLite-AIO%20default-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](INSTALL.md)
+[![Postgres](https://img.shields.io/badge/Postgres-clustered%20GUI-336791?style=for-the-badge&logo=postgresql&logoColor=white)](docs/CLUSTERED_SHARED_DB.txt)
 
-[![CVE Status](https://img.shields.io/badge/CVEs-0%20known-brightgreen?style=flat-square)](CHANGELOG.md)
+[![npm audit](https://img.shields.io/badge/npm%20audit-0%20vulns-brightgreen?style=flat-square)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/docs-STATUS-blue?style=flat-square)](docs/STATUS.md)
 [![GitHub Stars](https://img.shields.io/github/stars/cvquesty/openvox-gui?style=flat-square)](https://github.com/cvquesty/openvox-gui/stargazers)
 [![GitHub Issues](https://img.shields.io/github/issues/cvquesty/openvox-gui?style=flat-square)](https://github.com/cvquesty/openvox-gui/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/cvquesty/openvox-gui?style=flat-square)](https://github.com/cvquesty/openvox-gui/commits/main)
 
-[Installation](INSTALL.md) · [Update](UPDATE.md) · [**Features**](docs/FEATURES.md) · [Architecture](docs/ARCHITECTURE.md) · [VIP sessions](docs/VIP_SESSIONS.md) · [Metrics](docs/METRICS.md) · [ovox CLI](ovox/README.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Changelog](CHANGELOG.md)
+[Installation](INSTALL.md) · [**Status**](docs/STATUS.md) · [Features](docs/FEATURES.md) · [Architecture](docs/ARCHITECTURE.md) · [VIP sessions](docs/VIP_SESSIONS.md) · [ovox CLI](ovox/README.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -57,7 +58,8 @@ See the dedicated **[ovox documentation](ovox/README.md)** for the complete comm
 
 ## 🚀 Quick Start
 
-> **Note:** Install on an OpenVox **Server** (singleton) or a dedicated **console** host in clustered mode. The process needs agent SSL for mTLS to CA/OpenVoxDB, Bolt reachability, and (singleton) local conf/CA tools. See [docs/FEATURES.md](docs/FEATURES.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> **Most common path = all-in-one:** install OpenVox GUI **on your OpenVox Server** (same host as puppetserver / agent). That is what Quick Start and `install.sh` optimize for.  
+> **Clustered / multi-DC** (dedicated console, separate compilers/CA/PDB) is fully supported in the 3.12 train — see [docs/STATUS.md](docs/STATUS.md) and the Advanced section of [INSTALL.md](INSTALL.md).
 
 If you just want to get up and running quickly, log in to your OpenVox Server and run:
 
@@ -79,8 +81,9 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 
 | Doc | Contents |
 |-----|----------|
-| **[docs/FEATURES.md](docs/FEATURES.md)** | **Canonical page-by-page feature inventory** (every route & capability) |
-| [INSTALL.md](INSTALL.md) | New install (singleton + advanced/clustered notes) |
+| **[docs/STATUS.md](docs/STATUS.md)** | **Where we are** — AIO vs clustered readiness, 3.12-rc map, Monday backlog |
+| **[docs/FEATURES.md](docs/FEATURES.md)** | Canonical page-by-page feature inventory |
+| [INSTALL.md](INSTALL.md) | **AIO first**; clustered in advanced section |
 | [UPDATE.md](UPDATE.md) | Clone-then-deploy updates, maintenance windows |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, single vs clustered console |
 | [docs/VIP_SESSIONS.md](docs/VIP_SESSIONS.md) | Dual-console VIP session / poll behaviour (3.12+) |
@@ -241,31 +244,27 @@ sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py l
 
 ## Current train (3.12) and versioning
 
-**Pre-release on `main`:** **3.12.0-rc.\*** (gamma-class train; PEP 440 uses `rc`). Last stable GitHub Release line many estates still run: **3.10.6**. Full history: [CHANGELOG.md](CHANGELOG.md). Page inventory: [docs/FEATURES.md](docs/FEATURES.md).
+**Pre-release on `main`:** **3.12.0-rc.\*** (see root `VERSION`).  
+**Last stable GitHub Release:** **3.10.6** — still the safe default for production **all-in-one**.  
+Full map: [docs/STATUS.md](docs/STATUS.md) · features: [docs/FEATURES.md](docs/FEATURES.md) · history: [CHANGELOG.md](CHANGELOG.md).
 
-### 3.12 headlines
-- **VIP-safe sessions** — dual consoles behind one LB hostname: no 401 reload storms, softer polls, 4h session floor, sliding JWT renew ([VIP_SESSIONS.md](docs/VIP_SESSIONS.md))
-- **Clustered console** — dedicated GUI, remote CA API, stage/activate deploy, cluster settings (compilers, CA, VIP hosts, shared Postgres `openvox_gui`)
-- **PQL / Logs / Host Health** polish from the late 3.11 beta line
+### 3.12-rc headlines (AIO + clustered)
+- **AIO unchanged as primary path** — install on the OpenVox Server; SQLite; local services  
+- **Clustered optional** — dedicated consoles, VIP sessions, fleet VIP exclude, remote CA/PDB, `ovox infra health` estate probes, Bolt-sampled settings  
+- **Ops polish** — PQL sortable results, Log Viewer empty≠502, console host/IP footer, proxy-safe ovox  
 
-### 3.11 headlines
-- Multi-compiler / multi-OpenVoxDB topology; ENC API base for compilers; Host Health for serving estate; log viewer CA vs compiler split
-
-### 3.10 stable baseline (still foundational)
-- Live fleet membership, Monitoring NOC, OpsTable UX, multi-worker uvicorn + SWR graphs ([PERFORMANCE.md](docs/PERFORMANCE.md)), orchestration single Bolt run ([#38](https://github.com/cvquesty/openvox-gui/issues/38))
+### 3.10.6 stable (foundational — still current for many AIO sites)
+- Live fleet, Monitoring NOC, OpsTable, multi-worker uvicorn + SWR ([PERFORMANCE.md](docs/PERFORMANCE.md)), orchestration single Bolt run ([#38](https://github.com/cvquesty/openvox-gui/issues/38))
 
 ### Earlier 3.x (still in the product)
-- **3.7** — Insights metrics suite, maintenance program, `ovox maintenance`
-- **3.6** — Agent installer, SSL wizard, RBAC on privileged APIs, deploy webhook HMAC, certops role foundations
-- **3.3 / 2.x** — Orchestration targets, native SSL on 4567, LDAP, OpenVox branding
+- **3.7** Insights / maintenance · **3.6** agent installer, SSL wizard, RBAC · **3.3/2.x** Bolt targets, native SSL, LDAP  
 
 ### How we version
-- **Stable:** `MAJOR.MINOR.PATCH` (e.g. 3.10.6, future 3.12.0)
-- **Pre-release:** `3.12.0-rc.N`, `3.11.1-beta.N`, `3.10.5-dev.N` — ovox lockstep via root `VERSION`
-- **Branch:** **`main` only** (no `staging`)
-- GitHub **Releases** only for intentional stables; tags may exist for lab deploys
+- **Stable:** `MAJOR.MINOR.PATCH` (e.g. **3.10.6**, future **3.12.0**)  
+- **Pre-release:** `3.12.0-rc.N` (PEP 440 only — not `gamma`) · ovox lockstep with GUI  
+- **Branch:** `main` only · GitHub Releases only for intentional stables  
 
-> **Metrics:** Full Server/DB JMX charts need [docs/METRICS.md](docs/METRICS.md). Host Health needs sysstat optionally ([HOST_HEALTH.md](docs/HOST_HEALTH.md)).
+> **Metrics:** [docs/METRICS.md](docs/METRICS.md) · Host Health: [docs/HOST_HEALTH.md](docs/HOST_HEALTH.md)
 
 ## 📞 Getting Help
 

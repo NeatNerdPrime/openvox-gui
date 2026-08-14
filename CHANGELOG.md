@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.14] - 2026-08-14 (docs — release tidy, STATUS, security scan)
+
+### Changed
+- **docs/STATUS.md:** freeze of AIO-first vs clustered readiness, 3.12-rc
+  map, Monday roles/profiles backlog, smoke checklists.
+- **README / INSTALL / ARCHITECTURE / SECURITY / TUNING / FEATURES:** version
+  badges and AIO-as-default wording; link STATUS; npm audit badge.
+- **Security:** frontend `npm audit` **0** after nanoid ≥3.3.16 (GHSA-28wg-ghj8-5hjv).
+  Backend pip-audit deferred to CI (pin/hash requirements before stable 3.12.0).
+
+### Notes
+- Roles/profiles for compiler/CA/PDB/console scale-out: **Monday**.
+- Stable production default remains **3.10.6** GitHub Release for classic AIO.
+
 ## [3.12.0-rc.13] - 2026-08-14 (fix — bolt inventory readable by user bolt)
 
 ### Fixed
