@@ -125,13 +125,12 @@ async def get_pql_examples():
             {"label": "All facts for a node", "query": 'facts { certname = "NODENAME" }'},
             {"label": "OS distribution across fleet", "query": 'facts { name = "os" }'},
             {"label": "Nodes with specific class", "query": 'resources { type = "Class" and title = "Ntp" }'},
-            {"label": "Recent failed reports", "query": 'reports { status = "failed" order by receive_time desc limit 10 }'},
+            {"label": "Recent failed reports", "query": 'reports { status = "failed" }'},
             {"label": "All environments", "query": "environments {}"},
-            {"label": "Nodes by oldest report", "query": "nodes { order by report_timestamp limit 10 }"},
-            {"label": "Resource event failures", "query": 'events { status = "failure" order by timestamp desc limit 20 }'},
-            {"label": "Package resources", "query": 'resources { type = "Package" order by title }'},
+            {"label": "Nodes with catalog errors", "query": 'nodes { latest_report_status = "failed" }'},
+            {"label": "Resource event failures", "query": 'events { status = "failure" }'},
+            {"label": "Package resources", "query": 'resources { type = "Package" }'},
             {"label": "File resources on a node", "query": 'resources { type = "File" and certname = "NODENAME" }'},
-            {"label": "Nodes with catalog errors", "query": 'nodes { latest_report_status = "failed" order by report_timestamp desc }'},
-            {"label": "Service resources", "query": 'resources { type = "Service" order by certname }'},
+            {"label": "Service resources", "query": 'resources { type = "Service" }'},
         ]
     }

@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.10] - 2026-08-14 (feat — Wave 1 console + deploy/disk)
+
+### Changed
+- **Nav:** Reports sits with Dashboard/Nodes. Insights sidebar is
+  Monitoring + catalog + Inventory + Logs. Group headers expand only
+  (no teleport to the first child).
+- **Status contract:** one `statusTheme` map (teal/orange/red/gray/blue)
+  for badges, chips, and the Dashboard ring. Filter chips include
+  Unreported and Noop.
+- **Dashboard:** exception-first “Needs attention” instead of a second
+  Nodes table. Power-tools strip removed. Unreported is clickable.
+  Single `useApi` poll (no double timer).
+- **`get_live_nodes`:** 15s single-flight cache; callers get a copy.
+
+### Fixed
+- Nodes no longer blanks the fleet list when a background poll fails.
+- Deploy: disk preflight before `deploy.pid`; `/ready` with 15s retry
+  (fail if not ready); Alembic on remote deploy; no `chown -R` of the
+  package mirror.
+- PQL examples no longer include `order by` / `limit` in the query text
+  (OpenVoxDB rejects those).
+- `test_enc_merge` signature guard points at `enc_merge.py`.
+
 ## [3.11.1-beta.9] - 2026-08-14 (fix — report detail 404 on short hash / peer PDB)
 
 ### Fixed

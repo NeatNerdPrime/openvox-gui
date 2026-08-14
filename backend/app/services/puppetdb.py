@@ -23,7 +23,9 @@ import httpx
 import ssl
 import logging
 from typing import Any, Dict, List, Optional
+from copy import deepcopy
 from ..config import settings
+from ..utils.ttl_cache import get_or_set as cache_get_or_set
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +217,17 @@ class PuppetDBService:
         If PuppetDB returns no active nodes but CA has signed certs, falls
         back to the signed CA list (useful on setups where PDB node listing
         is empty or not populated).
+
+        Result is cached ~15s (single-flight) and copied so callers can
+        mutate status overlays without poisoning the cache.
         """
+        async def _build() -> List[Dict]:
+            return await self._compute_live_nodes()
+
+        cached = await cache_get_or_set("live_nodes:v1", 15.0, _build)
+        return deepcopy(cached) if cached is not None else []
+
+    async def _compute_live_nodes(self) -> List[Dict]:
         active = await self.get_nodes(include_inactive=False)
         try:
             from .certificates_service import list_certificates as list_ca_certificates

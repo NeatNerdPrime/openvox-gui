@@ -349,8 +349,26 @@ if _pkg_repo_dir.exists():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Liveness — process is up. Do not use this as readiness."""
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/ready")
+@app.get("/api/ready")
+async def ready_check():
+    """Readiness — app DB answers. 503 if the store is down."""
+    from fastapi.responses import JSONResponse
+    from .database import engine
+    from sqlalchemy import text
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ok", "ready": True, "version": __version__}
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "ready": False, "error": str(e)[:200]},
+        )
 
 
 @app.get("/api/version")

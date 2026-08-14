@@ -61,6 +61,21 @@ _clear_deploy_pid() {
     rm -f "${DEPLOY_PID_FILE}" 2>/dev/null || true
 }
 
+# Fail before we write deploy.pid — ENOSPC on that write leaves a half-raised deploy.
+_require_free_mb() {
+    local path="$1"
+    local need_mb="$2"
+    local avail_kb
+    avail_kb=$(df -Pk "${path}" 2>/dev/null | awk 'NR==2 { print $4 }')
+    if [ -z "${avail_kb}" ] || [ "${avail_kb}" -lt $((need_mb * 1024)) ]; then
+        echo "Error: need ${need_mb}MB free on ${path} (avail_kb=${avail_kb:-unknown})."
+        echo "       Free space or move /opt/openvox-pkgs off this filesystem."
+        exit 78
+    fi
+}
+_require_free_mb "${MAINT_DATA_DIR}" 2048
+_require_free_mb /opt 2048
+
 _write_deploy_pid
 echo "Deploy marker written: ${DEPLOY_PID_FILE} (pid $$)"
 
@@ -497,28 +512,50 @@ fi
 
 echo "  ensured /etc/sudoers.d/openvox-gui-users via ensure-sudoers.sh (backups created if needed)"
 
-# 5i. Make everything in the mirror world-readable so puppetserver
-# (running as the puppet user) and curl/wget can serve them.
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PKG_REPO_DIR}" 2>/dev/null || true
-chmod -R a+rX "${PKG_REPO_DIR}" 2>/dev/null || true
+# 5i. Installer snippets must be readable. Do NOT chown the whole mirror
+# (can be 50G+ and races ENOSPC). Only fix the two generated scripts.
+if [ -d "${PKG_REPO_DIR}" ]; then
+    chmod a+rX "${PKG_REPO_DIR}" 2>/dev/null || true
+    for f in install.bash install.ps1; do
+        if [ -f "${PKG_REPO_DIR}/${f}" ]; then
+            chown "${SERVICE_USER}:${SERVICE_USER}" "${PKG_REPO_DIR}/${f}" 2>/dev/null || true
+            chmod a+r "${PKG_REPO_DIR}/${f}" 2>/dev/null || true
+        fi
+    done
+fi
+
+# 5j. Schema — use app DSN (Postgres-aware). Fail the deploy if this fails.
+if [ -x "${INSTALL_DIR}/venv/bin/alembic" ] && [ -f "${INSTALL_DIR}/backend/alembic.ini" ]; then
+    echo "  alembic upgrade head..."
+    (cd "${INSTALL_DIR}/backend" && "${INSTALL_DIR}/venv/bin/alembic" upgrade head) || {
+        echo "FATAL: alembic upgrade head failed. Leaving maintenance active."
+        exit 1
+    }
+fi
 
 # 6. Restart service
 echo "[6/6] Restarting service..."
 systemctl restart openvox-gui
-sleep 2
 
-if systemctl is-active --quiet openvox-gui; then
-    # Detect SSL to use the correct scheme (uvicorn won't respond to plain HTTP when SSL is on)
-    DEPLOY_SSL="false"
-    if [ -f "${INSTALL_DIR}/config/.env" ]; then
-        DEPLOY_SSL_LINE=$(grep "^OPENVOX_GUI_SSL_ENABLED=" "${INSTALL_DIR}/config/.env" 2>/dev/null || true)
-        [ "$DEPLOY_SSL_LINE" = "OPENVOX_GUI_SSL_ENABLED=true" ] && DEPLOY_SSL="true"
-    fi
+DEPLOY_SSL="false"
+if [ -f "${INSTALL_DIR}/config/.env" ]; then
+    DEPLOY_SSL_LINE=$(grep "^OPENVOX_GUI_SSL_ENABLED=" "${INSTALL_DIR}/config/.env" 2>/dev/null || true)
+    [ "$DEPLOY_SSL_LINE" = "OPENVOX_GUI_SSL_ENABLED=true" ] && DEPLOY_SSL="true"
+fi
+HEALTH_URL="http://127.0.0.1:4567/ready"
+[ "$DEPLOY_SSL" = "true" ] && HEALTH_URL="https://127.0.0.1:4567/ready"
+HEALTH="unreachable"
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
     if [ "$DEPLOY_SSL" = "true" ]; then
-        HEALTH=$(curl -ksf --noproxy '*' "https://127.0.0.1:4567/health" 2>/dev/null || echo "unreachable")
+        HEALTH=$(curl -ksf --noproxy '*' "${HEALTH_URL}" 2>/dev/null || echo "unreachable")
     else
-        HEALTH=$(curl -sf --noproxy '*' "http://127.0.0.1:4567/health" 2>/dev/null || echo "unreachable")
+        HEALTH=$(curl -sf --noproxy '*' "${HEALTH_URL}" 2>/dev/null || echo "unreachable")
     fi
+    echo "${HEALTH}" | grep -q '"ready"' && break
+    sleep 1
+done
+
+if systemctl is-active --quiet openvox-gui && echo "${HEALTH}" | grep -q '"ready"'; then
     echo ""
     echo "=== Deploy Complete ==="
     echo "Service status: active"
@@ -526,6 +563,7 @@ if systemctl is-active --quiet openvox-gui; then
 else
     echo ""
     echo "=== Deploy FAILED ==="
-    echo "Service did not start. Check: journalctl -u openvox-gui -n 50"
+    echo "Service active=$(systemctl is-active openvox-gui) ready=${HEALTH}"
+    echo "Check: journalctl -u openvox-gui -n 50"
     exit 1
 fi

@@ -79,13 +79,14 @@ interface NavItem {
 const overviewNav: NavItem[] = [
   { label: 'Dashboard', icon: IconDashboard, path: '/' },
   { label: 'Nodes', icon: IconServer, path: '/nodes' },
+  { label: 'Reports', icon: IconFileReport, path: '/reports' },
 ];
 
 const infrastructureNav: NavItem[] = [
   { label: 'Certificate Authority', icon: IconCertificate, path: '/certificates' },
   { label: 'Orchestration', icon: IconBolt, path: '/orchestration' },
   { label: 'Agent Install', icon: IconDownload, path: '/installer' },
-  { label: 'Certificate Audit', icon: IconCertificate, path: '/cert-audit' },
+  { label: 'Certificate Audit', icon: IconListDetails, path: '/cert-audit' },
 ];
 
 const classificationCodeNav: NavItem[] = [
@@ -102,20 +103,16 @@ const dataNav: NavItem[] = [
 const exploreNav: NavItem[] = [
   { label: 'PQL Console', icon: IconTerminal, path: '/pql' },
   { label: 'Fact Explorer', icon: IconSearch, path: '/facts' },
-  { label: 'Resource Explorer', icon: IconPackage, path: '/resources' },
+  { label: 'Resource Explorer', icon: IconStack2, path: '/resources' },
   { label: 'Package Inventory', icon: IconPackage, path: '/packages' },
 ];
 
-/** Analytics + history — Monitoring is the NOC single-pane; catalog lists full pages */
+/** Monitoring wallboard + catalog. Metric pages live in the catalog, not the sidebar. */
 const insightsNav: NavItem[] = [
-  { label: 'Monitoring', icon: IconChartBar, path: '/insights' },
-  { label: 'Insights catalog', icon: IconChartBar, path: '/insights/all' },
-  { label: 'Reports', icon: IconFileReport, path: '/reports' },
+  { label: 'Monitoring', icon: IconHeartbeat, path: '/insights' },
+  { label: 'Insights catalog', icon: IconGridDots, path: '/insights/all' },
   { label: 'Inventory', icon: IconListDetails, path: '/inventory' },
   { label: 'Log Viewer', icon: IconFileText, path: '/logs' },
-  { label: 'Fleet Compliance', icon: IconHeartRateMonitor, path: '/insights/compliance' },
-  { label: 'Node Health', icon: IconHeartbeat, path: '/insights/node-health' },
-  { label: 'Change Timeline', icon: IconTimeline, path: '/insights/timeline' },
 ];
 
 const configNav: NavItem[] = [
@@ -340,16 +337,7 @@ export function AppShellLayout() {
 
     const handleParentClick = () => {
       const currentlyOpen = openGroups[label] ?? groupHasActive;
-      if (currentlyOpen) {
-        // Collapse child list (accordion-style)
-        setGroupOpen(false);
-      } else {
-        setGroupOpen(true);
-        if (items.length > 0) {
-          navigate(items[0].path);
-        }
-      }
-      setOpened(false);
+      setGroupOpen(!currentlyOpen);
     };
 
     return (

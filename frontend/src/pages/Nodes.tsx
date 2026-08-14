@@ -372,7 +372,9 @@ export function NodesPage() {
   };
 
   if (loading && !nodeList) return <LoadingState label="Loading nodes…" />;
-  if (error) return <ErrorState title="Failed to load nodes" message={error} />;
+  if (error && !nodeList) {
+    return <ErrorState title="Failed to load nodes" message={error} onRetry={refetch} />;
+  }
 
   const groupNames = Object.keys(filteredGroups);
   const classifiedCount = Object.values(filteredGroups).reduce((sum, g) => sum + g.nodes.length, 0);

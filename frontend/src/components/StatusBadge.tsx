@@ -4,17 +4,7 @@
  * Component documentation to be expanded.
  */
 import { Badge } from '@mantine/core';
-
-const STATUS_COLORS: Record<string, string> = {
-  changed: 'yellow',
-  unchanged: 'green',
-  failed: 'red',
-  unreported: 'gray',
-  noop: 'blue',
-  active: 'green',
-  inactive: 'red',
-  unknown: 'gray',
-};
+import { statusMantine } from '../utils/statusTheme';
 
 interface StatusBadgeProps {
   status: string | null | undefined;
@@ -26,7 +16,7 @@ export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
   const label = s === 'unreported' || s === 'unknown' ? 'unreported' : s;
   return (
     <Badge
-      color={STATUS_COLORS[label] || STATUS_COLORS['unknown'] || 'gray'}
+      color={statusMantine(label)}
       variant="light"
       size={size}
       tt="capitalize"

@@ -156,7 +156,7 @@ async def _track_session(request: Request, user: Dict[str, Any]):
 # Puppet agent, which authenticates via SSL client certificates at the
 # nginx/reverse-proxy layer rather than via JWT tokens.
 _SKIP_AUTH_PATHS = (
-    "/static", "/assets", "/health",
+    "/static", "/assets", "/health", "/ready", "/api/ready",
     "/api/enc/classify",
     "/api/auth/login", "/api/auth/status",
     "/api/config/app/name",

@@ -43,7 +43,10 @@ MAINTENANCE_ALLOWLIST = {
     "/api/maintenance/enable",
     "/api/maintenance/disable",
     "/api/maintenance/page",
-    "/api/health",           # if a simple health endpoint exists
+    "/health",
+    "/ready",
+    "/api/health",
+    "/api/ready",
     "/api/config/services",  # used by ovox infra health (authoritative services list)
     "/api/infra/health",
     "/metrics",              # if prometheus-style metrics are exposed

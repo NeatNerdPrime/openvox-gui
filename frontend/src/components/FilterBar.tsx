@@ -4,6 +4,7 @@
 import { ReactNode } from 'react';
 import { Group, TextInput, Chip, Button, Stack, Text } from '@mantine/core';
 import { IconSearch, IconX } from '@tabler/icons-react';
+import { STATUS_FILTER_CHIPS } from '../utils/statusTheme';
 
 export type StatusChip = {
   value: string;
@@ -11,11 +12,7 @@ export type StatusChip = {
   color?: string;
 };
 
-const DEFAULT_STATUS_CHIPS: StatusChip[] = [
-  { value: 'failed', label: 'Failed', color: 'red' },
-  { value: 'changed', label: 'Changed', color: 'blue' },
-  { value: 'unchanged', label: 'Unchanged', color: 'green' },
-];
+const DEFAULT_STATUS_CHIPS: StatusChip[] = STATUS_FILTER_CHIPS;
 
 export function FilterBar({
   search,

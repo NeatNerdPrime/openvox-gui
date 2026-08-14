@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Title, Grid, Card, Text, Group, RingProgress, Stack, Center,
-  Badge, Tooltip, Table, ActionIcon, Select, Switch, ScrollArea, SimpleGrid,
+  Badge, Tooltip, Table, ActionIcon, Select, Switch, Button,
 } from '@mantine/core';
 import { IconEye, IconChevronUp, IconChevronDown, IconSelector } from '@tabler/icons-react';
 import { useNavigate } from 'react-router';
@@ -20,6 +20,7 @@ import { LoadingState, ErrorState } from '../components/StateComponents';
 import { useAppTheme } from '../hooks/ThemeContext';
 import type { NodeSummary } from '../types';
 import { PageHeader } from '../components/PageHeader';
+import { STATUS_HEX, statusMantine } from '../utils/statusTheme';
 
 
 
@@ -163,18 +164,19 @@ function nodeTimeAgo(timestamp: string | null): string {
 export function DashboardPage() {
   const { isRobots } = useAppTheme();
   const navigate = useNavigate();
-  // sessionStorage SWR via useApi cacheKey — same pattern as Insights graph pages
-  const { data: dashData, loading, refreshing, error, refetch } = useApi<any>(
-    dashboard.getData,
-    [],
-    {
-      cacheKey: 'openvox_dashboard_data_v2',
-      cacheValidate: (d) => d != null && (d as any).node_status != null,
-    },
-  );
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState('30');
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const pollMs = autoRefresh ? Math.max(10000, parseInt(refreshInterval, 10) * 1000) : undefined;
+  const { data: dashData, loading, refreshing, error, refetch } = useApi<any>(
+    dashboard.getData,
+    [pollMs ?? 0],
+    {
+      cacheKey: 'openvox_dashboard_data_v2',
+      cacheValidate: (d) => d != null && (d as any).node_status != null,
+      pollIntervalMs: pollMs,
+    },
+  );
   const [sortField, setSortField] = useState<string>('certname');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   // Defer the large casual SVG so ring + trends get the first paint slot
@@ -241,26 +243,33 @@ export function DashboardPage() {
 
 
   useEffect(() => {
-    if (!autoRefresh) return;
-    const iv = setInterval(() => {
-      refetch();
-      setLastRefresh(new Date());
-    }, parseInt(refreshInterval) * 1000);
-    return () => clearInterval(iv);
-  }, [autoRefresh, refreshInterval, refetch]);
+    if (dashData) setLastRefresh(new Date());
+  }, [dashData]);
 
   // Full-page spinner only on true cold start (no cache, no data yet)
   if (loading && !dashData) return <LoadingState label="Loading dashboard…" />;
-  if (error && !dashData) return <ErrorState title="Dashboard failed to load" message={error} />;
-  if (!dashData) return null;
+  if (error && !dashData) {
+    return <ErrorState title="Dashboard failed to load" message={error} onRetry={refetch} />;
+  }
+  if (!dashData) {
+    return <ErrorState title="Dashboard has no data" message="Try again." onRetry={refetch} />;
+  }
 
   const ringData = [
-    { value: ns.total ? (ns.unchanged / ns.total) * 100 : 0, color: 'green', tooltip: `Unchanged: ${ns.unchanged}` },
-    { value: ns.total ? (ns.changed / ns.total) * 100 : 0, color: 'yellow', tooltip: `Changed: ${ns.changed}` },
-    { value: ns.total ? (ns.failed / ns.total) * 100 : 0, color: 'red', tooltip: `Failed: ${ns.failed}` },
-    { value: ns.total ? (ns.noop / ns.total) * 100 : 0, color: 'blue', tooltip: `Noop: ${ns.noop}` },
-    { value: ns.total ? (ns.unreported / ns.total) * 100 : 0, color: 'gray', tooltip: `Unreported: ${ns.unreported}` },
+    { value: ns.total ? (ns.unchanged / ns.total) * 100 : 0, color: STATUS_HEX.unchanged, tooltip: `Unchanged: ${ns.unchanged}` },
+    { value: ns.total ? (ns.changed / ns.total) * 100 : 0, color: STATUS_HEX.changed, tooltip: `Changed: ${ns.changed}` },
+    { value: ns.total ? (ns.failed / ns.total) * 100 : 0, color: STATUS_HEX.failed, tooltip: `Failed: ${ns.failed}` },
+    { value: ns.total ? (ns.noop / ns.total) * 100 : 0, color: STATUS_HEX.noop, tooltip: `Noop: ${ns.noop}` },
+    { value: ns.total ? (ns.unreported / ns.total) * 100 : 0, color: STATUS_HEX.unreported, tooltip: `Unreported: ${ns.unreported}` },
   ].filter(d => d.value > 0);
+
+  const staleCutoff = Date.now() - 24 * 3600 * 1000;
+  const attention = dedupedNodes.filter((n) => {
+    const st = (n.latest_report_status || '').toLowerCase();
+    if (st === 'failed' || st === 'unreported' || !st) return true;
+    const ts = n.report_timestamp ? new Date(n.report_timestamp).getTime() : 0;
+    return Boolean(ts) && ts < staleCutoff;
+  }).slice(0, 25);
 
   return (
     <Stack>
@@ -289,35 +298,6 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* sruiux2 P1-3 — power tool discovery */}
-      <Card withBorder shadow="sm" padding="md">
-        <Text fw={600} mb="xs">Power tools</Text>
-        <Text size="xs" c="dimmed" mb="sm">
-          Fast paths into the explorers operators use daily. Also available under Explore in the sidebar and ⌘K.
-        </Text>
-        <SimpleGrid cols={{ base: 2, sm: 3, md: 5 }} spacing="sm">
-          {[
-            { label: 'PQL Console', path: '/pql', color: 'blue' },
-            { label: 'Fact Explorer', path: '/facts', color: 'teal' },
-            { label: 'Resources', path: '/resources', color: 'violet' },
-            { label: 'Cert Audit', path: '/cert-audit', color: 'orange' },
-            { label: 'Hiera Lookup', path: '/data/lookup', color: 'grape' },
-          ].map((t) => (
-            <Card
-              key={t.path}
-              padding="sm"
-              withBorder
-              className="ov-card-link"
-              style={{ cursor: 'pointer' }}
-              onClick={() => navigate(t.path)}
-            >
-              <Badge color={t.color} variant="light" size="sm" mb={4}>{t.label.split(' ')[0]}</Badge>
-              <Text size="sm" fw={500}>{t.label}</Text>
-            </Card>
-          ))}
-        </SimpleGrid>
-      </Card>
-
       <Grid>
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Card withBorder shadow="sm" padding="lg">
@@ -335,10 +315,11 @@ export function DashboardPage() {
             </Center>
             <Group justify="center" mt="md" gap="lg">
               {[
-                { label: 'Unchanged', color: 'green', status: 'unchanged' },
-                { label: 'Changed', color: 'yellow', status: 'changed' },
-                { label: 'Failed', color: 'red', status: 'failed' },
-                { label: 'Noop', color: 'blue', status: 'noop' },
+                { label: 'Unchanged', status: 'unchanged' },
+                { label: 'Changed', status: 'changed' },
+                { label: 'Failed', status: 'failed' },
+                { label: 'Noop', status: 'noop' },
+                { label: 'Unreported', status: 'unreported' },
               ].map((s) => (
                 <Group
                   key={s.status}
@@ -346,11 +327,10 @@ export function DashboardPage() {
                   style={{ cursor: 'pointer' }}
                   onClick={() => navigate(`/nodes?status=${s.status}`)}
                 >
-                  <Badge color={s.color} size="xs" circle />
+                  <Badge color={statusMantine(s.status)} size="xs" circle />
                   <Text size="xs" td="underline">{s.label}</Text>
                 </Group>
               ))}
-              <Group gap={4}><Badge color="gray" size="xs" circle /> <Text size="xs">Unreported</Text></Group>
             </Group>
             <Text size="xs" c="dimmed" ta="center" mt="xs">Click a status to open Nodes with that filter</Text>
           </Card>
@@ -365,8 +345,6 @@ export function DashboardPage() {
               <AreaChart
                 data={nodeTrends}
                 margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
-                style={{ cursor: 'pointer' }}
-                onClick={() => navigate('/nodes')}
               >
                 <defs>
                   <linearGradient id="gUnchanged" x1="0" y1="0" x2="0" y2="1">
@@ -407,7 +385,7 @@ export function DashboardPage() {
                     }
                   }}
                 />
-                <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="unreported" stroke="#95a5a6" fill="#95a5a6" fillOpacity={0.1} strokeWidth={1} dot={false} style={{ cursor: 'pointer' }} onClick={() => navigate('/nodes')} />
+                <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="unreported" stroke={STATUS_HEX.unreported} fill={STATUS_HEX.unreported} fillOpacity={0.1} strokeWidth={1} dot={false} style={{ cursor: 'pointer' }} onClick={() => navigate('/nodes?status=unreported')} />
                 <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="unchanged" stroke="#2ecc71" fill="url(#gUnchanged)" strokeWidth={1.5} dot={false} style={{ cursor: 'pointer' }} onClick={() => navigate('/nodes?status=unchanged')} />
                 <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="changed" stroke="#f39c12" fill="url(#gChanged)" strokeWidth={1.5} dot={false} style={{ cursor: 'pointer' }} onClick={() => navigate('/nodes?status=changed')} />
                 <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="failed" stroke="#e74c3c" fill="url(#gFailed)" strokeWidth={2} dot={false} style={{ cursor: 'pointer' }} onClick={() => navigate('/nodes?status=failed')} />
@@ -420,58 +398,54 @@ export function DashboardPage() {
 
       <Card withBorder shadow="sm" padding="lg" style={{ overflow: 'hidden' }}>
         <Group justify="space-between" mb="md">
-          <Title order={4}>Nodes</Title>
-          <Badge variant="light" size="lg">{dedupedNodes.length} total</Badge>
+          <div>
+            <Title order={4}>Needs attention</Title>
+            <Text size="xs" c="dimmed">Failed, unreported, or last report older than 24h</Text>
+          </div>
+          <Group gap="sm">
+            <Badge variant="light" color="red" size="lg">{attention.length}</Badge>
+            <Button size="xs" variant="subtle" onClick={() => navigate('/nodes?status=failed')}>
+              All failed →
+            </Button>
+          </Group>
         </Group>
-        <ScrollArea h={650} type="auto" offsetScrollbars scrollbarSize={6}>
-          <Table striped highlightOnHover withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('certname')}>
-                    <Group gap={4} wrap="nowrap">Certname <SortIcon field="certname" /></Group>
-                  </Table.Th>
-                  <Table.Th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('latest_report_status')}>
-                    <Group gap={4} wrap="nowrap">Status <SortIcon field="latest_report_status" /></Group>
-                  </Table.Th>
-                  <Table.Th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('report_environment')}>
-                    <Group gap={4} wrap="nowrap">Environment <SortIcon field="report_environment" /></Group>
-                  </Table.Th>
-                  <Table.Th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('report_timestamp')}>
-                    <Group gap={4} wrap="nowrap">Last Report <SortIcon field="report_timestamp" /></Group>
-                  </Table.Th>
-                  <Table.Th style={{ width: 60 }}>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {sortedNodes.map((node) => (
-                  <Table.Tr key={node.certname} style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/nodes/${node.certname}`)}>
-                    <Table.Td><Text fw={500} size="sm">{node.certname}</Text></Table.Td>
-                    <Table.Td><StatusBadge status={node.latest_report_status} /></Table.Td>
-                    <Table.Td><Text size="sm">{node.report_environment || '\u2014'}</Text></Table.Td>
-                    <Table.Td><Text size="sm">{nodeTimeAgo(node.report_timestamp)}</Text></Table.Td>
-                    <Table.Td>
-                      <Tooltip label="View details">
-                        <ActionIcon variant="subtle" onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          navigate(`/nodes/${node.certname}`);
-                        }}>
-                          <IconEye size={18} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-                {dedupedNodes.length === 0 && (
-                  <Table.Tr>
-                    <Table.Td colSpan={5}>
-                      <Text c="dimmed" ta="center" py="md">No nodes found</Text>
-                    </Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea>
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Certname</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th>Last report</Table.Th>
+              <Table.Th style={{ width: 52 }} />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {attention.map((node) => (
+              <Table.Tr key={node.certname} style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/nodes/${node.certname}`)}>
+                <Table.Td><Text fw={500} size="sm">{node.certname}</Text></Table.Td>
+                <Table.Td><StatusBadge status={node.latest_report_status} /></Table.Td>
+                <Table.Td><Text size="sm">{nodeTimeAgo(node.report_timestamp)}</Text></Table.Td>
+                <Table.Td>
+                  <Tooltip label="View details">
+                    <ActionIcon variant="subtle" onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      navigate(`/nodes/${node.certname}`);
+                    }}>
+                      <IconEye size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+            {attention.length === 0 && (
+              <Table.Tr>
+                <Table.Td colSpan={4}>
+                  <Text c="dimmed" ta="center" py="md">Nothing on fire. Fleet looks clean.</Text>
+                </Table.Td>
+              </Table.Tr>
+            )}
+          </Table.Tbody>
+        </Table>
       </Card>
     </Stack>
   );

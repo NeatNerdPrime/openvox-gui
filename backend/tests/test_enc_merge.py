@@ -1,18 +1,6 @@
-"""ENC deep_merge unit tests (srdev1 S10 / 3.10.01.a2).
+"""ENC deep_merge unit tests — imports the real function (no SQLAlchemy)."""
 
-Mirrors services/enc.py::deep_merge without importing SQLAlchemy models.
-"""
-
-
-def deep_merge(base: dict, override: dict) -> dict:
-    """Deep-merge two dicts. Override wins for scalar values; dicts recurse."""
-    result = dict(base)
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
+from app.services.enc_merge import deep_merge
 
 
 def test_deep_merge_scalar_override():
@@ -38,6 +26,6 @@ def test_deep_merge_override_replaces_non_dict():
 def test_deep_merge_matches_source_file_signature():
     """Guard: source still defines deep_merge with same contract."""
     from pathlib import Path
-    src = (Path(__file__).resolve().parents[1] / "app" / "services" / "enc.py").read_text()
+    src = (Path(__file__).resolve().parents[1] / "app" / "services" / "enc_merge.py").read_text()
     assert "def deep_merge(base: Dict, override: Dict)" in src
     assert "dicts are merged recursively" in src or "merged recursively" in src
