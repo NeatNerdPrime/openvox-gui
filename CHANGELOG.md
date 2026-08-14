@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.6] - 2026-08-14 (fix — Log Viewer empty result is not 502)
+
+### Fixed
+- **Insights | Log Viewer:** remote Bolt fetches that return **zero lines**
+  (empty journal, inactive unit, or grep matched nothing) no longer raise
+  `502 Bolt returned no log JSON`. API returns **200** with `lines: []` and
+  a clear `error` banner. True transport failures (SSH/auth) still 502.
+
 ## [3.12.0-rc.5] - 2026-08-14 (feat — sortable PQL result columns)
 
 ### Changed

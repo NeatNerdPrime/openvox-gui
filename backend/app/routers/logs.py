@@ -727,7 +727,15 @@ async def _fetch_remote_logs(
     since: Optional[str],
     grep: Optional[str],
 ) -> Dict[str, Any]:
+    """Collect remote logs via Bolt.
+
+    Empty result sets are **success** (HTTP 200 upstream): no journal
+    entries, no file, or grep matched nothing. Only raise when Bolt
+    transport itself fails hard (unreachable target, auth, etc.).
+    """
     script_err = ""
+    transport_errors: List[str] = []
+
     if _SCRIPT.is_file():
         remote_source = _REMOTE_SOURCE_ALIAS.get(source, source)
         args = [
@@ -743,24 +751,93 @@ async def _fetch_remote_logs(
         if grep:
             args.extend(["--grep", grep])
         args.extend(["--targets", host, "--run-as", "root", "--format", "json"])
-        bolt = await _bolt_run(args, timeout=45)
-        item = _first_bolt_item(bolt)
-        parsed = _parse_remote_log_payload(bolt, item)
-        if parsed:
-            return parsed
-        script_err = _bolt_item_error(bolt, item)
+        try:
+            bolt = await _bolt_run(args, timeout=45)
+            item = _first_bolt_item(bolt)
+            parsed = _parse_remote_log_payload(bolt, item)
+            if parsed is not None and "lines" in parsed:
+                # Script may return lines: [] — that is a valid empty answer.
+                if not parsed.get("lines") and grep:
+                    parsed.setdefault(
+                        "error",
+                        f"No lines matched filter {grep!r} on {host}.",
+                    )
+                elif not parsed.get("lines"):
+                    parsed.setdefault(
+                        "error",
+                        f"No {source} log lines on {host} "
+                        "(empty journal/file is OK).",
+                    )
+                return parsed
+            script_err = _bolt_item_error(bolt, item) or "Bolt script returned no log JSON"
+            if script_err:
+                transport_errors.append(script_err)
+        except HTTPException as he:
+            transport_errors.append(str(he.detail))
+        except Exception as e:
+            transport_errors.append(f"script run: {e}")
 
-    fallback = await _fetch_remote_logs_via_command(source, host, lines, since, grep)
-    if fallback.get("lines") or fallback.get("error"):
-        if script_err and not fallback.get("lines"):
-            fallback["error"] = f"{script_err}; fallback: {fallback.get('error')}"
+    try:
+        fallback = await _fetch_remote_logs_via_command(
+            source, host, lines, since, grep
+        )
+    except HTTPException as he:
+        transport_errors.append(str(he.detail))
+        fallback = {
+            "source": source,
+            "host": host,
+            "lines": [],
+            "mode": None,
+            "unit": None,
+            "file": None,
+            "error": str(he.detail),
+        }
+    except Exception as e:
+        transport_errors.append(f"command run: {e}")
+        fallback = {
+            "source": source,
+            "host": host,
+            "lines": [],
+            "mode": None,
+            "unit": None,
+            "file": None,
+            "error": str(e),
+        }
+
+    got_lines = list(fallback.get("lines") or [])
+    if got_lines:
         return fallback
 
-    detail = script_err or fallback.get("error") or "Bolt returned no log JSON"
-    raise HTTPException(
-        status_code=502,
-        detail=f"Could not read logs on {host}: {detail}",
+    soft_msg = str(fallback.get("error") or "").strip()
+    if grep and (not soft_msg or "no journal" in soft_msg.lower()):
+        soft_msg = f"No lines matched filter {grep!r} on {host}."
+    if not soft_msg:
+        soft_msg = (
+            f"No {source} log lines on {host} "
+            "(empty journal/file, inactive unit, or filter matched nothing)."
+        )
+    if transport_errors:
+        # Keep soft empty as 200; attach bolt hints for the UI banner.
+        soft_msg = f"{transport_errors[-1]} — {soft_msg}"
+
+    fallback["lines"] = []
+    fallback["error"] = soft_msg
+    # Empty collection is never a hard failure. 502 only for clear
+    # transport/auth death (set below when message is unambiguous).
+    blob = soft_msg.lower()
+    fallback["_hard"] = any(
+        x in blob
+        for x in (
+            "failed to connect",
+            "connection refused",
+            "no route to host",
+            "unreachable",
+            "permission denied",
+            "authentication failed",
+            "host key verification failed",
+        )
     )
+    return fallback
 
 
 @router.get("/sources")
@@ -830,6 +907,8 @@ async def get_logs(
             raise
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Remote log fetch failed: {e}")
+
+        line_list = list(remote.get("lines") or [])
         payload: Dict[str, Any] = {
             "source": source,
             "label": labels.get(source, source),
@@ -839,17 +918,22 @@ async def get_logs(
             "unit": remote.get("unit"),
             "file": remote.get("file"),
             "mode": remote.get("mode"),
-            "count": len(remote.get("lines") or []),
-            "lines": remote.get("lines") or [],
+            "count": len(line_list),
+            "lines": line_list,
             "cached": False,
         }
-        if not payload["lines"] and remote.get("error"):
-            payload["error"] = remote["error"]
-        elif not payload["lines"]:
-            payload["error"] = (
+        if not line_list:
+            payload["error"] = remote.get("error") or (
                 f"No {labels.get(source, source)} log lines on {host_raw}. "
-                "Check journal unit / file path and that bolt can run as root there."
+                "Empty journal/file or filter matched nothing "
+                "(this is not a server error)."
             )
+            # True transport failures only (SSH/auth) → 502; empty logs → 200
+            if remote.get("_hard"):
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Could not read logs on {host_raw}: {payload['error']}",
+                )
         _REMOTE_CACHE[ck] = payload
         _REMOTE_CACHE_TS[ck] = now
         return payload
