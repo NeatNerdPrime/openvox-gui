@@ -1,7 +1,7 @@
 {
   "name": "openvox-gui",
   "private": true,
-  "version": "3.12.0-rc.14",
+  "version": "3.12.0-rc.15",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -39,7 +39,7 @@
     "ws": "^8.18.0",
     "braces": "^3.0.3",
     "micromatch": "^4.0.8",
-    "nanoid": "^3.3.8",
+    "nanoid": ">=3.3.16",
     "path-to-regexp": "^8.2.0",
     "cookie": "^1.0.2",
     "cross-spawn": "^7.0.5",

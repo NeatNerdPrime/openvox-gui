@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.15] - 2026-08-14 (security + release tidy follow-up)
+
+### Security
+- **cryptography 48.0.1 → 50.0.0:** PYSEC-2026-3552 (PKCS#7 Bleichenbacher oracle),
+  PYSEC-2026-3553 (cert path-build DoS), PYSEC-2026-3554 (nameConstraints wildcard escape).
+- **npm:** re-audit **0** vulnerabilities; override pin `nanoid` ≥3.3.16 (resolved 3.3.18).
+- **pip-audit:** clean on installable backend set (psycopg2-binary still CI/RHEL for full wheel).
+
+### Fixed
+- **README version badge:** broken nested markdown link URL corrected.
+
+### Changed
+- **docs/STATUS.md, SECURITY.md, AGENTS.md, CONTRIBUTING.md:** AIO-first wording,
+  3.12-rc as active train, stable baseline **3.10.6**, Monday roles backlog confirmed.
+- Version badges / headers → **3.12.0-rc.15**.
+
+### Notes
+- Roles/profiles scale-out still **Monday**.
+- Production AIO default remains **3.10.6** GitHub Release unless opting into 3.12-rc.
+
 ## [3.12.0-rc.14] - 2026-08-14 (docs — release tidy, STATUS, security scan)
 
 ### Changed

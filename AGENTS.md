@@ -4,22 +4,21 @@
 - **Default branch is `main`** — staging branch has been removed
 - All development and releases go through `main`
 
-### 3.11 multi-server / clustered train (started **3.11.0-alpha.1**)
-- Active feature train for multi-compiler / multi-OpenVoxDB GUI support (cluster mode, stage/activate deploy, FQDN health).
-- **Estate strategy (not an in-place cutover):** build/validate the **new** multi-server cluster; **migrate nodes** onto it; then **repurpose the current production estate** (e.g. openvox.pdxc-it.twitter.biz / legacy singleton) as a **development instance**. Do not treat “upgrade production GUI to 3.11 in place” as the path.
-- While migration is in progress, leave the live estate on its **3.10.x** pin (e.g. **3.10.8-dev.3**) for day-to-day production; install **3.11 alphas only** on internal/lab or the new cluster hosts.
-- Lab / new-cluster validation is the default deploy target for this train unless the user explicitly names another host.
+### 3.12.0-rc train (active on `main` — 2026-08)
 
+- **AIO first:** most installs are all-in-one on the OpenVox Server host (SQLite OK). Docs, installer defaults, and smoke tests must keep AIO as the primary path even while clustering lands.
+- **Clustered optional:** dual console + VIP sessions, fleet exclude, ovox estate health (members + VIPs), Bolt estate inventory, shared Postgres `openvox_gui`. See [docs/STATUS.md](docs/STATUS.md).
+- **Pre-release labels:** PEP 440 only (`rc` / `a` / `b` / `dev`). Never put `gamma` in `VERSION` (pip rejects it).
+- **Monday backlog:** Puppet **roles** = `profile::base` + technology profiles (compiler / CA / PDB / console). Not profiles-only.
+- Pre-release counter on every meaningful push: `3.12.0-rc.N` via bump + CHANGELOG + tag + push + lab deploy.
 
-### 3.10 line status (as of **3.10.6** stable on `main`)
+### Stable baseline and history
 
-The 2026-06 evaluation-driven alpha effort (**`3.10.a_r_alpha.N`**, trains `3.10.01`–`3.10.04` / srdev1–sruiux2) was **merged into `main`** and promoted through **3.10.1.b*** / stable **3.10.2**, the **3.10.3b*** functionality train to stable **`3.10.4`**, then the **3.10.5-dev** performance train to stable **`3.10.6`**. Day-to-day development and releases go through **`main`** again.
-
-- **Current stable baseline:** **3.10.6** (`v3.10.6`). Performance: lean Dashboard PDB extract, multi-worker uvicorn, graph-page SWR — see `docs/PERFORMANCE.md`. Live fleet membership remains **`get_live_nodes()`** (active PuppetDB ∩ signed CA) for Nodes / Inventory / ENC / Dashboard / Node Health.
-- **Prior stables on this line:** **3.10.4** (`v3.10.4`), **3.10.2** (`v3.10.2`); historical bugfix locals **`3.10.2+bugfix*`** — archaeology only, do **not** invent alternate local labels for new work.
-- **Historical alpha branch** `3.10.a_r_alpha.6` may still exist on the remote for reference; **prune only when explicitly requested** after lab verification. Do not treat it as the active develop branch unless a new alpha effort is opened.
-- **Train markers (archive / archaeology):** `3.10.01.aN` security, `3.10.02.aN` architecture, `3.10.03.aN` sruiux1, `3.10.04.aN` sruiux2, `3.10.3bN` post-3.10.2 functionality betas, `3.10.5-dev.N` performance — useful when reading old commits/CHANGELOG, not for new work on `main`.
-- **New large spike / risky refactor:** optionally open a **new** alpha branch with the same lab-only rules below; otherwise commit on `main` with SemVer pre-releases (`3.10.7-dev.N` style) via `/commit`.
+- **Current stable GitHub Release (AIO production default):** **3.10.6** (`v3.10.6`). Performance train: lean Dashboard PDB extract, multi-worker uvicorn, graph-page SWR — see `docs/PERFORMANCE.md`. Live fleet = **`get_live_nodes()`** (active PuppetDB ∩ signed CA).
+- **3.11.x:** historical clustered-console foundations (alphas/betas). Prefer **3.12.0-rc+** for new clustered work.
+- **Prior stables:** **3.10.4**, **3.10.2**; local bugfix labels and old train markers (`3.10.a_r_alpha.*`, `3.10.01`–`3.10.04`, `3.10.3b*`, `3.10.5-dev.*`) are archaeology only.
+- **Estate strategy (clustered):** build/validate the **new** multi-server estate; migrate nodes; repurpose legacy singleton as lab/dev. Do not treat in-place “upgrade production singleton to clustered” as the default path.
+- **New large spike:** optional alpha branch with lab-only rules; otherwise commit on `main` with SemVer pre-releases (`3.12.0-rc.N`) via `/commit`.
 
 **Lab / production discipline (still STRICT):**
 - Primary validation deploys: lab **`openvox.questy.org`** (`10.0.100.225`) only unless the user names production bastion workflow.

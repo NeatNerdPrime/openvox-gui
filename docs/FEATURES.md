@@ -402,4 +402,4 @@ When cutting a stable release, verify this file still matches:
 4. `backend/app/routers/` prefixes  
 5. Root `VERSION` and [CHANGELOG.md](../CHANGELOG.md) headline features  
 
-*Last full inventory pass: 3.12.0-rc.14 release-tidy (2026-08-14).*
+*Last full inventory pass: 3.12.0-rc.15 release-tidy (2026-08-14).*

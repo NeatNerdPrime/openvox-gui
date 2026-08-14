@@ -2,7 +2,7 @@
 
 **As of:** 2026-08-14  
 **Branch:** `main`  
-**VERSION file:** `3.12.0-rc.14`
+**VERSION file:** `3.12.0-rc.15`
 **Last stable GitHub Release:** **3.10.6** (still recommended for production AIO unless you opt into 3.12-rc)
 
 This document freezes **where we are** after the 3.12 clustering/VIP/ovox week, so Monday’s **roles/profiles** work starts from a clean map. It covers **all-in-one (AIO)** and **clustered** installs.
@@ -67,7 +67,7 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 ### Known gaps (not done)
 - **Remote tune apply** to every compiler/ovdb via Bolt  
 - **Puppet roles/profiles** for compiler / CA / PDB / console auto-join (**Monday**)  
-- Full **pip-audit** in CI (unpinned ranges; local audit blocked by psycopg2 build env)  
+- **CI pip-audit** including `psycopg2-binary` wheel (macOS local cannot build without `pg_config`)  
 - Promote **3.12.0** stable GitHub Release (deliberate later)
 
 ---
@@ -123,21 +123,23 @@ Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,pu
 
 ---
 
-## 6. Security scan (2026-08-14)
+## 6. Security scan (2026-08-14, rc.15 re-scan)
 
 | Check | Result |
 |-------|--------|
-| **npm audit** (frontend) | **0 vulnerabilities** after `nanoid` → ≥3.3.16 (was GHSA-28wg-ghj8-5hjv high) |
-| **pip-audit** (backend) | Incomplete in this environment (psycopg2 build / unpinned ranges). **Action:** pin/hash requirements in CI and run `pip-audit` there before stable 3.12.0 |
-| **Secret pattern scan** | No hard-coded secrets found in tree (rotate any proxy passwords that appeared in ops chat) |
-| **CVE badge** | Reflects npm clean; Python deps need CI gate before claiming zero CVEs for backend |
+| **npm audit** (frontend, prod+dev) | **0 vulnerabilities**. Override `nanoid` ≥3.3.16 (GHSA-28wg-ghj8-5hjv); resolved **3.3.18** |
+| **pip-audit** (backend, installed set minus psycopg2-binary wheel build on macOS) | **0 known vulns** after `cryptography` **48.0.1 → 50.0.0** (PYSEC-2026-3552 PKCS#7 oracle; PYSEC-2026-3553 path-build DoS; PYSEC-2026-3554 nameConstraints wildcard) |
+| **psycopg2-binary** | Still pinned `==2.9.10`; local macOS pip cannot build the wheel without `pg_config`. Audit that package in CI/RHEL (binary wheel) before stable **3.12.0** |
+| **Secret pattern scan** | No production secrets in tree. Dev placeholder `OVOX-DEV-PLACEHOLDER--NEVER-USE-IN-PRODUCTION` in config only. SSL wizard UI text mentions PEM headers (docs, not keys). |
+| **CVE badges (README)** | npm audit **0 vulns** accurate. Backend posture: clean on scanned set after cryptography bump |
 
-**Note:** `react-router@8` wants Node ≥22 in engines; builds still run on Node 20 for now. Track before forcing Node 22 in install docs.
+**Note:** `react-router@8` / Vite 7 want Node ≥20.19 or ≥22; lab/build still OK on Node 20. Track before forcing Node 22 in install docs.
 
 ### Operator hygiene
 - Never commit `.env`, bolt tokens, or proxy passwords  
 - Dual console: identical `OPENVOX_GUI_SECRET_KEY` + shared `openvox_gui` DB  
 - CA `auth.conf`: compilers must **not** get certificate_statuses allow  
+- AIO: rotate default admin password after first login; set a real `SECRET_KEY` outside the installer default
 
 ---
 

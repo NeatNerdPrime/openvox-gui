@@ -15,7 +15,7 @@ We actively support security and operational updates for the latest stable and p
 
 **Default recommendation:** run the latest **stable** GitHub Release (**[v3.10.6](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6)**) for all-in-one production. Use **3.12.0-rc** when you need clustered consoles, VIP session fixes, or the current ovox estate health work — and track [docs/STATUS.md](docs/STATUS.md).
 
-**Dependency audits (2026-08-14):** frontend `npm audit` clean after nanoid ≥3.3.16. Backend `pip-audit` should run in CI with pinned/hashed requirements before claiming a clean Python CVE posture for stable 3.12.0.
+**Dependency audits (2026-08-14, rc.15):** frontend `npm audit` **0** (nanoid ≥3.3.16). Backend `cryptography` **50.0.0** (closes PYSEC-2026-3552/3553/3554); `pip-audit` clean on the installable set. Re-run full audit (including `psycopg2-binary` wheels) in CI before stable **3.12.0**.
 
 ## Reporting a Vulnerability
 
