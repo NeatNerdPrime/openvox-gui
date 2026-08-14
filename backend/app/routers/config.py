@@ -305,33 +305,71 @@ async def get_services_status():
     (localhost or VIP). Local systemd is only used for openvox-gui,
     this host's puppet agent, and as fallback if HTTP fails.
     When deployment_mode is clustered, also returns ``cluster_members``
-    with HTTP health probes against each configured FQDN.
+    and ``cluster_health`` with HTTP probes against each configured FQDN.
+
+    Never raises 500 for partial probe failures — degraded rows are
+    included so ``ovox infra health`` works on dedicated consoles.
     """
     from ..services.puppetdb import puppetdb_service
-
-    compiler = await puppetserver_service.get_remote_health()
-    pdb = await puppetdb_service.get_remote_health()
-    local = [
-        compiler,
-        pdb,
-        puppetserver_service.get_service_status("puppet"),
-        puppetserver_service.get_service_status("openvox-gui"),
-    ]
-
     from ..services.cluster_config import load_cluster_config, is_clustered
-    from ..services.cluster_health import probe_cluster_members
+
+    local: List[Dict[str, Any]] = []
+    errors: List[str] = []
+
+    try:
+        local.append(await puppetserver_service.get_remote_health())
+    except Exception as e:
+        logger.warning("compiler health probe failed: %s", e)
+        errors.append(f"compiler: {e}")
+        local.append({
+            "service": "puppetserver",
+            "status": "unknown",
+            "source": "http",
+            "error": str(e),
+        })
+
+    try:
+        local.append(await puppetdb_service.get_remote_health())
+    except Exception as e:
+        logger.warning("puppetdb health probe failed: %s", e)
+        errors.append(f"puppetdb: {e}")
+        local.append({
+            "service": "puppetdb",
+            "status": "unknown",
+            "source": "http",
+            "error": str(e),
+        })
+
+    for svc_name in ("puppet", "openvox-gui"):
+        try:
+            local.append(puppetserver_service.get_service_status(svc_name))
+        except Exception as e:
+            local.append({
+                "service": svc_name,
+                "status": "unknown",
+                "source": "local-systemd",
+                "error": str(e),
+            })
 
     cfg = load_cluster_config()
     payload: Dict[str, Any] = {
         "services": local,
         "deployment_mode": cfg.get("deployment_mode", "single"),
         "cluster_members": [],
+        "cluster_health": None,
     }
     if is_clustered():
-        from ..services.cluster_health import probe_cluster_full
+        try:
+            from ..services.cluster_health import probe_cluster_members, probe_cluster_full
 
-        payload["cluster_members"] = await probe_cluster_members(cfg)
-        payload["cluster_health"] = await probe_cluster_full(cfg)
+            payload["cluster_members"] = await probe_cluster_members(cfg)
+            payload["cluster_health"] = await probe_cluster_full(cfg)
+        except Exception as e:
+            logger.exception("cluster health probe failed")
+            errors.append(f"cluster: {e}")
+            payload["cluster_error"] = str(e)
+    if errors:
+        payload["warnings"] = errors
     return payload
 
 

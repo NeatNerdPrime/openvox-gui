@@ -51,56 +51,105 @@ def health(
     )
 
     try:
-        # Use the authoritative services endpoint under config.
-        # (Previously lived at top-level /api/services or /api/dashboard/services;
-        # now consolidated under /api/config/services for cleaner routing.)
-        services = client.get("/api/config/services")
+        # Prefer dedicated infra health (cluster-aware). Fall back to config/services.
+        try:
+            payload = client.get("/api/infra/health")
+        except OvoxAPIError:
+            payload = client.get("/api/config/services")
     except OvoxAPIError as exc:
         console.print(f"[red]Failed to fetch service health:[/red] {exc}")
         raise typer.Exit(1)
 
     if json_output or (ctx.obj and ctx.obj.get("output") == "json"):
         import json
-        console.print(JSON(json.dumps(services, indent=2)))
+        console.print(JSON(json.dumps(payload, indent=2)))
         return
 
-    table = Table(title="OpenVox Infrastructure Health")
+    # Normalize list of service rows from either API shape
+    if isinstance(payload, list):
+        services = payload
+        mode = "single"
+        overall = None
+    else:
+        services = (
+            payload.get("services")
+            or payload.get("components")
+            or []
+        )
+        mode = payload.get("deployment_mode") or "single"
+        overall = payload.get("status")
+
+    title = "OpenVox Infrastructure Health"
+    if mode == "clustered":
+        title += " (clustered)"
+    if overall:
+        title += f" — {overall}"
+
+    table = Table(title=title)
     table.add_column("Component", style="cyan")
+    table.add_column("Host", style="dim")
     table.add_column("Status", style="green")
     table.add_column("Details", style="dim")
 
     for svc in services if isinstance(services, list) else []:
-        # Backend returns "service" key, not "name"
-        name = svc.get("service", svc.get("name", "unknown"))
-        status = svc.get("status", "unknown")
+        if not isinstance(svc, dict):
+            continue
+        name = svc.get("service") or svc.get("component") or svc.get("name") or "unknown"
+        status = str(svc.get("status") or "unknown")
+        host = str(svc.get("host") or "")
 
-        # Build useful details from what the backend actually returns
         details_parts = []
-        if svc.get("memory") and svc["memory"] not in ("", "0"):
+        if svc.get("source"):
+            details_parts.append(str(svc["source"]))
+        if svc.get("memory") and str(svc["memory"]) not in ("", "0"):
             details_parts.append(f"mem={svc['memory']}")
         if svc.get("since"):
-            details_parts.append(svc["since"][:19])
+            details_parts.append(str(svc["since"])[:19])
         if svc.get("error"):
             details_parts.append(f"error: {svc['error']}")
+        if svc.get("detail") and not svc.get("error"):
+            details_parts.append(str(svc["detail"])[:80])
 
         details = " | ".join(details_parts) if details_parts else ""
 
-        if component and component.lower() not in name.lower():
+        if component and component.lower() not in name.lower() and component.lower() not in host.lower():
             continue
 
-        color = "green" if status == "active" else "red"
-        table.add_row(name, f"[{color}]{status}[/{color}]", str(details)[:70])
+        st_l = status.lower()
+        color = "green" if st_l in ("active", "running", "ok") else (
+            "yellow" if st_l in ("degraded", "unknown") else "red"
+        )
+        table.add_row(name, host[:40], f"[{color}]{status}[/{color}]", str(details)[:70])
 
     if not table.rows:
         console.print("[yellow]No matching components found.[/yellow]")
+        if isinstance(payload, dict) and payload.get("warnings"):
+            for w in payload["warnings"]:
+                console.print(f"[dim]warning: {w}[/dim]")
     else:
         console.print(table)
 
-    # Basic summary
+    if isinstance(payload, dict):
+        summary = payload.get("summary") or {}
+        if summary:
+            console.print()
+            console.print(
+                f"[dim]compilers {summary.get('compilers_healthy', '?')}/"
+                f"{summary.get('compilers_total', '?')} · "
+                f"puppetdb {summary.get('puppetdb_healthy', '?')}/"
+                f"{summary.get('puppetdb_total', '?')} · "
+                f"ca {summary.get('ca_healthy', '?')}/"
+                f"{summary.get('ca_total', '?')}[/dim]"
+            )
+        for w in payload.get("warnings") or []:
+            console.print(f"[yellow]warning:[/yellow] {w}")
+
     console.print()
     console.print(Panel.fit(
         "Run [bold]ovox infra settings show[/bold] to see current tuning values.\n"
-        "Run [bold]ovox infra recommend[/bold] for tuning suggestions.",
+        "Run [bold]ovox infra recommend[/bold] for tuning suggestions.\n"
+        "[dim]Clustered: health probes remote FQDNs via HTTP; "
+        "tune apply stays local to compilers/ovdb hosts.[/dim]",
         title="Next Steps",
         border_style="blue"
     ))

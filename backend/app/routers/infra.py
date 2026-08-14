@@ -29,13 +29,135 @@ _AUTH = require_role(*READ_ROLES)
 
 @router.get("/health")
 async def infra_health(_user: str = Depends(_AUTH)):
-    """Basic aggregated health of core OpenVox components."""
+    """Aggregated estate health for ``ovox infra health``.
+
+    Single-server: local/VIP compiler + PDB HTTP + local systemd.
+    Clustered: probes every compiler / OpenVoxDB / CA FQDN from
+    cluster_config (same path as Settings → cluster health), plus GUI.
+    Never 500s on partial probe failure — returns degraded rows instead.
+    """
+    from ..services.cluster_config import load_cluster_config, is_clustered
+    from ..services.puppetserver import puppetserver_service
+
+    warnings: List[str] = []
+    services: List[Dict[str, Any]] = []
+    mode = "clustered" if is_clustered() else "single"
+    ch: Dict[str, Any] = {}
+
     try:
-        # Leverage existing service status endpoint
-        # In a fuller implementation we would also check PuppetDB JMX, disk, etc.
-        return {"status": "ok", "message": "Use /api/config/services for detailed component status."}
+        services.append(await puppetserver_service.get_remote_health())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        warnings.append(f"compiler vip: {e}")
+        services.append({
+            "service": "puppetserver", "status": "unknown",
+            "source": "http", "error": str(e),
+        })
+    try:
+        services.append(await puppetdb_service.get_remote_health())
+    except Exception as e:
+        warnings.append(f"puppetdb vip: {e}")
+        services.append({
+            "service": "puppetdb", "status": "unknown",
+            "source": "http", "error": str(e),
+        })
+    for svc_name in ("puppet", "openvox-gui"):
+        try:
+            services.append(puppetserver_service.get_service_status(svc_name))
+        except Exception as e:
+            services.append({
+                "service": svc_name, "status": "unknown",
+                "source": "local-systemd", "error": str(e),
+            })
+
+    if is_clustered():
+        try:
+            from ..services.cluster_health import probe_cluster_full
+
+            ch = await probe_cluster_full(load_cluster_config())
+        except Exception as e:
+            logger.exception("cluster health probe failed")
+            warnings.append(f"cluster: {e}")
+            ch = {}
+
+    rows: List[Dict[str, Any]] = []
+    for svc in services:
+        st = (svc.get("status") or "unknown").lower()
+        rows.append({
+            "component": svc.get("service") or svc.get("name") or "unknown",
+            "role": "console-view",
+            "host": svc.get("host") or "local",
+            "status": svc.get("status") or "unknown",
+            "source": svc.get("source"),
+            "detail": svc.get("simple") or svc.get("error") or svc.get("since") or "",
+            "healthy": st in ("active", "running"),
+        })
+
+    if mode == "clustered" and ch:
+        for key, role in (
+            ("compilers", "compiler"),
+            ("puppetdb_nodes", "puppetdb"),
+            ("ca_nodes", "ca"),
+            ("ca_vips", "ca-vip"),
+        ):
+            for m in ch.get(key) or []:
+                if not isinstance(m, dict):
+                    continue
+                fqdn = m.get("fqdn") or m.get("host") or "?"
+                healthy = bool(m.get("healthy"))
+                simple = m.get("simple") if isinstance(m.get("simple"), dict) else {}
+                body = ""
+                if simple:
+                    body = str(simple.get("body") or simple.get("http_status") or "")
+                err = m.get("error") or ""
+                rows.append({
+                    "component": f"{role}:{fqdn}",
+                    "role": role,
+                    "host": fqdn,
+                    "status": "active" if healthy else "failed",
+                    "source": "http",
+                    "detail": (body or err or "")[:200],
+                    "healthy": healthy,
+                })
+        ha = ch.get("ha") or {}
+        pcs = ha.get("pcs") if isinstance(ha, dict) else {}
+        if isinstance(pcs, dict) and (pcs.get("primary_node") or pcs.get("vip_node")):
+            rows.append({
+                "component": "ca-ha",
+                "role": "ha",
+                "host": pcs.get("vip_node") or pcs.get("primary_node") or "",
+                "status": "active" if ha.get("available") else "degraded",
+                "source": "pcs",
+                "detail": (
+                    f"primary={pcs.get('primary_node')} vip_node={pcs.get('vip_node')}"
+                ),
+                "healthy": bool(ha.get("available")),
+            })
+
+    unhealthy = [r for r in rows if not r.get("healthy")]
+    overall = (
+        "ok" if not unhealthy
+        else ("degraded" if any(r.get("healthy") for r in rows) else "critical")
+    )
+
+    return {
+        "status": overall,
+        "deployment_mode": mode,
+        "components": rows,
+        "services": [
+            {
+                "service": r["component"],
+                "status": r["status"],
+                "host": r.get("host"),
+                "source": r.get("source"),
+                "error": None if r.get("healthy") else (r.get("detail") or "unhealthy"),
+                "memory": "",
+                "since": "",
+            }
+            for r in rows
+        ],
+        "summary": ch.get("summary") if isinstance(ch, dict) else {},
+        "warnings": warnings,
+    }
 
 
 @router.get("/settings")
@@ -46,29 +168,53 @@ async def get_infra_settings(
     """
     Return current key tuning settings for OpenVox Server and/or PuppetDB.
 
-    This powers `ovox infra settings show`.
+    This powers `ovox infra settings show`. On a dedicated console (clustered),
+    local puppetserver/puppetdb conf often do not exist — return nulls with
+    a note rather than 500.
     """
-    result = {}
+    from ..services.cluster_config import is_clustered
+
+    result: Dict[str, Any] = {
+        "deployment_mode": "clustered" if is_clustered() else "single",
+    }
+    if is_clustered():
+        result["note"] = (
+            "Clustered console: local /etc/puppetlabs/puppetserver|puppetdb "
+            "settings are usually absent. Use ovox infra health for remote "
+            "HTTP probes; apply tuning on each compiler/ovdb host (or future "
+            "Bolt-based tune)."
+        )
 
     try:
         if not component or component in ("server", "puppetserver"):
-            jruby = _infra_config.get_puppetserver_jruby_max_active()
-            jvm = _infra_config.get_puppetserver_jvm_settings()
+            try:
+                jruby = _infra_config.get_puppetserver_jruby_max_active()
+                jvm = _infra_config.get_puppetserver_jvm_settings()
+            except Exception as e:
+                jruby, jvm = None, {"error": str(e)}
             result["puppetserver"] = {
                 "jruby_max_active_instances": jruby,
                 "jvm": jvm,
+                "local_config_present": jruby is not None or bool(jvm),
             }
 
         if not component or component in ("db", "puppetdb"):
-            pools = _infra_config.get_puppetdb_pool_settings()
-            jvm = _infra_config.get_puppetdb_jvm_settings()
+            try:
+                pools = _infra_config.get_puppetdb_pool_settings()
+                jvm = _infra_config.get_puppetdb_jvm_settings()
+            except Exception as e:
+                pools, jvm = {}, {"error": str(e)}
             result["puppetdb"] = {
                 "pools": pools,
                 "jvm": jvm,
+                "local_config_present": bool(pools),
             }
     except Exception as e:
         logger.exception("Failed to collect infra settings")
-        raise HTTPException(status_code=500, detail=f"Failed to read infrastructure settings: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read infrastructure settings: {str(e)}",
+        )
 
     return result
 
@@ -86,7 +232,22 @@ async def set_infra_setting(
       - jvm.heap
       - read_pool.max_connections
       - write_pool.max_connections
+
+    Clustered dedicated consoles: refuses local apply (would only touch the
+    GUI host). Apply on each compiler/ovdb until remote tune exists.
     """
+    from ..services.cluster_config import is_clustered
+
+    if is_clustered():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Clustered console: refusing local infra settings apply. "
+                "This would only change the GUI host. Set JRuby/heap/pools on "
+                "each compiler and OpenVoxDB node (SSH or future remote tune)."
+            ),
+        )
+
     comp = request.component.lower()
     setting = request.setting.lower()
     value = request.value
@@ -163,55 +324,97 @@ async def get_tune_recommendations(
 
     This is the data source for `ovox infra tune --recommend`.
     """
+    from ..services.cluster_config import is_clustered, load_cluster_config
+
     try:
-        nodes = await puppetdb_service.get_nodes()
+        nodes = await puppetdb_service.get_live_nodes()
         node_count = len(nodes)
     except Exception:
-        node_count = 0
+        try:
+            nodes = await puppetdb_service.get_nodes()
+            node_count = len(nodes)
+        except Exception:
+            node_count = 0
+
+    clustered = is_clustered()
+    cfg = load_cluster_config() if clustered else {}
+    n_compilers = len(cfg.get("compilers") or []) or 1
 
     recs = []
 
-    # Very basic but useful starting heuristics.
-    # These will be replaced / expanded with more sophisticated logic
-    # that reads actual current config values.
+    # Fleet-size heuristics work from any console. "current" is local-only
+    # unless we later Bolt-read each compiler/ovdb.
     if not component or component in ("puppetserver", "server"):
-        current_jruby = _infra_config.get_puppetserver_jruby_max_active()
-        suggested_jrubies = max(1, min(12, (node_count // 35) + 2))
+        try:
+            current_jruby = _infra_config.get_puppetserver_jruby_max_active()
+        except Exception:
+            current_jruby = None
+        # Per-compiler guideline when clustered
+        per = max(1, min(12, (node_count // max(1, n_compilers) // 35) + 2))
+        suggested_jrubies = per
 
         recs.append({
             "component": "puppetserver",
             "setting": "jruby-puppet.max-active-instances",
-            "current": str(current_jruby) if current_jruby is not None else "not found",
+            "current": (
+                str(current_jruby) if current_jruby is not None
+                else ("n/a on dedicated console" if clustered else "not found")
+            ),
             "recommended": suggested_jrubies,
-            "reason": f"~{node_count} nodes. Guideline: ~1 JRuby per 35-40 agents (capped for safety)."
+            "reason": (
+                f"~{node_count} live nodes"
+                + (f", {n_compilers} compilers" if clustered else "")
+                + ". Guideline: ~1 JRuby per 35-40 agents per compiler (capped)."
+            ),
         })
 
-        # Simple heap guidance (we don't parse JVM args perfectly yet)
-        heap_gb = max(2, min(16, (node_count // 80) + 3))
+        heap_gb = max(2, min(16, (node_count // max(1, n_compilers) // 80) + 3))
         recs.append({
             "component": "puppetserver",
             "setting": "JVM heap (-Xms/-Xmx)",
-            "current": "see /etc/sysconfig/puppetserver",
+            "current": (
+                "n/a on dedicated console — set on each compiler"
+                if clustered else "see /etc/sysconfig/puppetserver"
+            ),
             "recommended": f"-Xms{heap_gb}g -Xmx{heap_gb}g",
-            "reason": "Match heap to workload. Monitor GC logs."
+            "reason": "Match heap to workload per compiler. Monitor GC logs.",
         })
 
     if not component or component in ("puppetdb", "db"):
-        pools = _infra_config.get_puppetdb_pool_settings()
+        try:
+            pools = _infra_config.get_puppetdb_pool_settings()
+        except Exception:
+            pools = {}
         suggested_pool = max(15, min(150, (node_count // 8) + 15))
 
         recs.append({
             "component": "puppetdb",
             "setting": "read_pool.max_connections + write_pool.max_connections",
-            "current": f"read={pools.get('read')}, write={pools.get('write')}",
+            "current": (
+                f"read={pools.get('read')}, write={pools.get('write')}"
+                if pools else (
+                    "n/a on dedicated console — set on each ovdb"
+                    if clustered else "not found"
+                )
+            ),
             "recommended": suggested_pool,
-            "reason": "Scale DB connection pools with number of agents."
+            "reason": "Scale DB connection pools with number of agents.",
         })
+
+    note = "These are starting recommendations. Review before applying."
+    if clustered:
+        note += (
+            " Clustered mode: apply changes on compiler/ovdb hosts "
+            "(ovox infra tune --apply is local to the GUI host only today)."
+        )
 
     return {
         "node_count": node_count,
+        "deployment_mode": "clustered" if clustered else "single",
+        "compilers": cfg.get("compilers") or [],
+        "puppetdb_nodes": cfg.get("puppetdb_nodes") or [],
         "recommendations": recs,
-        "note": "These are starting recommendations. Review before applying."
+        "note": note,
     }
 
 
@@ -244,6 +447,17 @@ async def apply_tuning(
     from pathlib import Path
     import subprocess
     import asyncio
+
+    from ..services.cluster_config import is_clustered
+
+    if is_clustered():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Clustered console: refusing local infra tune apply. "
+                "Apply on each compiler/OpenVoxDB host until remote tune ships."
+            ),
+        )
 
     comp = request.component.lower()
     if comp in ("server", "puppetserver"):

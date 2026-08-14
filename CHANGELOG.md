@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.8] - 2026-08-14 (fix — clustered ovox infra health)
+
+### Fixed
+- **`ovox infra health` on dedicated consoles:** no longer expects a bare
+  list from `/api/config/services` or 500s when local puppetserver/PDB
+  are absent. Uses **`GET /api/infra/health`**, which probes compiler /
+  OpenVoxDB / CA FQDNs from cluster_config (HTTP status APIs) plus GUI.
+- **`/api/config/services`:** partial probe failures return degraded rows
+  instead of blowing up the whole response.
+
+### Changed
+- **`ovox infra recommend`:** fleet-size heuristics work clustered; notes
+  that current JRuby/heap are n/a on dedicated console.
+- **`infra settings set` / `tune apply`:** refuse local apply in clustered
+  mode (would only mutate the GUI host) with a clear 400.
+
 ## [3.12.0-rc.7] - 2026-08-14 (feat — console host/IP footer marker)
 
 ### Added
