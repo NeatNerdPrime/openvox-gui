@@ -31,107 +31,153 @@ _AUTH = require_role(*READ_ROLES)
 async def infra_health(_user: str = Depends(_AUTH)):
     """Aggregated estate health for ``ovox infra health``.
 
-    Single-server: local/VIP compiler + PDB HTTP + local systemd.
-    Clustered: probes every compiler / OpenVoxDB / CA FQDN from
-    cluster_config (same path as Settings → cluster health), plus GUI.
+    Discovers the full serving estate (each compiler **and** compiler VIP,
+    each OpenVoxDB **and** PDB VIP, each CA member **and** CA VIP, consoles)
+    from cluster_config + OPENVOX_GUI_* settings, then HTTP-probes each host.
+    Local GUI systemd rows are included for the console you are talking to.
+
     Never 500s on partial probe failure — returns degraded rows instead.
     """
-    from ..services.cluster_config import load_cluster_config, is_clustered
+    from ..services.cluster_config import is_clustered
+    from ..services.estate_inventory import cluster_cfg_for_probes, discover_serving_estate
     from ..services.puppetserver import puppetserver_service
 
     warnings: List[str] = []
-    services: List[Dict[str, Any]] = []
     mode = "clustered" if is_clustered() else "single"
+    inventory = discover_serving_estate()
     ch: Dict[str, Any] = {}
 
+    # Always probe full inventory (members + VIPs), not only .env VIP
     try:
-        services.append(await puppetserver_service.get_remote_health())
-    except Exception as e:
-        warnings.append(f"compiler vip: {e}")
-        services.append({
-            "service": "puppetserver", "status": "unknown",
-            "source": "http", "error": str(e),
-        })
-    try:
-        services.append(await puppetdb_service.get_remote_health())
-    except Exception as e:
-        warnings.append(f"puppetdb vip: {e}")
-        services.append({
-            "service": "puppetdb", "status": "unknown",
-            "source": "http", "error": str(e),
-        })
-    for svc_name in ("puppet", "openvox-gui"):
-        try:
-            services.append(puppetserver_service.get_service_status(svc_name))
-        except Exception as e:
-            services.append({
-                "service": svc_name, "status": "unknown",
-                "source": "local-systemd", "error": str(e),
-            })
+        from ..services.cluster_health import probe_cluster_full
 
-    if is_clustered():
-        try:
-            from ..services.cluster_health import probe_cluster_full
-
-            ch = await probe_cluster_full(load_cluster_config())
-        except Exception as e:
-            logger.exception("cluster health probe failed")
-            warnings.append(f"cluster: {e}")
-            ch = {}
+        ch = await probe_cluster_full(cluster_cfg_for_probes())
+    except Exception as e:
+        logger.exception("estate health probe failed")
+        warnings.append(f"estate probe: {e}")
+        ch = {}
 
     rows: List[Dict[str, Any]] = []
-    for svc in services:
-        st = (svc.get("status") or "unknown").lower()
+    seen: set = set()  # (role, host)
+
+    def _add_row(
+        component: str,
+        role: str,
+        host: str,
+        status: str,
+        source: str,
+        detail: str,
+        healthy: bool,
+        kind: str = "member",
+    ) -> None:
+        key = (role, (host or "").lower())
+        if key in seen and host:
+            return
+        if host:
+            seen.add(key)
         rows.append({
-            "component": svc.get("service") or svc.get("name") or "unknown",
-            "role": "console-view",
-            "host": svc.get("host") or "local",
-            "status": svc.get("status") or "unknown",
-            "source": svc.get("source"),
-            "detail": svc.get("simple") or svc.get("error") or svc.get("since") or "",
-            "healthy": st in ("active", "running"),
+            "component": component,
+            "role": role,
+            "kind": kind,
+            "host": host,
+            "status": status,
+            "source": source,
+            "detail": (detail or "")[:200],
+            "healthy": healthy,
         })
 
-    if mode == "clustered" and ch:
-        for key, role in (
-            ("compilers", "compiler"),
-            ("puppetdb_nodes", "puppetdb"),
-            ("ca_nodes", "ca"),
-            ("ca_vips", "ca-vip"),
-        ):
-            for m in ch.get(key) or []:
-                if not isinstance(m, dict):
-                    continue
-                fqdn = m.get("fqdn") or m.get("host") or "?"
-                healthy = bool(m.get("healthy"))
-                simple = m.get("simple") if isinstance(m.get("simple"), dict) else {}
-                body = ""
-                if simple:
-                    body = str(simple.get("body") or simple.get("http_status") or "")
-                err = m.get("error") or ""
-                rows.append({
-                    "component": f"{role}:{fqdn}",
-                    "role": role,
-                    "host": fqdn,
-                    "status": "active" if healthy else "failed",
-                    "source": "http",
-                    "detail": (body or err or "")[:200],
-                    "healthy": healthy,
-                })
-        ha = ch.get("ha") or {}
-        pcs = ha.get("pcs") if isinstance(ha, dict) else {}
-        if isinstance(pcs, dict) and (pcs.get("primary_node") or pcs.get("vip_node")):
-            rows.append({
-                "component": "ca-ha",
-                "role": "ha",
-                "host": pcs.get("vip_node") or pcs.get("primary_node") or "",
-                "status": "active" if ha.get("available") else "degraded",
-                "source": "pcs",
-                "detail": (
-                    f"primary={pcs.get('primary_node')} vip_node={pcs.get('vip_node')}"
-                ),
-                "healthy": bool(ha.get("available")),
-            })
+    # Flatten probe results: members first, then VIPs (stable order)
+    probe_groups = (
+        ("compilers", "compiler", "member"),
+        ("compiler_vips", "compiler-vip", "vip"),
+        ("puppetdb_nodes", "puppetdb", "member"),
+        ("puppetdb_vips", "puppetdb-vip", "vip"),
+        ("ca_nodes", "ca", "member"),
+        ("ca_vips", "ca-vip", "vip"),
+        ("consoles", "console", "member"),
+        ("console_vips", "console-vip", "vip"),
+    )
+    for key, role, kind in probe_groups:
+        for m in ch.get(key) or []:
+            if not isinstance(m, dict):
+                continue
+            fqdn = m.get("fqdn") or m.get("host") or "?"
+            healthy = bool(m.get("healthy"))
+            simple = m.get("simple") if isinstance(m.get("simple"), dict) else {}
+            body = ""
+            if simple:
+                body = str(
+                    simple.get("body")
+                    or simple.get("http_status")
+                    or ""
+                )
+            err = m.get("error") or ""
+            label = "VIP" if kind == "vip" else "node"
+            _add_row(
+                component=f"{role}:{fqdn}",
+                role=role,
+                host=fqdn,
+                status="active" if healthy else "failed",
+                source="http",
+                detail=(body or err or label)[:200],
+                healthy=healthy,
+                kind=kind,
+            )
+
+    # Local console agent + GUI process (the machine running this API)
+    for svc_name in ("puppet", "openvox-gui"):
+        try:
+            svc = puppetserver_service.get_service_status(svc_name)
+            st = (svc.get("status") or "unknown").lower()
+            _add_row(
+                component=svc_name,
+                role="local",
+                host=svc.get("host") or "local",
+                status=svc.get("status") or "unknown",
+                source="local-systemd",
+                detail=svc.get("error") or svc.get("since") or "",
+                healthy=st in ("active", "running"),
+                kind="local",
+            )
+        except Exception as e:
+            _add_row(
+                component=svc_name,
+                role="local",
+                host="local",
+                status="unknown",
+                source="local-systemd",
+                detail=str(e),
+                healthy=False,
+                kind="local",
+            )
+
+    ha = ch.get("ha") or {}
+    pcs = ha.get("pcs") if isinstance(ha, dict) else {}
+    if isinstance(pcs, dict) and (pcs.get("primary_node") or pcs.get("vip_node")):
+        _add_row(
+            component="ca-ha",
+            role="ha",
+            host=pcs.get("vip_node") or pcs.get("primary_node") or "",
+            status="active" if ha.get("available") else "degraded",
+            source="pcs",
+            detail=f"primary={pcs.get('primary_node')} vip_node={pcs.get('vip_node')}",
+            healthy=bool(ha.get("available")),
+            kind="ha",
+        )
+
+    # Warn if inventory looks VIP-only (ops forgot member FQDNs in cluster config)
+    inv = ch.get("inventory") or inventory
+    if inv:
+        if inv.get("compiler_vips") and not inv.get("compilers"):
+            warnings.append(
+                "No compiler *members* in cluster config — only VIPs. "
+                "Add ovcompiler1/2 FQDNs under Settings → Cluster → compilers."
+            )
+        if inv.get("puppetdb_vips") and not inv.get("puppetdb_nodes"):
+            warnings.append(
+                "No OpenVoxDB *members* in cluster config — only VIP. "
+                "Add ovdb1/2… under Settings → Cluster → puppetdb_nodes."
+            )
 
     unhealthy = [r for r in rows if not r.get("healthy")]
     overall = (
@@ -142,6 +188,7 @@ async def infra_health(_user: str = Depends(_AUTH)):
     return {
         "status": overall,
         "deployment_mode": mode,
+        "inventory": inv,
         "components": rows,
         "services": [
             {
@@ -149,6 +196,8 @@ async def infra_health(_user: str = Depends(_AUTH)):
                 "status": r["status"],
                 "host": r.get("host"),
                 "source": r.get("source"),
+                "kind": r.get("kind"),
+                "role": r.get("role"),
                 "error": None if r.get("healthy") else (r.get("detail") or "unhealthy"),
                 "memory": "",
                 "since": "",

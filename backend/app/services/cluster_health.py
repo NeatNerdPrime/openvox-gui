@@ -466,48 +466,160 @@ async def probe_cluster_members(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return rows
 
 
+async def probe_gui_console(client: httpx.AsyncClient, fqdn: str) -> Dict[str, Any]:
+    """OpenVox GUI health on :4567 (console members / console VIP)."""
+    base = f"https://{fqdn}:4567"
+    simple = await _get_text(client, f"{base}/health")
+    # /health may return JSON {"status":"ok"} — treat 200 as healthy
+    healthy = bool(simple.get("healthy")) or simple.get("http_status") == 200
+    if not healthy:
+        # try without relying on body text "running"
+        try:
+            r = await client.get(f"{base}/health")
+            healthy = r.status_code == 200
+            simple = {
+                "healthy": healthy,
+                "http_status": r.status_code,
+                "body": (r.text or "")[:200],
+            }
+        except Exception as e:
+            simple = {"healthy": False, "error": str(e)}
+            healthy = False
+    return {
+        "fqdn": fqdn,
+        "role": "console",
+        "port": 4567,
+        "healthy": healthy,
+        "simple": simple,
+        "error": simple.get("error") if not healthy else None,
+    }
+
+
 async def probe_cluster_full(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    """Full clustered health document for APIs and UI."""
-    compilers = cfg.get("compilers") or []
-    pdb_nodes = cfg.get("puppetdb_nodes") or []
-    ca_nodes = cfg.get("ca_nodes") or []
-    ca_vips = cfg.get("ca_vips") or []
+    """Full estate health document for APIs, UI, and ``ovox infra health``.
+
+    Probes **members and VIPs**:
+      - compilers + compiler_vips (8140)
+      - puppetdb_nodes + puppetdb_vips (8081)
+      - ca_nodes + ca_vips (8140)
+      - consoles + console_vips (4567) when provided
+    """
+    # Prefer expanded inventory when caller passed raw cluster_config only
+    compilers = list(cfg.get("compilers") or [])
+    compiler_vips = list(cfg.get("compiler_vips") or [])
+    pdb_nodes = list(cfg.get("puppetdb_nodes") or [])
+    pdb_vips = list(cfg.get("puppetdb_vips") or [])
+    ca_nodes = list(cfg.get("ca_nodes") or [])
+    ca_vips = list(cfg.get("ca_vips") or [])
+    consoles = list(cfg.get("consoles") or [])
+    console_vips = list(cfg.get("console_vips") or [])
+
+    if not any([compilers, compiler_vips, pdb_nodes, ca_nodes]):
+        try:
+            from .estate_inventory import cluster_cfg_for_probes
+
+            expanded = cluster_cfg_for_probes()
+            compilers = expanded.get("compilers") or compilers
+            compiler_vips = expanded.get("compiler_vips") or compiler_vips
+            pdb_nodes = expanded.get("puppetdb_nodes") or pdb_nodes
+            pdb_vips = expanded.get("puppetdb_vips") or pdb_vips
+            ca_nodes = expanded.get("ca_nodes") or ca_nodes
+            ca_vips = expanded.get("ca_vips") or ca_vips
+            consoles = expanded.get("consoles") or consoles
+            console_vips = expanded.get("console_vips") or console_vips
+        except Exception as e:
+            logger.debug("estate expand skipped: %s", e)
 
     verify = _ssl_context()
-    # verify=False fallback only if CA file missing — still try mTLS context
     timeout = httpx.Timeout(8.0, connect=4.0)
 
     async with httpx.AsyncClient(
         verify=verify, timeout=timeout, trust_env=False
     ) as client:
         c_tasks = [probe_compiler(client, f) for f in compilers]
+        cv_tasks = [probe_compiler(client, f) for f in compiler_vips]
         p_tasks = [probe_puppetdb(client, f) for f in pdb_nodes]
+        pv_tasks = [probe_puppetdb(client, f) for f in pdb_vips]
         ca_tasks = [probe_ca(client, f) for f in ca_nodes]
         vip_tasks = [probe_ca(client, f) for f in ca_vips]
+        gui_tasks = [probe_gui_console(client, f) for f in consoles]
+        guiv_tasks = [probe_gui_console(client, f) for f in console_vips]
 
-        c_res, p_res, ca_res, vip_res = await asyncio.gather(
+        (
+            c_res,
+            cv_res,
+            p_res,
+            pv_res,
+            ca_res,
+            vip_res,
+            gui_res,
+            guiv_res,
+        ) = await asyncio.gather(
             asyncio.gather(*c_tasks) if c_tasks else asyncio.sleep(0, result=[]),
+            asyncio.gather(*cv_tasks) if cv_tasks else asyncio.sleep(0, result=[]),
             asyncio.gather(*p_tasks) if p_tasks else asyncio.sleep(0, result=[]),
+            asyncio.gather(*pv_tasks) if pv_tasks else asyncio.sleep(0, result=[]),
             asyncio.gather(*ca_tasks) if ca_tasks else asyncio.sleep(0, result=[]),
             asyncio.gather(*vip_tasks) if vip_tasks else asyncio.sleep(0, result=[]),
+            asyncio.gather(*gui_tasks) if gui_tasks else asyncio.sleep(0, result=[]),
+            asyncio.gather(*guiv_tasks) if guiv_tasks else asyncio.sleep(0, result=[]),
         )
+
+    # Tag VIP probe results
+    def _tag(rows, role: str):
+        out = []
+        for r in rows or []:
+            if isinstance(r, dict):
+                rr = dict(r)
+                rr["role"] = role
+                out.append(rr)
+        return out
 
     ha = await probe_ha_cluster(cfg)
 
+    c_list = list(c_res) if c_res else []
+    cv_list = _tag(cv_res, "compiler-vip")
+    p_list = list(p_res) if p_res else []
+    pv_list = _tag(pv_res, "puppetdb-vip")
+    ca_list = list(ca_res) if ca_res else []
+    cav_list = _tag(vip_res, "ca-vip")
+    gui_list = _tag(gui_res, "console")
+    guiv_list = _tag(guiv_res, "console-vip")
+
     return {
         "deployment_mode": cfg.get("deployment_mode", "single"),
-        "compilers": list(c_res) if c_res else [],
-        "puppetdb_nodes": list(p_res) if p_res else [],
-        "ca_nodes": list(ca_res) if ca_res else [],
-        "ca_vips": list(vip_res) if vip_res else [],
+        "compilers": c_list,
+        "compiler_vips": cv_list,
+        "puppetdb_nodes": p_list,
+        "puppetdb_vips": pv_list,
+        "ca_nodes": ca_list,
+        "ca_vips": cav_list,
+        "consoles": gui_list,
+        "console_vips": guiv_list,
         "ha": ha,
+        "inventory": {
+            "compilers": compilers,
+            "compiler_vips": compiler_vips,
+            "puppetdb_nodes": pdb_nodes,
+            "puppetdb_vips": pdb_vips,
+            "ca_nodes": ca_nodes,
+            "ca_vips": ca_vips,
+            "consoles": consoles,
+            "console_vips": console_vips,
+        },
         "summary": {
-            "compilers_healthy": sum(1 for x in (c_res or []) if x.get("healthy")),
+            "compilers_healthy": sum(1 for x in c_list if x.get("healthy")),
             "compilers_total": len(compilers),
-            "puppetdb_healthy": sum(1 for x in (p_res or []) if x.get("healthy")),
+            "compiler_vips_healthy": sum(1 for x in cv_list if x.get("healthy")),
+            "compiler_vips_total": len(compiler_vips),
+            "puppetdb_healthy": sum(1 for x in p_list if x.get("healthy")),
             "puppetdb_total": len(pdb_nodes),
-            "ca_healthy": sum(1 for x in (ca_res or []) if x.get("healthy")),
+            "puppetdb_vips_healthy": sum(1 for x in pv_list if x.get("healthy")),
+            "puppetdb_vips_total": len(pdb_vips),
+            "ca_healthy": sum(1 for x in ca_list if x.get("healthy")),
             "ca_total": len(ca_nodes),
+            "ca_vips_healthy": sum(1 for x in cav_list if x.get("healthy")),
+            "ca_vips_total": len(ca_vips),
             "ha_primary": (ha.get("pcs") or {}).get("primary_node"),
             "ha_vip_node": (ha.get("pcs") or {}).get("vip_node"),
             "ha_available": ha.get("available"),

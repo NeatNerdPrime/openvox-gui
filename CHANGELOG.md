@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.10] - 2026-08-14 (feat — full estate members + VIPs in infra health)
+
+### Changed
+- **`ovox infra health` / `GET /api/infra/health`:** discovers and probes the
+  full serving estate — each **compiler member** and **compiler VIP**, each
+  **OpenVoxDB member** and **PDB VIP**, each **CA member** and **CA VIP**,
+  plus consoles — from cluster_config (`compilers`, `puppetdb_nodes`,
+  `ca_nodes`, `ca_vips`, `infra_vips`, `consoles`, `vip_hosts`) merged with
+  `OPENVOX_GUI_PUPPET_SERVER_HOST` / `PUPPET_CA_HOST` / `PUPPETDB_HOST`.
+- CLI table shows Role / Kind (member|vip) / Host / Status.
+- Warns when only VIPs are configured and member lists are empty.
+
 ## [3.12.0-rc.9] - 2026-08-14 (fix — ovox bypass corp proxy for internal GUI)
 
 ### Fixed

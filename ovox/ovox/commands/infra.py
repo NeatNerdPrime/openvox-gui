@@ -86,17 +86,28 @@ def health(
         title += f" — {overall}"
 
     table = Table(title=title)
-    table.add_column("Component", style="cyan")
-    table.add_column("Host", style="dim")
+    table.add_column("Role", style="cyan")
+    table.add_column("Kind", style="dim")
+    table.add_column("Host", style="white")
     table.add_column("Status", style="green")
     table.add_column("Details", style="dim")
 
-    for svc in services if isinstance(services, list) else []:
+    # Prefer components (richer) over flat services
+    if isinstance(payload, dict) and payload.get("components"):
+        row_src = payload["components"]
+    else:
+        row_src = services if isinstance(services, list) else []
+
+    for svc in row_src:
         if not isinstance(svc, dict):
             continue
         name = svc.get("service") or svc.get("component") or svc.get("name") or "unknown"
+        role = str(svc.get("role") or name.split(":")[0] if ":" in str(name) else name)
+        kind = str(svc.get("kind") or ("vip" if "vip" in role else "member"))
         status = str(svc.get("status") or "unknown")
         host = str(svc.get("host") or "")
+        if ":" in str(name) and not host:
+            host = str(name).split(":", 1)[-1]
 
         details_parts = []
         if svc.get("source"):
@@ -112,14 +123,21 @@ def health(
 
         details = " | ".join(details_parts) if details_parts else ""
 
-        if component and component.lower() not in name.lower() and component.lower() not in host.lower():
+        blob = f"{name} {role} {host} {kind}".lower()
+        if component and component.lower() not in blob:
             continue
 
         st_l = status.lower()
         color = "green" if st_l in ("active", "running", "ok") else (
             "yellow" if st_l in ("degraded", "unknown") else "red"
         )
-        table.add_row(name, host[:40], f"[{color}]{status}[/{color}]", str(details)[:70])
+        table.add_row(
+            role,
+            kind,
+            host[:48],
+            f"[{color}]{status}[/{color}]",
+            str(details)[:60],
+        )
 
     if not table.rows:
         console.print("[yellow]No matching components found.[/yellow]")
@@ -135,11 +153,24 @@ def health(
             console.print()
             console.print(
                 f"[dim]compilers {summary.get('compilers_healthy', '?')}/"
-                f"{summary.get('compilers_total', '?')} · "
+                f"{summary.get('compilers_total', '?')}"
+                f" (+vip {summary.get('compiler_vips_healthy', '?')}/"
+                f"{summary.get('compiler_vips_total', '?')}) · "
                 f"puppetdb {summary.get('puppetdb_healthy', '?')}/"
-                f"{summary.get('puppetdb_total', '?')} · "
+                f"{summary.get('puppetdb_total', '?')}"
+                f" (+vip {summary.get('puppetdb_vips_healthy', '?')}/"
+                f"{summary.get('puppetdb_vips_total', '?')}) · "
                 f"ca {summary.get('ca_healthy', '?')}/"
-                f"{summary.get('ca_total', '?')}[/dim]"
+                f"{summary.get('ca_total', '?')}"
+                f" (+vip {summary.get('ca_vips_healthy', '?')}/"
+                f"{summary.get('ca_vips_total', '?')})[/dim]"
+            )
+        inv = payload.get("inventory") or {}
+        if inv and not inv.get("compilers") and inv.get("compiler_vips"):
+            console.print(
+                "[yellow]Hint:[/yellow] only compiler VIPs are configured — "
+                "add member FQDNs (ovcompiler1, ovcompiler2, …) in "
+                "Settings → Cluster → compilers."
             )
         for w in payload.get("warnings") or []:
             console.print(f"[yellow]warning:[/yellow] {w}")
@@ -148,8 +179,9 @@ def health(
     console.print(Panel.fit(
         "Run [bold]ovox infra settings show[/bold] to see current tuning values.\n"
         "Run [bold]ovox infra recommend[/bold] for tuning suggestions.\n"
-        "[dim]Clustered: health probes remote FQDNs via HTTP; "
-        "tune apply stays local to compilers/ovdb hosts.[/dim]",
+        "[dim]Health lists each estate member and each VIP from cluster "
+        "config + OPENVOX_GUI_* hosts. Fill compilers/puppetdb_nodes/ca_nodes "
+        "with real FQDNs (VIPs go in ca_vips / infra_vips / .env).[/dim]",
         title="Next Steps",
         border_style="blue"
     ))
