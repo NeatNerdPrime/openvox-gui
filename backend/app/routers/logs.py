@@ -561,6 +561,29 @@ def _json_object_with_lines(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _bolt_wrapper_json(blob: str) -> Optional[Dict[str, Any]]:
+    import json as _json
+
+    cleaned = (blob or "").replace("\x00", "").strip()
+    if "{" in cleaned:
+        cleaned = cleaned[cleaned.find("{") :]
+    if not cleaned.startswith("{"):
+        return None
+    try:
+        data = _json.loads(cleaned)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _first_bolt_item(bolt: Dict[str, Any]) -> Dict[str, Any]:
+    data = _bolt_wrapper_json(bolt.get("stdout") or "")
+    if isinstance(data, dict) and data.get("items"):
+        first = data["items"][0]
+        return first if isinstance(first, dict) else {}
+    return {}
+
+
 def _parse_remote_log_payload(bolt: Dict[str, Any], item: Dict[str, Any]) -> Dict[str, Any]:
     """Bolt often puts JSON on stdout and noise on stderr — never prefer stderr."""
     candidates: List[str] = []
@@ -577,6 +600,126 @@ def _parse_remote_log_payload(bolt: Dict[str, Any], item: Dict[str, Any]) -> Dic
     return {}
 
 
+def _bolt_item_error(bolt: Dict[str, Any], item: Dict[str, Any]) -> str:
+    val = item.get("value") if isinstance(item.get("value"), dict) else {}
+    err = val.get("_error") if isinstance(val.get("_error"), dict) else {}
+    msg = (
+        err.get("msg")
+        or val.get("stderr")
+        or bolt.get("stderr")
+        or ""
+    )
+    return str(msg).strip()
+
+
+def _bolt_stdout_lines(bolt: Dict[str, Any], item: Dict[str, Any]) -> List[str]:
+    val = item.get("value") if isinstance(item.get("value"), dict) else {}
+    text = str(val.get("stdout") or val.get("merged_output") or "")
+    if not text.strip():
+        return []
+    return [ln for ln in text.splitlines() if ln and "-- No entries --" not in ln]
+
+
+async def _bolt_run(args: List[str], timeout: int = 45) -> Dict[str, Any]:
+    from .bolt_runtime import run_bolt_command
+
+    return await run_bolt_command(args, timeout=timeout)
+
+
+async def _fetch_remote_logs_via_command(
+    source: str,
+    host: str,
+    lines: int,
+    since: Optional[str],
+    grep: Optional[str],
+) -> Dict[str, Any]:
+    """CIS compilers often break `bolt script run` (noexec /tmp, missing
+    /home/bolt/.bolt/tmp, no python3). ``command run`` of journalctl/tail
+    only needs SSH + sudo.
+    """
+    cfg = _LOG_SOURCES.get(source) or _LOG_SOURCES["puppetserver"]
+    units = list(cfg.get("units") or ([cfg.get("unit")] if cfg.get("unit") else []))
+    files = list(cfg.get("files") or [])
+    n = max(1, min(int(lines or 200), 5000))
+    errors: List[str] = []
+
+    if cfg.get("syslog") or not units:
+        cmd = f"/usr/bin/journalctl --no-pager -n {n} --output short-iso"
+        if since:
+            cmd += f" --since {since!r}"
+        bolt = await _bolt_run(
+            ["command", "run", cmd, "--targets", host, "--run-as", "root", "--format", "json"],
+        )
+        item = _first_bolt_item(bolt)
+        got = _bolt_stdout_lines(bolt, item)
+        if got:
+            if grep:
+                g = grep.lower()
+                got = [ln for ln in got if g in ln.lower()]
+            return {"source": source, "host": host, "lines": got, "mode": "syslog", "unit": None, "file": None}
+        err = _bolt_item_error(bolt, item)
+        if err:
+            errors.append(err)
+
+    for unit in units:
+        cmd = f"/usr/bin/journalctl -u {unit} --no-pager -n {n} --output short-iso"
+        if since:
+            cmd += f" --since {since!r}"
+        bolt = await _bolt_run(
+            ["command", "run", cmd, "--targets", host, "--run-as", "root", "--format", "json"],
+        )
+        item = _first_bolt_item(bolt)
+        got = _bolt_stdout_lines(bolt, item)
+        if got:
+            if grep:
+                g = grep.lower()
+                got = [ln for ln in got if g in ln.lower()]
+            return {
+                "source": source,
+                "host": host,
+                "lines": got,
+                "mode": f"unit:{unit}",
+                "unit": unit,
+                "file": None,
+            }
+        err = _bolt_item_error(bolt, item)
+        if err:
+            errors.append(f"{unit}: {err}")
+
+    for path in files:
+        cmd = f"/usr/bin/tail -n {n} {path}"
+        bolt = await _bolt_run(
+            ["command", "run", cmd, "--targets", host, "--run-as", "root", "--format", "json"],
+        )
+        item = _first_bolt_item(bolt)
+        got = _bolt_stdout_lines(bolt, item)
+        if got:
+            if grep:
+                g = grep.lower()
+                got = [ln for ln in got if g in ln.lower()]
+            return {
+                "source": source,
+                "host": host,
+                "lines": got,
+                "mode": "file",
+                "unit": None,
+                "file": path,
+            }
+        err = _bolt_item_error(bolt, item)
+        if err:
+            errors.append(f"{path}: {err}")
+
+    return {
+        "source": source,
+        "host": host,
+        "lines": [],
+        "mode": None,
+        "unit": None,
+        "file": None,
+        "error": "; ".join(errors) if errors else "no journal or file lines",
+    }
+
+
 async def _fetch_remote_logs(
     source: str,
     host: str,
@@ -584,56 +727,39 @@ async def _fetch_remote_logs(
     since: Optional[str],
     grep: Optional[str],
 ) -> Dict[str, Any]:
-    from .bolt_runtime import run_bolt_command
-    from .deploy import _extract_bolt_json
+    script_err = ""
+    if _SCRIPT.is_file():
+        remote_source = _REMOTE_SOURCE_ALIAS.get(source, source)
+        args = [
+            "script",
+            "run",
+            str(_SCRIPT),
+            remote_source,
+            "--lines",
+            str(lines),
+        ]
+        if since:
+            args.extend(["--since", since])
+        if grep:
+            args.extend(["--grep", grep])
+        args.extend(["--targets", host, "--run-as", "root", "--format", "json"])
+        bolt = await _bolt_run(args, timeout=45)
+        item = _first_bolt_item(bolt)
+        parsed = _parse_remote_log_payload(bolt, item)
+        if parsed:
+            return parsed
+        script_err = _bolt_item_error(bolt, item)
 
-    if not _SCRIPT.is_file():
-        raise HTTPException(status_code=500, detail=f"Missing {_SCRIPT}")
+    fallback = await _fetch_remote_logs_via_command(source, host, lines, since, grep)
+    if fallback.get("lines") or fallback.get("error"):
+        if script_err and not fallback.get("lines"):
+            fallback["error"] = f"{script_err}; fallback: {fallback.get('error')}"
+        return fallback
 
-    remote_source = _REMOTE_SOURCE_ALIAS.get(source, source)
-    args = [
-        "script",
-        "run",
-        str(_SCRIPT),
-        remote_source,
-        "--lines",
-        str(lines),
-    ]
-    if since:
-        args.extend(["--since", since])
-    if grep:
-        args.extend(["--grep", grep])
-    args.extend([
-        "--targets",
-        host,
-        "--run-as",
-        "root",
-        "--format",
-        "json",
-    ])
-
-    bolt = await run_bolt_command(args, timeout=45)
-    data = _extract_bolt_json(bolt.get("stdout") or "")
-    item: Dict[str, Any] = {}
-    if isinstance(data, dict) and data.get("items"):
-        first = data["items"][0]
-        item = first if isinstance(first, dict) else {}
-    parsed = _parse_remote_log_payload(bolt, item)
-    if parsed:
-        return parsed
-    err = (item.get("value") or {})
-    if isinstance(err, dict):
-        err = (
-            (err.get("_error") or {}).get("msg")
-            or err.get("stderr")
-            or bolt.get("stderr")
-            or "Bolt returned no log JSON"
-        )
-    else:
-        err = bolt.get("stderr") or "Bolt returned no log JSON"
+    detail = script_err or fallback.get("error") or "Bolt returned no log JSON"
     raise HTTPException(
         status_code=502,
-        detail=f"Could not read logs on {host}: {err}",
+        detail=f"Could not read logs on {host}: {detail}",
     )
 
 

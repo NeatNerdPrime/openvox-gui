@@ -43,3 +43,14 @@ def test_parse_prefers_stdout_json_over_stderr_noise():
 def test_remote_source_alias():
     assert logs_mod._REMOTE_SOURCE_ALIAS["openvox-ca"] == "puppetserver"
     assert logs_mod._REMOTE_SOURCE_ALIAS["openvox-compiler"] == "puppetserver"
+
+
+def test_bolt_stdout_lines_from_command_run():
+    item = {"value": {"stdout": "line1\n-- No entries --\nline2\n", "exit_code": 0}}
+    assert logs_mod._bolt_stdout_lines({}, item) == ["line1", "line2"]
+
+
+def test_first_bolt_item_from_wrapper():
+    blob = '{"items":[{"target":"ovcompiler1.example","value":{"stdout":"ok"}}]}'
+    item = logs_mod._first_bolt_item({"stdout": "warn\n" + blob})
+    assert item.get("target") == "ovcompiler1.example"

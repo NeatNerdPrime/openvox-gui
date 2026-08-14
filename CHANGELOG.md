@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.12] - 2026-08-14 (fix — remote logs without script JSON)
+
+### Fixed
+- **Insights | Logs still 502 on compilers:** `bolt script run` needs
+  python3 and `/home/bolt/.bolt/tmp` (CIS `/tmp` is noexec). If the
+  script returns no JSON, fall back to `bolt command run` of
+  `journalctl -u puppetserver` and `tail` of the server log. 502 now
+  includes the real Bolt error instead of a generic “no log JSON”.
+
 ## [3.11.1-beta.11] - 2026-08-14 (fix — Log Viewer CA vs compilers)
 
 ### Fixed
