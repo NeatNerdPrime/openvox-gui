@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.12] - 2026-08-14 (fix — infra settings show remote Bolt values)
+
+### Fixed
+- **`ovox infra settings show`:** display remote Bolt samples (heap_min/max,
+  JRuby, pools) instead of always None; print source host, warnings, and
+  hosts tried.
+
 ## [3.12.0-rc.11] - 2026-08-14 (fix — Bolt estate inventory; remote infra settings)
 
 ### Fixed

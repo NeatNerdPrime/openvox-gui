@@ -330,32 +330,78 @@ def settings_show(
         console.print(JSON(json.dumps(data, indent=2)))
         return
 
+    def _jvm_field(jvm: dict, *keys, default="—"):
+        jvm = jvm or {}
+        for k in keys:
+            v = jvm.get(k)
+            if v not in (None, "", "None", "null"):
+                return v
+        return default
+
+    def _val(v, default="—"):
+        if v in (None, "", "None", "null"):
+            return default
+        return v
+
+    mode = data.get("deployment_mode") or ""
+    if mode:
+        console.print(f"[dim]deployment_mode={mode}[/dim]")
+    if data.get("note"):
+        console.print(f"[dim]{data['note']}[/dim]")
+
     if server or not db:
-        ps = data.get("puppetserver", {})
-        jvm = ps.get("jvm", {})
+        ps = data.get("puppetserver", {}) or {}
+        jvm = ps.get("jvm", {}) or {}
+        src = ps.get("source") or "local"
+        host = ps.get("source_host") or ""
+        title = "Puppet Server Settings"
+        if host:
+            title += f" (@ {host})"
+        elif src:
+            title += f" ({src})"
         console.print(Panel.fit(
             f"[bold]Puppet Server[/bold]\n"
-            f"  JRuby max active instances : {ps.get('jruby_max_active_instances', 'unknown')}\n"
-            f"  JVM heap (min)             : {jvm.get('heap_min', 'unknown')}\n"
-            f"  JVM heap (max)             : {jvm.get('heap_max', 'unknown')}\n"
-            f"  Reserved Code Cache        : {jvm.get('reserved_code_cache', 'unknown')}",
-            title="Puppet Server Settings",
-            border_style="cyan"
+            f"  JRuby max active instances : {_val(ps.get('jruby_max_active_instances'))}\n"
+            f"  JVM heap (min)             : {_jvm_field(jvm, 'heap_min', 'xms')}\n"
+            f"  JVM heap (max)             : {_jvm_field(jvm, 'heap_max', 'xmx')}\n"
+            f"  Reserved Code Cache        : {_jvm_field(jvm, 'reserved_code_cache')}\n"
+            f"  Source                     : {src}"
+            + (f" / {host}" if host else ""),
+            title=title,
+            border_style="cyan",
         ))
 
     if db or not server:
-        pdb = data.get("puppetdb", {})
-        pools = pdb.get("pools", {})
-        jvm = pdb.get("jvm", {})
+        pdb = data.get("puppetdb", {}) or {}
+        pools = pdb.get("pools", {}) or {}
+        jvm = pdb.get("jvm", {}) or {}
+        src = pdb.get("source") or "local"
+        host = pdb.get("source_host") or ""
+        title = "OpenVoxDB / PuppetDB Settings"
+        if host:
+            title += f" (@ {host})"
         console.print(Panel.fit(
-            f"[bold]PuppetDB[/bold]\n"
-            f"  Read pool max connections  : {pools.get('read', 'unknown')}\n"
-            f"  Write pool max connections : {pools.get('write', 'unknown')}\n"
-            f"  JVM heap (min)             : {jvm.get('heap_min', 'unknown')}\n"
-            f"  JVM heap (max)             : {jvm.get('heap_max', 'unknown')}",
-            title="PuppetDB Settings",
-            border_style="magenta"
+            f"[bold]OpenVoxDB[/bold]\n"
+            f"  Read pool max connections  : {_val(pools.get('read'))}\n"
+            f"  Write pool max connections : {_val(pools.get('write'))}\n"
+            f"  JVM heap (min)             : {_jvm_field(jvm, 'heap_min', 'xms')}\n"
+            f"  JVM heap (max)             : {_jvm_field(jvm, 'heap_max', 'xmx')}\n"
+            f"  Source                     : {src}"
+            + (f" / {host}" if host else ""),
+            title=title,
+            border_style="magenta",
         ))
+
+    for w in data.get("warnings") or []:
+        console.print(f"[yellow]warning:[/yellow] {w}")
+
+    remote = data.get("remote") or {}
+    tried = remote.get("tried") or {}
+    if tried:
+        console.print(
+            f"[dim]Bolt tried compilers={tried.get('compilers') or []} "
+            f"puppetdb={tried.get('puppetdb_nodes') or []}[/dim]"
+        )
 
 
 @settings_app.command("set")

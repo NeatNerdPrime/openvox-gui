@@ -223,57 +223,97 @@ async def get_infra_settings(
     """
     from ..services.cluster_config import is_clustered
 
+    def _local_ps_usable(jruby, jvm) -> bool:
+        if jruby is not None:
+            return True
+        if isinstance(jvm, dict) and (jvm.get("heap_max") or jvm.get("heap_min")):
+            return True
+        return False
+
+    def _local_pdb_usable(pools, jvm) -> bool:
+        if isinstance(pools, dict) and (
+            pools.get("read") is not None or pools.get("write") is not None
+        ):
+            return True
+        if isinstance(jvm, dict) and (jvm.get("heap_max") or jvm.get("heap_min")):
+            return True
+        return False
+
     result: Dict[str, Any] = {
         "deployment_mode": "clustered" if is_clustered() else "single",
     }
+    warnings: List[str] = []
 
     try:
+        jruby = jvm_ps = None
+        pools: Dict[str, Any] = {}
+        jvm_pdb: Dict[str, Any] = {}
+
         if not component or component in ("server", "puppetserver"):
             try:
                 jruby = _infra_config.get_puppetserver_jruby_max_active()
-                jvm = _infra_config.get_puppetserver_jvm_settings()
+                jvm_ps = _infra_config.get_puppetserver_jvm_settings()
             except Exception as e:
-                jruby, jvm = None, {"error": str(e)}
+                jruby, jvm_ps = None, {"error": str(e)}
             result["puppetserver"] = {
                 "jruby_max_active_instances": jruby,
-                "jvm": jvm,
-                "local_config_present": jruby is not None or bool(jvm),
+                "jvm": jvm_ps or {},
+                "local_config_present": _local_ps_usable(jruby, jvm_ps),
+                "source": "local",
             }
 
         if not component or component in ("db", "puppetdb"):
             try:
-                pools = _infra_config.get_puppetdb_pool_settings()
-                jvm = _infra_config.get_puppetdb_jvm_settings()
+                pools = _infra_config.get_puppetdb_pool_settings() or {}
+                jvm_pdb = _infra_config.get_puppetdb_jvm_settings() or {}
             except Exception as e:
-                pools, jvm = {}, {"error": str(e)}
+                pools, jvm_pdb = {}, {"error": str(e)}
             result["puppetdb"] = {
                 "pools": pools,
-                "jvm": jvm,
-                "local_config_present": bool(pools),
+                "jvm": jvm_pdb,
+                "local_config_present": _local_pdb_usable(pools, jvm_pdb),
+                "source": "local",
             }
 
-        # Dedicated console: pull live values from remote members via Bolt
-        if is_clustered():
+        need_remote = is_clustered() or not (
+            (result.get("puppetserver") or {}).get("local_config_present")
+            and (result.get("puppetdb") or {}).get("local_config_present")
+        )
+        # Always prefer Bolt samples on clustered console
+        if need_remote or is_clustered():
             result["note"] = (
-                "Clustered console: settings sampled from remote hosts via Bolt "
-                "(cluster_config FQDNs). Static /etc bolt inventory.yaml is not used."
+                "Settings from remote estate via Bolt (cluster member FQDNs). "
+                "Ensure Settings → Cluster lists compilers + puppetdb_nodes and "
+                "bolt SSH works as user bolt with root run-as."
             )
             try:
                 from ..services.infra_remote import sample_remote_infra_settings
 
                 remote = await sample_remote_infra_settings()
                 result["remote"] = remote
+                if remote.get("errors"):
+                    warnings.extend([str(x) for x in remote["errors"]])
+
                 ps = (remote.get("puppetserver") or {}).get("sample")
-                if ps and not result.get("puppetserver", {}).get("local_config_present"):
+                if ps and (
+                    is_clustered()
+                    or not (result.get("puppetserver") or {}).get("local_config_present")
+                ):
                     result["puppetserver"] = {
-                        "jruby_max_active_instances": ps.get("jruby_max_active_instances"),
+                        "jruby_max_active_instances": ps.get(
+                            "jruby_max_active_instances"
+                        ),
                         "jvm": ps.get("jvm") or {},
                         "local_config_present": False,
                         "source_host": ps.get("host"),
                         "source": "bolt",
                     }
+
                 pdb = (remote.get("puppetdb") or {}).get("sample")
-                if pdb and not result.get("puppetdb", {}).get("local_config_present"):
+                if pdb and (
+                    is_clustered()
+                    or not (result.get("puppetdb") or {}).get("local_config_present")
+                ):
                     result["puppetdb"] = {
                         "pools": pdb.get("pools") or {},
                         "jvm": pdb.get("jvm") or {},
@@ -281,11 +321,20 @@ async def get_infra_settings(
                         "source_host": pdb.get("host"),
                         "source": "bolt",
                     }
-                if remote.get("errors"):
-                    result["warnings"] = remote["errors"]
+
+                if not ps and not pdb:
+                    warnings.append(
+                        "Bolt returned no parseable settings. Check: cluster "
+                        "member FQDNs, bolt inventory under "
+                        "/opt/openvox-gui/data/bolt-inventory.estate.yaml, "
+                        "SSH as bolt, sudo root on targets."
+                    )
             except Exception as e:
                 logger.warning("remote infra settings via bolt failed: %s", e)
-                result.setdefault("warnings", []).append(str(e))
+                warnings.append(str(e))
+
+        if warnings:
+            result["warnings"] = warnings
     except Exception as e:
         logger.exception("Failed to collect infra settings")
         raise HTTPException(
