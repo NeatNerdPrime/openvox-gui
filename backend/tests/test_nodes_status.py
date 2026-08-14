@@ -7,7 +7,54 @@ from app.services.puppetdb import (
     _report_ts,
     _pick_report_for_node,
     _fold_newest_report,
+    _validate_report_hash,
 )
+
+
+def test_validate_report_hash_accepts_sha1_and_sha256():
+    sha1 = "85c28c2a766d3b3d0c3c2bfd7aee92589293ecf7"
+    sha256 = "a" * 64
+    assert _validate_report_hash(sha1) == sha1
+    assert _validate_report_hash(sha256.upper()) == sha256
+    try:
+        _validate_report_hash("not-hex")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+    try:
+        _validate_report_hash("abc")  # too short
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_get_report_falls_back_to_prefix():
+    from app.services.puppetdb import PuppetDBService
+    import asyncio
+
+    svc = PuppetDBService.__new__(PuppetDBService)
+    svc._peer_puppetdb_hosts = lambda: []  # type: ignore[method-assign]
+
+    async def fake_query(endpoint, query=None, params=None):
+        assert endpoint == "reports"
+        assert "85c28c2a" in (query or "")
+        return []
+
+    async def fake_get_reports(**kwargs):
+        assert "^85c28c2a" in (kwargs.get("query") or "")
+        return [{
+            "hash": "85c28c2a766d3b3d0c3c2bfd7aee92589293ecf7abcd",
+            "status": "unchanged",
+        }]
+
+    svc._query = fake_query  # type: ignore[method-assign]
+    svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+
+    row = asyncio.run(
+        PuppetDBService.get_report(svc, "85c28c2a766d3b3d0c3c2bfd7aee92589293ecf7")
+    )
+    assert row["hash"].startswith("85c28c2a")
+    assert row["status"] == "unchanged"
 
 
 def test_cert_aliases_fqdn_and_short():

@@ -160,9 +160,21 @@ async def get_report_detail(report_hash: str):
     try:
         report = await puppetdb_service.get_report(report_hash)
         if not report:
-            raise HTTPException(status_code=404, detail="Report not found")
+            pdb = f"{settings.puppetdb_host}:{settings.puppetdb_port}"
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Report not found in OpenVoxDB at {pdb} "
+                    f"(looked up {report_hash!r}). "
+                    "Use the full reports[hash] value from PQL if this is a "
+                    "short prefix, or check that the reports table is "
+                    "replicated to this site."
+                ),
+            )
 
-        events = await puppetdb_service.get_report_events(report_hash)
+        # Prefix lookups return the full hash — events/logs/metrics need that.
+        full_hash = report.get("hash") or report_hash
+        events = await puppetdb_service.get_report_events(full_hash)
 
         # Get logs: PuppetDB returns logs as a lazy reference {"href": "...", "data": [...]}
         # The "data" key may be an empty list if log_level is set too high in puppet.conf.
@@ -176,7 +188,7 @@ async def get_report_detail(report_hash: str):
 
         # If inline data is empty, try querying the sub-endpoint directly
         if not logs:
-            logs = await puppetdb_service.get_report_logs(report_hash)
+            logs = await puppetdb_service.get_report_logs(full_hash)
 
         # Get metrics: same lazy reference pattern
         metrics = []
@@ -187,7 +199,7 @@ async def get_report_detail(report_hash: str):
             metrics = metrics_field
 
         if not metrics:
-            metrics = await puppetdb_service.get_report_metrics(report_hash)
+            metrics = await puppetdb_service.get_report_metrics(full_hash)
 
         return {
             "hash": report.get("hash", ""),
@@ -204,6 +216,7 @@ async def get_report_detail(report_hash: str):
             "catalog_uuid": report.get("catalog_uuid"),
             "cached_catalog_status": report.get("cached_catalog_status"),
             "producer": report.get("producer"),
+            "openvoxdb_source": report.get("_openvoxdb_source"),
             "resource_events": events,
             "logs": logs,
             "metrics": metrics,

@@ -27,23 +27,17 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-# PuppetDB report hashes are SHA-256 hex digests (64 lowercase hex chars).
-# This strict pattern prevents PQL injection through crafted hash values
-# passed in from URL path parameters.
-_SAFE_HEX_HASH = re.compile(r'^[a-f0-9]+$')
+# Report hashes are hex. OpenVoxDB uses SHA-256 (64); older PDB used SHA-1 (40).
+# URLs often carry a prefix. Reject anything that is not 7–64 hex chars.
+_SAFE_HEX_HASH = re.compile(r'^[a-f0-9]{7,64}$')
 
 
 def _validate_report_hash(report_hash: str) -> str:
-    """Validate that a report hash is a safe hex string for use in PQL.
-
-    PuppetDB report hashes are SHA-256 hex digests, so they should only
-    contain lowercase hex characters (a-f, 0-9). Rejecting anything else
-    prevents PQL injection through crafted hash values like:
-        'abc123"] or true --'
-    """
-    if not report_hash or not _SAFE_HEX_HASH.match(report_hash):
-        raise ValueError(f"Invalid report hash: must be a hex string")
-    return report_hash
+    """Validate a report hash (or unique prefix) before PQL interpolation."""
+    h = (report_hash or "").strip().lower()
+    if not h or not _SAFE_HEX_HASH.match(h):
+        raise ValueError("Invalid report hash: must be 7–64 hex characters")
+    return h
 
 
 def _cert_aliases(certname: str) -> List[str]:
@@ -572,18 +566,97 @@ class PuppetDBService:
         return await self._query("reports", query=query, params=params)
 
     async def get_report(self, report_hash: str) -> Dict:
-        """Get a single report by its SHA-256 hash.
+        """Get a single report by hash (exact, then unique prefix).
 
-        The hash is validated to contain only hex characters before being
-        interpolated into the PQL query to prevent injection attacks.
+        OpenVoxDB stores SHA-256 (64 hex). Older PuppetDB used SHA-1 (40).
+        Operators and some UIs paste a prefix. Exact ``=`` misses those.
+        On a clustered estate the ATLC console's OpenVoxDB may not have
+        a PDXC-originated row yet — try configured peer OpenVoxDB hosts.
         """
-        report_hash = _validate_report_hash(report_hash)
+        h = _validate_report_hash(report_hash)
+        found = await self._lookup_report(h)
+        if found:
+            return found
+        for peer in self._peer_puppetdb_hosts():
+            try:
+                found = await self._lookup_report_on_host(peer, h)
+            except Exception as e:
+                logger.warning("peer OpenVoxDB %s report lookup failed: %s", peer, e)
+                continue
+            if found:
+                found["_openvoxdb_source"] = peer
+                logger.info("report %s found on peer OpenVoxDB %s", h, peer)
+                return found
+        return {}
+
+    def _peer_puppetdb_hosts(self) -> List[str]:
+        try:
+            from .cluster_config import load_cluster_config
+            cfg = load_cluster_config()
+        except Exception:
+            return []
+        primary = (settings.puppetdb_host or "").strip().lower()
+        out: List[str] = []
+        for host in cfg.get("puppetdb_nodes") or []:
+            h = str(host).strip().lower()
+            if h and h != primary and h not in out:
+                out.append(h)
+        return out
+
+    async def _lookup_report(self, h: str) -> Dict:
+        """Exact, then prefix, then PQL — against the primary OpenVoxDB."""
         results = await self._query(
             "reports",
-            query=f'["=", "hash", "{report_hash}"]'
+            query=f'["=", "hash", "{h}"]',
         )
         if results:
-            return results[0]
+            return results[0] if isinstance(results[0], dict) else {}
+        if len(h) < 64:
+            try:
+                prefixed = await self.get_reports(
+                    query=f'["~", "hash", "^{h}"]',
+                    limit=20,
+                    order_by="receive_time",
+                    order_dir="desc",
+                ) or []
+                if prefixed and isinstance(prefixed[0], dict):
+                    return prefixed[0]
+            except Exception as e:
+                logger.warning("prefix report lookup failed hash=%s: %s", h, e)
+            try:
+                rows = await self.pql(f'reports {{ hash ~ "^{h}" }}', limit=20) or []
+                if rows and isinstance(rows[0], dict):
+                    return rows[0]
+            except Exception as e:
+                logger.warning("PQL prefix report lookup failed hash=%s: %s", h, e)
+        return {}
+
+    async def _lookup_report_on_host(self, host: str, h: str) -> Dict:
+        """Same lookup against a peer OpenVoxDB FQDN (clustered)."""
+        url = f"https://{host}:{settings.puppetdb_port}/pdb/query/v4/reports"
+        ctx = self._create_ssl_context()
+        queries = [f'["=", "hash", "{h}"]']
+        if len(h) < 64:
+            queries.append(f'["~", "hash", "^{h}"]')
+        async with httpx.AsyncClient(
+            verify=ctx,
+            timeout=httpx.Timeout(10.0, connect=4.0),
+            trust_env=False,
+        ) as client:
+            for q in queries:
+                resp = await client.get(
+                    url,
+                    params={
+                        "query": q,
+                        "limit": "20",
+                        "order_by": '[{"field": "receive_time", "order": "desc"}]',
+                    },
+                )
+                if resp.status_code >= 400:
+                    continue
+                rows = resp.json() or []
+                if rows and isinstance(rows[0], dict):
+                    return rows[0]
         return {}
 
     async def get_report_events(self, report_hash: str) -> List[Dict]:

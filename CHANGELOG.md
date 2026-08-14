@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.11.1-beta.9] - 2026-08-14 (fix — report detail 404 on short hash / peer PDB)
+
+### Fixed
+- **`/reports/<hash>` API 404:** lookup was exact SHA-256 only against
+  this console's OpenVoxDB. A 40-char SHA-1 (or truncated SHA-256) and
+  reports that landed on the other site's OpenVoxDB both missed. Now:
+  exact match, then prefix `^hash`, then configured peer
+  `puppetdb_nodes`. Events/logs use the full hash from the matched row.
+
 ## [3.11.1-beta.8] - 2026-08-13 (fix — Monitoring charts as moving averages)
 
 ### Fixed
