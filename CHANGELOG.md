@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.19] - 2026-08-17 (ui — quiet ENC environments load)
+
+### Changed
+- **Classification (ENC):** stop showing an "Environments loaded" notification on every
+  page/tab open. Initial load is silent; toasts only on explicit Refresh when rows
+  were created or discovery found nothing.
+
 ## [3.12.0-rc.18] - 2026-08-17 (ui — Node Detail layout)
 
 ### Changed

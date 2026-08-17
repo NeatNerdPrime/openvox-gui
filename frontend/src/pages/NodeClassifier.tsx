@@ -614,21 +614,17 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<{
     return row || { name, classes: {}, parameters: {}, description: '' };
   });
 
+  // Toasts only when caller opts in (e.g. explicit Refresh) — never spam on every ENC page open.
+  // Skip the routine "Environments loaded" noise; keep create/empty/problem signal only.
   if (opts?.notify) {
     const listed = envs.map((e) => e.name).join(', ');
     if (created.length > 0) {
       notifications.show({
         title: 'Environments ready',
-        message: `Showing ${envs.length}: ${listed}`,
+        message: `Created ENC rows for: ${created.join(', ')}. Showing ${envs.length}: ${listed}`,
         color: 'blue',
       });
-    } else if (envs.length > 0) {
-      notifications.show({
-        title: 'Environments loaded',
-        message: `Showing ${envs.length}: ${listed}`,
-        color: 'blue',
-      });
-    } else {
+    } else if (envs.length === 0) {
       notifications.show({
         title: 'No environments found',
         message: 'Could not discover control_repo branches from compilers',
@@ -743,7 +739,8 @@ function EnvironmentsTab({ onCatalogChange }: { onCatalogChange?: () => unknown 
     setLoading(false);
   }, [onCatalogChange]);
 
-  useEffect(() => { load(true); }, [load]);
+  // Silent on mount — toast only when the operator clicks Refresh list (or on load errors if notify).
+  useEffect(() => { void load(false); }, [load]);
 
   const openEdit = (e: any) => {
     setEditing(e);
