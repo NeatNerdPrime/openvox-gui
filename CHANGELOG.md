@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.17] - 2026-08-17 (feat — Node Detail host health glance)
+
+### Added
+- **Node Detail → Host health strip** (investigation only; not on Nodes list /
+  Dashboard): memory, uptime, CPUs, disk mounts at a glance from last agent
+  facts; saturation badges from fact thresholds.
+- **Serving-estate sparklines** when the cert matches Host Health targets
+  (console / compiler / OpenVoxDB / CA) — reuses `data/host_metrics` ring.
+- **Live sample** button (admin/operator): one-shot local `/proc` or Bolt sample;
+  persists into Host Health ring only for estate members (agents not retained).
+- APIs: `GET /api/nodes/{certname}/health-glance`,
+  `POST /api/nodes/{certname}/health-glance/sample`.
+
+### Notes
+- Helps operators who drilled into a node; does not enable fleet-wide OS metrics.
+
 ## [3.12.0-rc.16] - 2026-08-17 (CI — pip-audit + npm audit)
 
 ### Added

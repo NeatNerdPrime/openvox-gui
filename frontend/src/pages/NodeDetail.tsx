@@ -22,6 +22,7 @@ import { notifications } from '@mantine/notifications';
 import { useAppTheme } from '../hooks/ThemeContext';
 import { useActivity } from '../hooks/ActivityContext';
 import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
+import { NodeHealthGlance } from '../components/NodeHealthGlance';
 
 /* ═══════════════════════════════════════════════════════════════
    INSPECT-O-BOT 2000 — the node inspection robot
@@ -341,7 +342,12 @@ export function NodeDetailPage() {
           </Stack>
         </Grid.Col>
 
+        {/* At-a-glance OS health — investigation only (between Overview and Applied Classes) */}
         <Grid.Col span={{ base: 12, md: isRobots ? 9 : 8 }}>
+          {certname && <NodeHealthGlance certname={certname} />}
+        </Grid.Col>
+
+        <Grid.Col span={12}>
           <Card withBorder shadow="sm" padding="md">
             <Text fw={700} mb="sm">Applied Classes ({node.classes.length})</Text>
             <Group gap="xs">

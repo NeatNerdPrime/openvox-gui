@@ -144,6 +144,14 @@ export const nodes = {
     fetchJSON<any>(`/nodes/${certname}/purge`, { method: 'POST' }),
   getReports: (certname: string, limit = 20) =>
     fetchJSON<any[]>(`/nodes/${certname}/reports?limit=${limit}`),
+  /** Node Detail only — at-a-glance facts + estate Host Health */
+  getHealthGlance: (certname: string) =>
+    fetchJSON<any>(`/nodes/${encodeURIComponent(certname)}/health-glance`),
+  /** One-shot live /proc sample (operator+); not fleet-wide collection */
+  sampleHealthGlance: (certname: string) =>
+    fetchJSON<any>(`/nodes/${encodeURIComponent(certname)}/health-glance/sample`, {
+      method: 'POST',
+    }),
 };
 
 // ─── Reports ────────────────────────────────────────────────

@@ -12,7 +12,7 @@
 | **OpenVoxDB** application hosts | |
 | **CA** member hosts | |
 
-Agent-fleet host metrics may be added later; they are intentionally out of scope today.
+Agent-fleet host metrics are **not** collected in the background. On **Node Detail** only, investigators get an at-a-glance strip from last agent **facts**, plus optional one-shot **Live sample** (Bolt/`/proc`) — see `GET/POST /api/nodes/{certname}/health-glance`.
 
 ## What you see
 

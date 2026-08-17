@@ -343,6 +343,45 @@ async def get_node_run_status(certname: str, db: AsyncSession = Depends(get_db))
     }
 
 
+@router.get("/{certname}/health-glance")
+async def get_node_health_glance(certname: str):
+    """At-a-glance host health for Node Detail (facts + optional estate history).
+
+    Investigation helper only — not used by fleet list or dashboard.
+    """
+    certname = validate_pql_value(certname, "certname")
+    try:
+        from ..services.node_health_glance import build_health_glance
+
+        return await build_health_glance(certname)
+    except Exception as e:
+        logger.exception("health-glance failed for %s", certname)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{certname}/health-glance/sample")
+async def sample_node_health_glance(
+    certname: str,
+    _user: str = Depends(require_role("admin", "operator")),
+):
+    """One-shot live OS sample via local /proc or Bolt (operator+).
+
+    Serving-estate hosts also append to the Host Health ring. Agent nodes
+    are sampled once and not retained fleet-wide.
+    """
+    certname = validate_pql_value(certname, "certname")
+    try:
+        from ..services.node_health_glance import live_sample, build_health_glance
+
+        sample_out = await live_sample(certname)
+        glance = await build_health_glance(certname)
+        glance["live"] = sample_out
+        return glance
+    except Exception as e:
+        logger.exception("health-glance sample failed for %s", certname)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{certname}", response_model=NodeDetail)
 async def get_node_detail(certname: str, db: AsyncSession = Depends(get_db)):
     """Get detailed information about a specific node.

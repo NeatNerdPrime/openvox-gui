@@ -99,6 +99,7 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 ### Node detail (`/nodes/:certname`)
 
 - Facts, recent reports, classification hooks
+- **Host health glance** (Node Detail only): at-a-glance memory / uptime / CPUs / disk mounts from last agent facts; Host Health sparklines when the cert is on the serving estate; optional **Live sample** (operator+, one-shot Bolt/`/proc` — not fleet-wide collection)
 - **Run OpenVox** (agent apply via Bolt) — Puppet exit **0 and 2** are success
 - Purge / deactivate paths coordinated with PDB + CA clean (role-gated)
 
@@ -402,4 +403,4 @@ When cutting a stable release, verify this file still matches:
 4. `backend/app/routers/` prefixes  
 5. Root `VERSION` and [CHANGELOG.md](../CHANGELOG.md) headline features  
 
-*Last full inventory pass: 3.12.0-rc.15 release-tidy (2026-08-14).*
+*Last full inventory pass: 3.12.0-rc.17 release-tidy (2026-08-14).*
