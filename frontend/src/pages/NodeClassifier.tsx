@@ -531,42 +531,65 @@ function HierarchyTab({ reloadToken = 0 }: { reloadToken?: number }) {
   );
 }
 
+/** Short-lived cache: compiler environment discovery is slow on clustered consoles. */
+let _envDiscoveryCache: { at: number; names: string[] } | null = null;
+const ENV_DISCOVERY_TTL_MS = 90_000;
+
 /**
- * Discover control_repo environment names (r10k branch ↔ environment) and
- * ensure ENC rows exist so operators can attach classes/params only.
- * UI always lists discovered names; names are never invented in the form.
+ * Discover control_repo environment names (r10k branch ↔ environment).
+ * Cached ~90s so tab switches / re-mounts do not re-hit compiler HTTP every time.
  */
-async function discoverControlRepoEnvironments(): Promise<string[]> {
+async function discoverControlRepoEnvironments(force = false): Promise<string[]> {
+  if (
+    !force
+    && _envDiscoveryCache
+    && Date.now() - _envDiscoveryCache.at < ENV_DISCOVERY_TTL_MS
+  ) {
+    return _envDiscoveryCache.names;
+  }
   try {
     const puppetResp = await config.getEnvironments();
     const raw = Array.isArray(puppetResp?.environments) ? puppetResp.environments : [];
     const names: string[] = raw
       .map((n: unknown) => String(n ?? '').trim())
       .filter((n: string) => n.length > 0);
-    if (names.length > 0) return Array.from(new Set(names)).sort();
+    if (names.length > 0) {
+      const sorted = Array.from(new Set(names)).sort();
+      _envDiscoveryCache = { at: Date.now(), names: sorted };
+      return sorted;
+    }
   } catch {
     /* fall through */
   }
-  return ['production'];
+  const fallback = ['production'];
+  _envDiscoveryCache = { at: Date.now(), names: fallback };
+  return fallback;
 }
 
 /**
- * Returns one row per discovered control_repo environment, merged with ENC
- * classes/parameters when present. Always re-lists after create so the table
- * is never empty after a "synced" notification.
+ * Merge discovered environment names with ENC rows.
+ *
+ * By default this is **read-only and fast**: list ENC envs + discover names,
+ * stub missing rows in the UI. Creating missing ENC DB rows is opt-in
+ * (``ensureRows: true``) for explicit Refresh — sequential create-per-env was
+ * making Classification open painfully slow on multi-env control repos.
  */
-async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<{
+async function ensureEncEnvironments(opts?: {
+  notify?: boolean;
+  /** When true, POST missing ENC environment rows (Refresh list only). */
+  ensureRows?: boolean;
+  /** Bypass discovery cache (after r10k / operator refresh). */
+  forceDiscover?: boolean;
+}): Promise<{
   envs: any[];
   discovered: string[];
 }> {
-  const discovered = await discoverControlRepoEnvironments();
-  let encEnvs: any[] = [];
-  try {
-    encEnvs = await enc.listEnvironments();
-    if (!Array.isArray(encEnvs)) encEnvs = [];
-  } catch {
-    encEnvs = [];
-  }
+  const ensureRows = opts?.ensureRows === true;
+  const [discovered, encEnvsRaw] = await Promise.all([
+    discoverControlRepoEnvironments(opts?.forceDiscover === true),
+    enc.listEnvironments().catch(() => [] as any[]),
+  ]);
+  let encEnvs = Array.isArray(encEnvsRaw) ? encEnvsRaw : [];
 
   const byName = new Map<string, any>();
   for (const e of encEnvs) {
@@ -574,48 +597,45 @@ async function ensureEncEnvironments(opts?: { notify?: boolean }): Promise<{
   }
 
   const created: string[] = [];
-  const failed: string[] = [];
-  for (const name of discovered) {
-    if (byName.has(name)) continue;
-    try {
-      const row = await enc.createEnvironment({
-        name,
-        description: '',
-        classes: {},
-        parameters: {},
-      });
-      byName.set(name, row || { name, classes: {}, parameters: {}, description: '' });
-      created.push(name);
-    } catch (e: any) {
-      // Already exists from race — re-list later
-      failed.push(name);
-      byName.set(name, { name, classes: {}, parameters: {}, description: '' });
-    }
-  }
-
-  // Fresh list so we pick up server state after creates
-  try {
-    const fresh = await enc.listEnvironments();
-    if (Array.isArray(fresh)) {
-      for (const e of fresh) {
-        if (e?.name) byName.set(String(e.name), e);
+  if (ensureRows) {
+    const missing = discovered.filter((name) => !byName.has(name));
+    // Parallel creates (bounded) — far faster than sequential await in a loop
+    await Promise.all(
+      missing.map(async (name) => {
+        try {
+          const row = await enc.createEnvironment({
+            name,
+            description: '',
+            classes: {},
+            parameters: {},
+          });
+          byName.set(name, row || { name, classes: {}, parameters: {}, description: '' });
+          created.push(name);
+        } catch {
+          byName.set(name, { name, classes: {}, parameters: {}, description: '' });
+        }
+      }),
+    );
+    if (created.length > 0) {
+      try {
+        const fresh = await enc.listEnvironments();
+        if (Array.isArray(fresh)) {
+          for (const e of fresh) {
+            if (e?.name) byName.set(String(e.name), e);
+          }
+        }
+      } catch {
+        /* keep map */
       }
     }
-  } catch {
-    /* keep map */
   }
 
-  // Display order = discovered control_repo list (not arbitrary ENC-only rows).
-  // Always return one row per discovered name so the table cannot be empty
-  // after a success toast (creates may fail; stubs still render).
   const names = discovered.length > 0 ? discovered : ['production'];
   const envs = names.map((name) => {
     const row = byName.get(name);
     return row || { name, classes: {}, parameters: {}, description: '' };
   });
 
-  // Toasts only when caller opts in (e.g. explicit Refresh) — never spam on every ENC page open.
-  // Skip the routine "Environments loaded" noise; keep create/empty/problem signal only.
   if (opts?.notify) {
     const listed = envs.map((e) => e.name).join(', ');
     if (created.length > 0) {
@@ -644,11 +664,19 @@ function useEncCatalog() {
   const [catalog, setCatalog] = useState<EncCatalog>({ groups: [], envs: [] });
   const [ready, setReady] = useState(false);
 
-  const refresh = useCallback(async (opts?: { notify?: boolean }): Promise<EncCatalog> => {
+  const refresh = useCallback(async (opts?: {
+    notify?: boolean;
+    ensureRows?: boolean;
+    forceDiscover?: boolean;
+  }): Promise<EncCatalog> => {
     try {
       const [g, envResult] = await Promise.all([
         enc.listGroups().catch(() => [] as any[]),
-        ensureEncEnvironments({ notify: opts?.notify ?? false }),
+        ensureEncEnvironments({
+          notify: opts?.notify ?? false,
+          ensureRows: opts?.ensureRows ?? false,
+          forceDiscover: opts?.forceDiscover ?? false,
+        }),
       ]);
       const next: EncCatalog = {
         groups: Array.isArray(g) ? g : [],
@@ -665,7 +693,7 @@ function useEncCatalog() {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh({ ensureRows: false }); }, [refresh]);
 
   return { ...catalog, ready, refresh };
 }
@@ -701,34 +729,64 @@ function groupMultiSelectData(groups: any[], preferEnv?: string) {
    Names come from control_repo (via compilers). Operators only set
    classes/parameters — no inventing or deleting environment names.
    ═══════════════════════════════════════════════════════════════ */
-function EnvironmentsTab({ onCatalogChange }: { onCatalogChange?: () => unknown }) {
-  const [envs, setEnvs] = useState<any[]>([]);
-  const [discovered, setDiscovered] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+function EnvironmentsTab({
+  catalogEnvs,
+  onCatalogChange,
+}: {
+  /** Shared catalog envs from parent — avoids a second discovery on tab open. */
+  catalogEnvs?: any[];
+  onCatalogChange?: (opts?: { notify?: boolean; ensureRows?: boolean; forceDiscover?: boolean }) => unknown;
+}) {
+  const [envs, setEnvs] = useState<any[]>(() =>
+    Array.isArray(catalogEnvs) && catalogEnvs.length > 0 ? catalogEnvs : [],
+  );
+  const [discovered, setDiscovered] = useState<string[]>(() =>
+    (catalogEnvs || []).map((e: any) => String(e?.name || '')).filter(Boolean),
+  );
+  const [loading, setLoading] = useState(!(catalogEnvs && catalogEnvs.length > 0));
   const [syncing, setSyncing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formClasses, setFormClasses] = useState<string[]>([]);
   const [formParams, setFormParams] = useState<Array<{ key: string; val: string }>>([]);
 
-  const load = useCallback(async (notify = false) => {
+  // Stay in sync when parent catalog finishes loading
+  useEffect(() => {
+    if (Array.isArray(catalogEnvs) && catalogEnvs.length > 0) {
+      setEnvs(catalogEnvs);
+      setDiscovered(catalogEnvs.map((e: any) => String(e?.name || '')).filter(Boolean));
+      setLoading(false);
+    }
+  }, [catalogEnvs]);
+
+  const load = useCallback(async (opts?: {
+    notify?: boolean;
+    ensureRows?: boolean;
+    forceDiscover?: boolean;
+  }) => {
     setLoading(true);
     try {
-      const { envs: list, discovered: names } = await ensureEncEnvironments({ notify });
-      // Always set from discovery-backed list (never leave stale empty after "synced")
+      const { envs: list, discovered: names } = await ensureEncEnvironments({
+        notify: opts?.notify ?? false,
+        ensureRows: opts?.ensureRows ?? false,
+        forceDiscover: opts?.forceDiscover ?? false,
+      });
       setDiscovered(names.length ? names : list.map((e: any) => String(e.name)).filter(Boolean));
       setEnvs(Array.isArray(list) && list.length > 0
         ? list
         : (names.length ? names : ['production']).map((name) => ({
             name, classes: {}, parameters: {}, description: '',
           })));
-      await onCatalogChange?.();
+      await onCatalogChange?.({
+        notify: false,
+        ensureRows: false,
+        forceDiscover: false,
+      });
     } catch (e: any) {
-      // Last resort: still show production so the tab is never blank after load
       const fallback = [{ name: 'production', classes: {}, parameters: {}, description: '' }];
       setDiscovered(['production']);
       setEnvs(fallback);
-      if (notify) {
+      if (opts?.notify) {
         notifications.show({
           title: 'Environments load issue',
           message: e?.message || 'Could not fully sync; showing fallback',
@@ -739,8 +797,11 @@ function EnvironmentsTab({ onCatalogChange }: { onCatalogChange?: () => unknown 
     setLoading(false);
   }, [onCatalogChange]);
 
-  // Silent on mount — toast only when the operator clicks Refresh list (or on load errors if notify).
-  useEffect(() => { void load(false); }, [load]);
+  // Only fetch if parent catalog has not already populated us
+  useEffect(() => {
+    if (catalogEnvs && catalogEnvs.length > 0) return;
+    void load({ ensureRows: false, notify: false });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
 
   const openEdit = (e: any) => {
     setEditing(e);
@@ -764,7 +825,7 @@ function EnvironmentsTab({ onCatalogChange }: { onCatalogChange?: () => unknown 
         color: 'green',
       });
       setModalOpen(false);
-      load(false);
+      void load({ ensureRows: false, notify: false });
     } catch (e: any) {
       notifications.show({ title: 'Error', message: e.message, color: 'red' });
     }
@@ -772,7 +833,8 @@ function EnvironmentsTab({ onCatalogChange }: { onCatalogChange?: () => unknown 
 
   const handleResync = async () => {
     setSyncing(true);
-    await load(true);
+    // Explicit refresh: re-discover from compilers and create missing ENC rows
+    await load({ notify: true, ensureRows: true, forceDiscover: true });
     setSyncing(false);
   };
 
@@ -878,6 +940,12 @@ function EnvironmentsTab({ onCatalogChange }: { onCatalogChange?: () => unknown 
 /* ═══════════════════════════════════════════════════════════════
    TAB 3: NODE GROUPS
    ═══════════════════════════════════════════════════════════════ */
+type CatalogRefresh = (opts?: {
+  notify?: boolean;
+  ensureRows?: boolean;
+  forceDiscover?: boolean;
+}) => Promise<EncCatalog>;
+
 function GroupsTab({
   groups,
   envs,
@@ -885,7 +953,7 @@ function GroupsTab({
 }: {
   groups: any[];
   envs: any[];
-  refreshCatalog: () => Promise<EncCatalog>;
+  refreshCatalog: CatalogRefresh;
 }) {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -1029,7 +1097,7 @@ function NodesTab({
 }: {
   groups: any[];
   envs: any[];
-  refreshCatalog: () => Promise<EncCatalog>;
+  refreshCatalog: CatalogRefresh;
 }) {
   const [classified, setClassified] = useState<any[]>([]);
   const [commonData, setCommonData] = useState<any>(null);
@@ -1048,31 +1116,29 @@ function NodesTab({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [n, c] = await Promise.all([
+      // Do NOT refreshCatalog here — parent already loaded groups/envs once.
+      // Triple-refresh (catalog + NodesTab + tab-switch) was the main ENC lag.
+      const [n, c, pn] = await Promise.all([
         enc.listNodes(),
         enc.getCommon().catch(() => null),
+        nodesApi.list().catch(() => [] as any[]),
       ]);
-      // Always re-pull groups/envs so Classify dropdown matches Groups tab
-      await refreshCatalog();
       setClassified(Array.isArray(n) ? n : []);
       setCommonData(c);
-      try {
-        const pn = await nodesApi.list();
-        setPuppetNodes(pn.map((x: any) => x.certname).sort());
-      } catch {
-        setPuppetNodes([]);
-      }
+      setPuppetNodes(
+        Array.isArray(pn) ? pn.map((x: any) => x.certname).filter(Boolean).sort() : [],
+      );
     } catch {
       setClassified([]);
     }
     setLoading(false);
-  }, [refreshCatalog]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const openCreate = async (prefillCert?: string) => {
-    // Fresh catalog before modal — groups created on another tab appear immediately
-    const cat = await refreshCatalog();
+    // Lightweight refresh only when opening the modal (groups may have changed)
+    const cat = await refreshCatalog({ ensureRows: false });
     setEditing(null);
     setFormCert(prefillCert || '');
     setFormEnv(cat.envs[0]?.name || envs[0]?.name || 'production');
@@ -1080,7 +1146,7 @@ function NodesTab({
     setModalOpen(true);
   };
   const openEdit = async (n: any) => {
-    const cat = await refreshCatalog();
+    const cat = await refreshCatalog({ ensureRows: false });
     setEditing(n);
     setFormCert(n.certname); setFormEnv(n.environment);
     setFormGroupIds(
@@ -1543,16 +1609,20 @@ export function NodeClassifierPage() {
   const catalog = useEncCatalog();
   const [activeTab, setActiveTab] = useState<string | null>('nodes');
 
-  // Re-pull groups/envs when switching tabs so Classify always matches Groups
-  useEffect(() => {
-    if (activeTab === 'nodes' || activeTab === 'groups' || activeTab === 'help') {
-      void catalog.refresh();
-    }
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps -- refresh on tab change only
+  // No catalog.refresh() on every tab change — that re-ran compiler env discovery
+  // and made Classification feel frozen. Catalog loads once; modals refresh on demand.
 
   return (
     <Stack>
-      <Title order={2}>Classification</Title>
+      <Group justify="space-between" align="center">
+        <Title order={2}>Classification</Title>
+        {!catalog.ready && (
+          <Group gap="xs">
+            <Loader size="xs" />
+            <Text size="sm" c="dimmed">Loading ENC catalog…</Text>
+          </Group>
+        )}
+      </Group>
       <InfrastructureGroupsHint />
       <Tabs value={activeTab} onChange={setActiveTab} variant="outline">
         <Tabs.List>
@@ -1572,7 +1642,10 @@ export function NodeClassifierPage() {
         </Tabs.Panel>
         <Tabs.Panel value="common" pt="md"><CommonTab /></Tabs.Panel>
         <Tabs.Panel value="environments" pt="md">
-          <EnvironmentsTab onCatalogChange={catalog.refresh} />
+          <EnvironmentsTab
+            catalogEnvs={catalog.envs}
+            onCatalogChange={catalog.refresh}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="groups" pt="md">
           <GroupsTab

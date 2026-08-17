@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.27] - 2026-08-17 (perf — fast Classification ENC page)
+
+### Changed
+- **Classification (ENC):** stop triple-loading the catalog on every open/tab
+  switch. Environment discovery is cached ~90s; missing ENC env rows are no
+  longer created one-by-one on page load (only on explicit Environments
+  "Refresh list"). Nodes tab loads list/common/fleet in parallel without a
+  second full catalog refresh.
+
 ## [3.12.0-rc.26] - 2026-08-17 (fix — empty Host Health CPU sparklines)
 
 ### Fixed
