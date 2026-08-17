@@ -342,12 +342,7 @@ export function NodeDetailPage() {
           </Stack>
         </Grid.Col>
 
-        {/* At-a-glance OS health — investigation only (between Overview and Applied Classes) */}
         <Grid.Col span={{ base: 12, md: isRobots ? 9 : 8 }}>
-          {certname && <NodeHealthGlance certname={certname} />}
-        </Grid.Col>
-
-        <Grid.Col span={12}>
           <Card withBorder shadow="sm" padding="md">
             <Text fw={700} mb="sm">Applied Classes ({node.classes.length})</Text>
             <Group gap="xs">
@@ -357,6 +352,11 @@ export function NodeDetailPage() {
               {node.classes.length === 0 && <Text c="dimmed" size="sm">No classes applied</Text>}
             </Group>
           </Card>
+        </Grid.Col>
+
+        {/* Host health: full width under Overview + Applied Classes, above facts tabs */}
+        <Grid.Col span={12}>
+          {certname && <NodeHealthGlance certname={certname} />}
         </Grid.Col>
       </Grid>
 

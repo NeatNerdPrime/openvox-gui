@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.18] - 2026-08-17 (ui — Node Detail layout)
+
+### Changed
+- **Node Detail:** restore Overview | Applied Classes on the top row; **Host health**
+  glance spans full width below that and above Key Facts / All Facts / Reports.
+
 ## [3.12.0-rc.17] - 2026-08-17 (feat — Node Detail host health glance)
 
 ### Added
