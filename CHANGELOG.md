@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.23] - 2026-08-17 (fix — login error menu paths)
+
+### Fixed
+- Login failure messages no longer point at a non-existent
+  "Settings → Application → Auth" path. Correct GUI paths are
+  **Settings → Auth Settings** (LDAP) and **Settings → User Manager**
+  (per-user auth source). Login error text wraps fully in the alert.
+
 ## [3.12.0-rc.22] - 2026-08-17 (fix — LDAP login false "Session expired")
 
 ### Fixed

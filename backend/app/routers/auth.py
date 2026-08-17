@@ -190,8 +190,8 @@ async def login(request: Request, login_request: LoginRequest):
                 status_code=401,
                 detail=(
                     "This account uses LDAP authentication, but LDAP is not enabled. "
-                    "Enable LDAP under Settings → Application → Auth, or switch the "
-                    "user to local auth in User Manager."
+                    "An administrator can enable LDAP under Settings → Auth Settings, "
+                    "or switch this user to local auth under Settings → User Manager."
                 ),
             )
         ldap_attempted = True
@@ -206,7 +206,11 @@ async def login(request: Request, login_request: LoginRequest):
         if not ldap_result:
             raise HTTPException(
                 status_code=401,
-                detail="Invalid username or password (LDAP authentication failed)",
+                detail=(
+                    "Invalid username or password (LDAP authentication failed). "
+                    "Check credentials, or have an administrator verify the directory "
+                    "settings under Settings → Auth Settings (Test Connection)."
+                ),
             )
     elif user_auth_source == "local":
         pass  # local password only
@@ -244,7 +248,10 @@ async def login(request: Request, login_request: LoginRequest):
         if ldap_attempted and user_auth_source is None:
             detail = (
                 "Invalid username or password "
-                "(LDAP did not accept this account; local auth also failed)"
+                "(LDAP did not accept this account; local auth also failed). "
+                "An administrator can check Settings → Auth Settings "
+                "(server URL, bind DN, user base DN, search filter) "
+                "or Settings → User Manager (auth source)."
             )
         raise HTTPException(status_code=401, detail=detail)
 

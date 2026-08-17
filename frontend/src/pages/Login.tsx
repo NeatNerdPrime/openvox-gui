@@ -66,7 +66,9 @@ export function LoginPage() {
           <Stack>
             {error && (
               <Alert color="red" title="Login Failed" withCloseButton onClose={() => setError(null)}>
-                {error}
+                <Text size="sm" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {error}
+                </Text>
               </Alert>
             )}
 
