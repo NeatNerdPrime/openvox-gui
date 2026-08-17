@@ -311,41 +311,86 @@ def match_serving_estate(certname: str) -> Tuple[bool, List[str], Optional[str]]
     return False, [], None
 
 
-def estate_snapshot_for(certname: str) -> Optional[Dict[str, Any]]:
-    """Cached Host Health latest + history for a certname if estate member."""
-    from .host_metrics import _history, _latest, _local_hostname, _load_persisted
+def _history_key_candidates(certname: str, matched: Optional[str] = None) -> List[str]:
+    """All keys that might hold Host Health rings for this certname."""
+    from .host_metrics import _local_hostname
+
+    out: List[str] = []
+    seen = set()
+
+    def add(k: Optional[str]) -> None:
+        if not k:
+            return
+        kl = str(k).strip().lower()
+        if not kl or kl in seen:
+            return
+        seen.add(kl)
+        out.append(kl)
+
+    add(matched)
+    for k in _host_keys_for_certname(certname):
+        add(k)
+    add(_local_hostname())
+    return out
+
+
+def _lookup_history_ring(certname: str, matched: Optional[str] = None):
+    """Find latest + history under any plausible host key (FQDN / short / file stem)."""
+    from .host_metrics import _history, _latest, _load_persisted
 
     if not _latest and not _history:
         _load_persisted()
 
+    candidates = _history_key_candidates(certname, matched)
+    for k in candidates:
+        if k in _latest or k in _history:
+            return k, _latest.get(k), list(_history.get(k) or [])
+
+    # Fuzzy: rings stored under hostname that only loosely matches certname
+    cset = set(candidates)
+    shorts = {c.split(".")[0] for c in cset}
+    for hk in list(_history.keys()) + list(_latest.keys()):
+        hkl = str(hk).lower()
+        hs = hkl.split(".")[0]
+        if hkl in cset or hs in shorts or any(
+            hkl.endswith("." + c) or c.endswith("." + hkl) for c in cset
+        ):
+            return hkl, _latest.get(hkl) or _latest.get(hk), list(
+                _history.get(hkl) or _history.get(hk) or []
+            )
+    return (candidates[0] if candidates else "unknown"), None, []
+
+
+def estate_snapshot_for(certname: str) -> Optional[Dict[str, Any]]:
+    """Cached Host Health latest + history for a certname if estate member."""
+    from .host_metrics import _local_hostname
+
     is_member, roles, matched = match_serving_estate(certname)
     if not is_member:
-        return None
+        # Still try history rings (e.g. after live sample aliased under certname)
+        hist_key, latest, history = _lookup_history_ring(certname, None)
+        if not latest and not history:
+            return None
+        local = _local_hostname()
+        return {
+            "host": hist_key,
+            "roles": [],
+            "is_local": hist_key == local,
+            "latest": latest,
+            "history": history[-120:],
+            "member": False,
+        }
 
     local = _local_hostname()
-    key = matched or _host_keys_for_certname(certname)[0]
-    # Prefer local ring when this is the GUI host
-    hist_key = key
-    if key == local or key in (local.split(".")[0],) or local.startswith(key + "."):
-        hist_key = local if local in _history or local in _latest else key
-
-    latest = _latest.get(hist_key) or _latest.get(key)
-    history = list(_history.get(hist_key) or _history.get(key) or [])
-    # Try alternate keys
-    if not latest and not history:
-        for k in _host_keys_for_certname(certname) + [local]:
-            if k in _latest or k in _history:
-                latest = _latest.get(k)
-                history = list(_history.get(k) or [])
-                hist_key = k
-                break
+    hist_key, latest, history = _lookup_history_ring(certname, matched)
 
     return {
         "host": hist_key,
         "roles": roles,
-        "is_local": hist_key == local or key == local,
+        "is_local": hist_key == local or (matched or "") == local,
         "latest": latest,
         "history": history[-120:],  # ~30m at 15s — enough for sparklines
+        "member": True,
     }
 
 
@@ -374,13 +419,36 @@ async def live_sample(certname: str) -> Dict[str, Any]:
     else:
         snap = await collect_remote_via_bolt(target)
 
-    # Only persist into Host Health ring when this host is already estate-scoped
-    # (keeps agent fleet out of data/host_metrics/).
+    # Normalize host identity so rings are findable by certname later
+    cn = (certname or "").strip().lower()
+    if cn:
+        snap["host"] = snap.get("host") or target or cn
+    # Always alias under certname keys so Node Detail sparklines resolve after sample
+    alias_keys = _host_keys_for_certname(certname)
+    if matched:
+        alias_keys.append(matched)
+
+    # Persist estate members to disk ring; still alias in-memory for agents so
+    # this page's sparklines can update without fleet-wide collection.
     if is_member:
-        _store(snap)
+        _store(snap, also_keys=alias_keys)
+    else:
+        # In-process only (no data/host_metrics write for pure agents)
+        _store(snap, also_keys=alias_keys, persist=False)
+
+    # Sparkline-friendly point list (single sample still charts with a dot)
+    point = {
+        "time": snap.get("time"),
+        "ts": snap.get("ts"),
+        "cpu_used_pct": snap.get("cpu_used_pct"),
+        "mem_used_pct": snap.get("mem_used_pct"),
+        "load1": snap.get("load1"),
+        "cpu_iowait_pct": snap.get("cpu_iowait_pct"),
+    }
 
     return {
         "sample": snap,
+        "sparkline_point": point,
         "persisted_to_estate_ring": is_member,
         "roles": roles,
         "target": target,
@@ -401,10 +469,24 @@ async def build_health_glance(certname: str, facts: Optional[Dict[str, Any]] = N
 
     glance = facts_to_glance(facts)
     estate = estate_snapshot_for(certname)
-    is_member = estate is not None
+    # member flag: true serving-estate, or only a history ring from sampling
+    is_member = bool(estate and estate.get("member", True))
+    has_series = bool(estate and (estate.get("history") or estate.get("latest")))
 
     # Light saturation hint from facts when no live estate data
     fact_sat = _fact_saturation_hint(glance)
+
+    history = list((estate or {}).get("history") or [])
+    # Drop points that cannot draw either series (keeps empty panes away)
+    usable = [
+        p for p in history
+        if isinstance(p, dict)
+        and (
+            p.get("cpu_used_pct") is not None
+            or p.get("mem_used_pct") is not None
+            or p.get("load1") is not None
+        )
+    ]
 
     return {
         "certname": certname,
@@ -416,17 +498,17 @@ async def build_health_glance(certname: str, facts: Optional[Dict[str, Any]] = N
             "host_key": (estate or {}).get("host"),
             "is_local": (estate or {}).get("is_local", False),
             "latest": (estate or {}).get("latest"),
-            "history": (estate or {}).get("history") or [],
+            "history": usable[-120:],
+            "has_series": bool(usable) or has_series,
         },
         "live_sample_available": True,
         "notes": [
             "Fact gauges reflect the last agent run stored in OpenVoxDB.",
             (
-                "Serving-estate sparklines use Host Health history (console/compiler/OpenVoxDB/CA)."
-                if is_member
-                else "This node is not on the Host Health serving estate — sparklines appear after a live sample (not retained for agents)."
+                "CPU/memory sparklines need Host Health samples (or Live sample). "
+                "Empty panes mean no series has been collected for this host yet."
             ),
-            "Live sample uses local /proc or Bolt once; it does not enable fleet-wide collection.",
+            "Live sample uses local /proc or Bolt once; continuous collection is serving-estate only.",
         ],
     }
 

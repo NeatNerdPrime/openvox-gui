@@ -36,29 +36,46 @@ function pctColor(pct?: number | null): string {
   return 'teal';
 }
 
+function seriesPoints(data: any[] | undefined, dataKey: string): any[] {
+  if (!data?.length) return [];
+  return data.filter((p) => {
+    const v = p?.[dataKey];
+    return v != null && v !== '' && !Number.isNaN(Number(v));
+  });
+}
+
 function MiniSpark({
   data,
   dataKey,
   color,
   height = 48,
   domain,
+  emptyHint,
 }: {
   data: any[];
   dataKey: string;
   color: string;
   height?: number;
   domain?: [number, number | 'auto'];
+  emptyHint?: string;
 }) {
-  if (!data?.length) {
+  const pts = seriesPoints(data, dataKey);
+  if (pts.length === 0) {
     return (
       <Text size="xs" c="dimmed" ta="center" py="sm">
-        No series yet
+        {emptyHint || 'No samples yet'}
       </Text>
     );
   }
+  // One point: AreaChart often draws nothing — show a clear value + tiny series
+  const chartData =
+    pts.length === 1
+      ? [pts[0], { ...pts[0], _pad: true }]
+      : pts;
+  const showDot = pts.length < 4;
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 4, right: 2, left: 0, bottom: 0 }}>
+      <AreaChart data={chartData} margin={{ top: 4, right: 2, left: 0, bottom: 0 }}>
         <YAxis hide domain={domain || [0, 'auto']} />
         <ReTooltip
           contentStyle={{
@@ -79,7 +96,8 @@ function MiniSpark({
           fill={color}
           fillOpacity={0.2}
           strokeWidth={1.5}
-          dot={false}
+          dot={showDot}
+          connectNulls
           isAnimationActive={false}
         />
       </AreaChart>
@@ -154,10 +172,15 @@ export function NodeHealthGlance({ certname }: { certname: string }) {
     setSampling(true);
     try {
       const res = await nodes.sampleHealthGlance(certname);
-      setLiveSample(res?.live?.sample || res?.live || null);
+      // Prefer nested sample; keep sparkline_point if sample lacks metrics
+      const sample = res?.live?.sample || res?.sample || null;
+      const spark = res?.live?.sparkline_point || res?.sparkline_point;
+      setLiveSample(sample ? { ...sample, ...(spark || {}) } : spark || null);
       notifications.show({
         title: 'Live sample complete',
-        message: 'Host metrics refreshed for this investigation.',
+        message: sample?.cpu_used_pct != null
+          ? `CPU ${sample.cpu_used_pct}% · mem ${sample.mem_used_pct ?? '—'}%`
+          : 'Host metrics refreshed for this investigation.',
         color: 'teal',
       });
       await refetch();
@@ -181,12 +204,33 @@ export function NodeHealthGlance({ certname }: { certname: string }) {
   const estate = data?.serving_estate || {};
   const live = liveSample || data?.live?.sample || null;
   const history = useMemo(() => {
-    const h = estate.history || [];
+    const h = [...(estate.history || [])];
+    // Fold in the latest live sample so graphs aren't empty after one click
+    const pt = liveSample
+      ? {
+          time: liveSample.time,
+          ts: liveSample.ts,
+          cpu_used_pct: liveSample.cpu_used_pct,
+          mem_used_pct: liveSample.mem_used_pct,
+          load1: liveSample.load1,
+          cpu_iowait_pct: liveSample.cpu_iowait_pct,
+        }
+      : null;
+    if (pt && (pt.cpu_used_pct != null || pt.mem_used_pct != null || pt.load1 != null)) {
+      const last = h[h.length - 1];
+      if (!last || last.ts !== pt.ts || last.time !== pt.time) {
+        h.push(pt);
+      }
+    }
     return h.map((p: any) => ({
       ...p,
       label: p.time ? String(p.time).slice(11, 19) : '',
     }));
-  }, [estate.history]);
+  }, [estate.history, liveSample]);
+
+  const cpuSeries = useMemo(() => seriesPoints(history, 'cpu_used_pct'), [history]);
+  const memSeries = useMemo(() => seriesPoints(history, 'mem_used_pct'), [history]);
+  const hasAnySeries = cpuSeries.length > 0 || memSeries.length > 0;
 
   const sat = live?.saturation || estate.latest?.saturation || data?.facts_saturation || {};
   const latestLive = live || estate.latest || {};
@@ -421,29 +465,46 @@ export function NodeHealthGlance({ certname }: { certname: string }) {
           </Group>
         )}
 
-        {/* Sparklines — estate history or empty state for agents */}
-        {(estate.member || history.length > 0) && (
+        {/* Sparklines — only when we have real samples (no empty decorative panes) */}
+        {hasAnySeries ? (
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
             <Card withBorder padding="xs" bg="var(--mantine-color-body)">
               <Text size="xs" fw={600} c="dimmed" mb={4}>
                 CPU % (recent)
+                {cpuSeries.length === 1 ? ' · 1 sample' : cpuSeries.length ? ` · ${cpuSeries.length} pts` : ''}
               </Text>
-              <MiniSpark data={history} dataKey="cpu_used_pct" color="#228be6" domain={[0, 100]} />
+              <MiniSpark
+                data={history}
+                dataKey="cpu_used_pct"
+                color="#228be6"
+                domain={[0, 100]}
+                emptyHint="No CPU samples yet — try Live sample"
+              />
             </Card>
             <Card withBorder padding="xs" bg="var(--mantine-color-body)">
               <Text size="xs" fw={600} c="dimmed" mb={4}>
                 Memory % (recent)
+                {memSeries.length === 1 ? ' · 1 sample' : memSeries.length ? ` · ${memSeries.length} pts` : ''}
               </Text>
-              <MiniSpark data={history} dataKey="mem_used_pct" color="#12b886" domain={[0, 100]} />
+              <MiniSpark
+                data={history}
+                dataKey="mem_used_pct"
+                color="#12b886"
+                domain={[0, 100]}
+                emptyHint="No memory samples yet — try Live sample"
+              />
             </Card>
           </SimpleGrid>
-        )}
-
-        {!estate.member && !history.length && (
-          <Text size="xs" c="dimmed">
-            Continuous graphs are collected for the OpenVox serving estate only. Use{' '}
-            <Text span fw={600}>Live sample</Text> for a one-shot CPU/memory/load reading on this agent.
-          </Text>
+        ) : (
+          <Alert variant="light" color="gray" py="xs">
+            <Text size="xs">
+              {estate.member
+                ? 'No CPU/memory time series for this host yet. The Host Health collector may not have sampled it, or history keys did not match. Click '
+                : 'Continuous graphs are only collected for the OpenVox serving estate (console / compilers / OpenVoxDB / CA). For this agent, click '}
+              <Text span fw={700}>Live sample</Text>
+              {' '}to take a one-shot reading (sparklines appear after the first sample).
+            </Text>
+          </Alert>
         )}
 
         {(latestLive.errors || []).length > 0 && (

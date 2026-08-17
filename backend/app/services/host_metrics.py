@@ -578,7 +578,16 @@ async def collect_remote_via_bolt(host: str) -> Dict[str, Any]:
     return base
 
 
-def _store(snap: Dict[str, Any]) -> None:
+def _store(
+    snap: Dict[str, Any],
+    also_keys: Optional[List[str]] = None,
+    persist: bool = True,
+) -> None:
+    """Append a sample to the in-memory ring (and optionally disk).
+
+    ``also_keys`` aliases the same point under extra hostnames (certname vs
+    short name vs bolt target) so Node Detail sparklines can resolve them.
+    """
     host = (snap.get("host") or "unknown").lower()
     point = {
         "time": snap.get("time"),
@@ -598,9 +607,19 @@ def _store(snap: Dict[str, Any]) -> None:
         "swap_used_mb": snap.get("swap_used_mb"),
         "saturation": (snap.get("saturation") or {}).get("level"),
     }
-    _history[host].append(point)
-    _latest[host] = snap
-    # Persist ring buffer (best effort)
+    keys = [host]
+    for k in also_keys or []:
+        kl = str(k or "").strip().lower()
+        if kl and kl not in keys:
+            keys.append(kl)
+
+    for k in keys:
+        _history[k].append(dict(point))
+        _latest[k] = snap
+
+    # Persist ring buffer under primary host key only (best effort)
+    if not persist:
+        return
     try:
         path = Path(settings.data_dir) / "host_metrics"
         path.mkdir(parents=True, exist_ok=True)

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.26] - 2026-08-17 (fix — empty Host Health CPU sparklines)
+
+### Fixed
+- **Node Detail Host health:** no more empty CPU%/Memory% chart panes when there is
+  no series. Show a clear hint + Live sample instead. Sparklines only render when
+  real samples exist; single-sample live clicks still draw (dot + pad).
+- Better Host Health history key matching (certname vs short name vs bolt host).
+- Live sample aliases rings under certname and seeds the sparkline immediately.
+
 ## [3.12.0-rc.25] - 2026-08-17 (perf — snappier Node Detail + UI paint)
 
 ### Changed
