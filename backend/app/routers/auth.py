@@ -170,37 +170,57 @@ async def login(request: Request, login_request: LoginRequest):
     login_password = login_request.password
 
     # ── Per-user auth source routing ──
-    # Look up the user's configured auth_source to decide how to authenticate.
-    # If the user doesn't exist yet (new LDAP user), default to LDAP when enabled.
+    # get_user_auth_source returns None when the username is unknown.
+    # Do NOT treat unknown as "local" — that skipped LDAP and first-time
+    # directory users only ever saw a confusing 401 / "Session expired".
     user_auth_source = await get_user_auth_source(login_username)
     ldap_cfg = await get_ldap_config()
-    ldap_enabled = ldap_cfg and ldap_cfg.enabled
+    ldap_enabled = bool(ldap_cfg and ldap_cfg.enabled)
 
-    # Determine effective auth method for this login attempt
-    # - Known user with auth_source='ldap' → authenticate via LDAP
-    # - Known user with auth_source='local' → authenticate via local DB
-    # - Unknown user + LDAP enabled → try LDAP (auto-provision on success)
-    # - Unknown user + LDAP disabled → try local (will fail if not found)
+    # - Known user auth_source='ldap' → LDAP only (then fail if LDAP fails)
+    # - Known user auth_source='local' → local password only
+    # - Unknown user + LDAP enabled → try LDAP (auto-provision on success), then local
+    # - Unknown user + LDAP disabled → local only
     ldap_result = None
+    ldap_attempted = False
 
-    if user_auth_source == "ldap" and ldap_enabled:
-        # User is configured for LDAP authentication
+    if user_auth_source == "ldap":
+        if not ldap_enabled:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "This account uses LDAP authentication, but LDAP is not enabled. "
+                    "Enable LDAP under Settings → Application → Auth, or switch the "
+                    "user to local auth in User Manager."
+                ),
+            )
+        ldap_attempted = True
         try:
             ldap_result = await ldap_login(login_username, login_password)
         except Exception as e:
-            logger.warning(f"LDAP authentication error for '{login_username}': {e}")
+            logger.warning("LDAP authentication error for '%s': %s", login_username, e)
+            raise HTTPException(
+                status_code=401,
+                detail=f"LDAP authentication error: {e}",
+            ) from e
+        if not ldap_result:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid username or password (LDAP authentication failed)",
+            )
     elif user_auth_source == "local":
-        # User is explicitly configured for local authentication — skip LDAP
-        pass
+        pass  # local password only
     elif ldap_enabled:
         # Unknown user — try LDAP for auto-provisioning
+        ldap_attempted = True
         try:
             ldap_result = await ldap_login(login_username, login_password)
         except Exception as e:
-            logger.warning(f"LDAP authentication error for new user '{login_username}': {e}")
+            logger.warning(
+                "LDAP authentication error for new user '%s': %s", login_username, e
+            )
 
     if ldap_result:
-        # LDAP authentication succeeded
         token = create_token(ldap_result["username"], ldap_result["role"])
         response = JSONResponse(content={
             "token": token,
@@ -211,12 +231,22 @@ async def login(request: Request, login_request: LoginRequest):
             },
         })
         apply_auth_cookie(response, token)
-        logger.info(f"User '{login_username}' authenticated via LDAP (role: {ldap_result['role']})")
+        logger.info(
+            "User '%s' authenticated via LDAP (role: %s)",
+            login_username,
+            ldap_result["role"],
+        )
         return response
 
     # ── Local authentication ──
     if not await verify_password(login_username, login_password):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        detail = "Invalid username or password"
+        if ldap_attempted and user_auth_source is None:
+            detail = (
+                "Invalid username or password "
+                "(LDAP did not accept this account; local auth also failed)"
+            )
+        raise HTTPException(status_code=401, detail=detail)
 
     role = await get_user_role(login_username)
     token = create_token(login_username, role)

@@ -94,11 +94,34 @@ export const auth = {
       vip_hosts_configured?: string[];
     }>;
   },
-  login: (username: string, password: string) =>
-    fetchJSON<{ user: { username: string; role: string }; token?: string }>('/auth/login', {
+  /**
+   * Login must NOT go through fetchJSON's 401 → "Session expired" mapping.
+   * Failed credentials are a normal 401 with a useful detail string.
+   */
+  login: async (username: string, password: string) => {
+    const response = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
+      credentials: 'same-origin',
+      headers: getAuthHeaders(),
       body: JSON.stringify({ username, password }),
-    }),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      let detail = error || `Login failed (${response.status})`;
+      try {
+        const parsed = JSON.parse(error);
+        if (typeof parsed?.detail === 'string') detail = parsed.detail;
+        else if (parsed?.detail != null) detail = JSON.stringify(parsed.detail);
+      } catch {
+        /* plain text */
+      }
+      throw new Error(detail);
+    }
+    return response.json() as Promise<{
+      user: { username: string; role: string; auth_source?: string };
+      token?: string;
+    }>;
+  },
   logout: () =>
     fetch(`${API_BASE}/auth/logout`, {
       method: 'POST',

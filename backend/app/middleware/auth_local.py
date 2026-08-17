@@ -386,12 +386,30 @@ async def get_user_role(username: str) -> str:
         return user.role if user else "viewer"
 
 
-async def get_user_auth_source(username: str) -> str:
-    """Get a user's authentication source from the database."""
+async def get_user_auth_source(username: str) -> Optional[str]:
+    """Get a user's authentication source from the database.
+
+    Returns ``\"local\"`` or ``\"ldap\"`` when the user row exists.
+    Returns ``None`` when the username is unknown — callers must not treat
+    that as local-only or LDAP is never tried for first-time LDAP logins.
+    Lookup is case-insensitive so AD-style casing still matches.
+    """
+    uname = (username or "").strip()
+    if not uname:
+        return None
     async with async_session() as session:
-        result = await session.execute(select(User).where(User.username == username))
+        result = await session.execute(select(User).where(User.username == uname))
         user = result.scalar_one_or_none()
-        return (getattr(user, "auth_source", "local") or "local") if user else "local"
+        if user is None:
+            # Case-insensitive fallback (common with AD / mixed-case DNs)
+            result = await session.execute(select(User))
+            for row in result.scalars().all():
+                if str(row.username).lower() == uname.lower():
+                    user = row
+                    break
+        if user is None:
+            return None
+        return (getattr(user, "auth_source", "local") or "local")
 
 
 async def change_auth_source(username: str, auth_source: str) -> bool:

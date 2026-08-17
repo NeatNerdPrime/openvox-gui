@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.22] - 2026-08-17 (fix — LDAP login false "Session expired")
+
+### Fixed
+- **LDAP login** showed "Session expired. Please log in again" instead of a real
+  auth error: ``auth.login`` went through ``fetchJSON``, which maps every HTTP 401
+  to session-expiry. Login now surfaces the API ``detail`` string.
+- **Unknown users were treated as local-only**: ``get_user_auth_source`` returned
+  ``"local"`` when no row existed, so the login path skipped LDAP entirely and
+  first-time directory logins could never succeed. Unknown → ``None``; LDAP is
+  tried when enabled (auto-provision still works).
+- Case-insensitive username match for auth_source / LDAP provision (AD casing).
+
 ## [3.12.0-rc.21] - 2026-08-17 (fix — LDAP save timezone + error UI)
 
 ### Fixed

@@ -318,9 +318,18 @@ async def ldap_login(username: str, password: str) -> Optional[Dict[str, Any]]:
     # that an admin can change later in User Manager.
     AUTO_PROVISION_ROLE = "operator"
 
+    uname = (username or "").strip()
     async with async_session() as session:
-        result = await session.execute(select(User).where(User.username == username))
+        result = await session.execute(select(User).where(User.username == uname))
         local_user = result.scalar_one_or_none()
+        if local_user is None and uname:
+            # Case-insensitive match (AD often differs in casing from typed login)
+            result = await session.execute(select(User))
+            for row in result.scalars().all():
+                if str(row.username).lower() == uname.lower():
+                    local_user = row
+                    uname = str(row.username)  # canonical DB username for JWT
+                    break
 
         if local_user:
             # Existing user — preserve their locally-assigned role
@@ -328,25 +337,26 @@ async def ldap_login(username: str, password: str) -> Optional[Dict[str, Any]]:
                 local_user.auth_source = "ldap"
                 local_user.updated_at = _utc_naive()
             role = local_user.role
+            uname = str(local_user.username)
         else:
             # New user — auto-provision with default role
             local_user = User(
-                username=username,
+                username=uname,
                 password_hash=LDAP_PASSWORD_PLACEHOLDER,
                 role=AUTO_PROVISION_ROLE,
                 auth_source="ldap",
             )
             session.add(local_user)
             role = AUTO_PROVISION_ROLE
-            logger.info(f"Auto-provisioned LDAP user '{username}' with role '{role}'")
+            logger.info(f"Auto-provisioned LDAP user '{uname}' with role '{role}'")
 
         await session.commit()
 
     return {
-        "username": username,
+        "username": uname,
         "role": role,
         "auth_source": "ldap",
-        "display_name": ldap_user.get("display_name", username),
+        "display_name": ldap_user.get("display_name", uname),
         "email": ldap_user.get("email"),
     }
 
