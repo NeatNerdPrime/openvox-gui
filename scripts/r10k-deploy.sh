@@ -36,10 +36,16 @@ _git_https_proxy=$(git config --global --get https.proxy 2>/dev/null || true)
 [ -n "$_git_http_proxy" ] && export HTTP_PROXY="$_git_http_proxy" http_proxy="$_git_http_proxy"
 [ -n "$_git_https_proxy" ] && export HTTPS_PROXY="$_git_https_proxy" https_proxy="$_git_https_proxy"
 
+# Never print proxy userinfo in deploy logs (credentials often live in the URL).
+_redact_url() {
+    # shellcheck disable=SC2001
+    echo "$1" | sed -E 's#(https?://)[^/@:[:space:]]+:[^/@[:space:]]+@#\1***:***@#g'
+}
+
 # ─── Diagnostics (visible in deploy output) ───────────────────
 echo "r10k-deploy.sh: HOME=$HOME USER=$(whoami) DNS=$(getent hosts github.com 2>/dev/null | head -1 || echo 'FAILED')" >&2
-[ -n "$HTTP_PROXY" ] && echo "r10k-deploy.sh: HTTP_PROXY=$HTTP_PROXY" >&2
-[ -n "$HTTPS_PROXY" ] && echo "r10k-deploy.sh: HTTPS_PROXY=$HTTPS_PROXY" >&2
+[ -n "$HTTP_PROXY" ] && echo "r10k-deploy.sh: HTTP_PROXY=$(_redact_url "$HTTP_PROXY")" >&2
+[ -n "$HTTPS_PROXY" ] && echo "r10k-deploy.sh: HTTPS_PROXY=$(_redact_url "$HTTPS_PROXY")" >&2
 
 # ─── Validate args before passing to r10k (3.3.5-30 hardening) ────────────
 #
@@ -94,34 +100,79 @@ done
 # gem binstub at /opt/puppetlabs/puppet/bin/r10k can remain while the
 # r10k gem is still only installed under the old RubyGems path, which
 # produces: can't find gem r10k (>= 0.a). Prefer an executable that
-# actually runs, then fall back to the canonical AIO path.
+# actually runs. Also try AIO `ruby -S r10k` and `gem exec`.
+_AIO_RUBY="${OPENVOX_AIO_RUBY:-/opt/puppetlabs/puppet/bin/ruby}"
+_AIO_GEM="${OPENVOX_AIO_GEM:-/opt/puppetlabs/puppet/bin/gem}"
+_R10K_SMOKE_ERR=""
+
+_r10k_smoke_ok() {
+    local cmd="$1"
+    local err
+    err=$(mktemp 2>/dev/null || echo /tmp/r10k-smoke.$$)
+    # shellcheck disable=SC2086
+    if $cmd version >"$err" 2>&1; then
+        rm -f "$err" 2>/dev/null || true
+        return 0
+    fi
+    _R10K_SMOKE_ERR=$(head -c 400 "$err" 2>/dev/null | tr '\n' ' ')
+    rm -f "$err" 2>/dev/null || true
+    return 1
+}
+
 _resolve_r10k() {
     local candidate
     for candidate in \
         /opt/puppetlabs/puppet/bin/r10k \
-        /usr/bin/r10k \
         /opt/puppetlabs/bin/r10k \
+        /usr/local/bin/r10k \
+        /usr/bin/r10k \
         "$(command -v r10k 2>/dev/null || true)"
     do
         [ -n "$candidate" ] || continue
         [ -x "$candidate" ] || continue
-        # Smoke-check: must be able to print a version without GemNotFound.
-        if "$candidate" version >/dev/null 2>&1; then
+        if _r10k_smoke_ok "$candidate"; then
             printf '%s\n' "$candidate"
             return 0
         fi
+        echo "r10k-deploy.sh: candidate failed smoke: $candidate (${_R10K_SMOKE_ERR:-unknown})" >&2
     done
+
+    # AIO Ruby loads gems from the correct RubyGems tree even when the
+    # binstub is stale after an agent major bump.
+    if [ -x "$_AIO_RUBY" ]; then
+        if _r10k_smoke_ok "$_AIO_RUBY -S r10k"; then
+            printf '%s\n' "$_AIO_RUBY -S r10k"
+            return 0
+        fi
+        echo "r10k-deploy.sh: AIO ruby -S r10k failed (${_R10K_SMOKE_ERR:-unknown})" >&2
+    fi
+    if [ -x "$_AIO_GEM" ]; then
+        if _r10k_smoke_ok "$_AIO_GEM exec r10k"; then
+            printf '%s\n' "$_AIO_GEM exec r10k"
+            return 0
+        fi
+        echo "r10k-deploy.sh: AIO gem exec r10k failed (${_R10K_SMOKE_ERR:-unknown})" >&2
+    fi
     return 1
 }
 
 R10K_BIN="$(_resolve_r10k || true)"
 if [ -z "$R10K_BIN" ]; then
-    echo "r10k-deploy.sh: no working r10k found." >&2
-    echo "r10k-deploy.sh: reinstall for the current AIO Ruby, e.g.:" >&2
+    echo "r10k-deploy.sh: no working r10k found on this host ($(hostname -f 2>/dev/null || hostname))." >&2
+    echo "r10k-deploy.sh: On a *clustered* console, use Deploy Now (multi-compiler) or Stage/Activate —" >&2
+    echo "r10k-deploy.sh: local r10k is only required on compilers (or single-host AIO)." >&2
+    echo "r10k-deploy.sh: reinstall for the current AIO Ruby on this host, e.g.:" >&2
     echo "  sudo /opt/puppetlabs/puppet/bin/gem install r10k --no-document" >&2
+    if [ -x "$_AIO_RUBY" ]; then
+        echo "r10k-deploy.sh: AIO Ruby: $("$_AIO_RUBY" -v 2>/dev/null || true)" >&2
+        "$_AIO_GEM" list r10k 2>/dev/null | head -5 >&2 || true
+    fi
     exit 127
 fi
-echo "r10k-deploy.sh: using $R10K_BIN ($("$R10K_BIN" version 2>/dev/null | head -1))" >&2
+# shellcheck disable=SC2086
+echo "r10k-deploy.sh: using $R10K_BIN ($($R10K_BIN version 2>/dev/null | head -1))" >&2
 
 # ─── Execute r10k ─────────────────────────────────────────────
-exec "$R10K_BIN" deploy environment "$@"
+# R10K_BIN may be a multi-word form ("ruby -S r10k" / "gem exec r10k").
+# shellcheck disable=SC2086
+exec $R10K_BIN deploy environment "$@"

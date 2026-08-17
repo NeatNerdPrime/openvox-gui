@@ -73,13 +73,59 @@ def _r10k_cmd(environment: Optional[str] = None) -> List[str]:
 
 
 async def _run_r10k_deploy(environment: Optional[str] = None, timeout: int = R10K_DEPLOY_TIMEOUT) -> dict:
-    """Run r10k via run_sudo (PTY/script) so Code Deployment works under requiretty.
+    """Run r10k for Code Deployment.
 
-    Historically this path used bare ``subprocess.run(["sudo", ...])``, which
-    fails with ``sudo: sorry, you must have a tty to run sudo`` whenever the
-    service has no TTY and ``Defaults requiretty`` is in effect — even when
-    other GUI pages worked because they already used ``run_sudo``.
+    * **Clustered** (Settings → Cluster): OpenBolt runs ``r10k deploy environment -pv``
+      on every ``code_deploy_targets`` / compiler — same as operators do over SSH.
+      Does **not** require r10k on the GUI console host.
+    * **Single-host**: local ``r10k-deploy.sh`` via ``run_sudo`` (requiretty-safe).
+
+    Historically the local path used bare ``subprocess.run(["sudo", ...])``, which
+    fails with ``sudo: sorry, you must have a tty to run sudo`` under systemd.
     """
+    try:
+        from ..services.cluster_config import is_clustered, deploy_targets
+
+        if is_clustered():
+            targets = deploy_targets()
+            if not targets:
+                return {
+                    "exit_code": 64,
+                    "stdout": "",
+                    "stderr": (
+                        "Clustered mode is on but no code_deploy_targets / compilers "
+                        "are configured. Set them under Settings → Application → Cluster."
+                    ),
+                    "success": False,
+                    "mode": "clustered-live",
+                    "hosts": [],
+                    "output": [],
+                }
+            cluster = await _run_live_r10k_on_targets(environment, targets, timeout=timeout)
+            # Normalize to the shape trigger_deployment expects + pass hosts through.
+            out_lines = list(cluster.get("output") or [])
+            return {
+                "exit_code": int(cluster.get("exit_code") or 0),
+                "stdout": "\n".join(out_lines),
+                "stderr": "",
+                "success": bool(cluster.get("success")),
+                "mode": "clustered-live",
+                "hosts": cluster.get("hosts") or [],
+                "output": out_lines,
+                "targets": targets,
+            }
+    except Exception as e:
+        logger.warning("clustered live r10k path failed, not falling back silently: %s", e, exc_info=True)
+        return {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": f"Clustered r10k deploy failed: {e}",
+            "success": False,
+            "mode": "clustered-live",
+            "hosts": [],
+            "output": [f"Clustered r10k deploy failed: {e}"],
+        }
+
     cmd = _r10k_cmd(environment)
     result = await run_sudo(cmd, timeout=timeout)
     rc = result.get("returncode", -1)
@@ -87,11 +133,21 @@ async def _run_r10k_deploy(environment: Optional[str] = None, timeout: int = R10
         exit_code = int(rc) if rc is not None else -1
     except (TypeError, ValueError):
         exit_code = -1
+    stdout = (result.get("stdout") or "").replace("\x00", "")
+    stderr = (result.get("stderr") or "").replace("\x00", "")
+    # Belt-and-suspenders: never leave proxy userinfo in API/log payloads
+    stdout = _CREDS_RE.sub(r"\1\2:***@", stdout)
+    stderr = _CREDS_RE.sub(r"\1\2:***@", stderr)
     return {
         "exit_code": exit_code,
-        "stdout": result.get("stdout") or "",
-        "stderr": result.get("stderr") or "",
+        "stdout": stdout,
+        "stderr": stderr,
         "success": exit_code == 0,
+        "mode": "single-host",
+        "hosts": [],
+        "output": [
+            ln for ln in (stdout + "\n" + stderr).splitlines() if ln is not None
+        ],
     }
 
 
@@ -381,11 +437,17 @@ async def run_deployment(
             success=result["success"],
         )
 
-        log_lines = []
-        if result["stdout"]:
-            log_lines.extend(result["stdout"].strip().splitlines())
-        if result["stderr"]:
-            log_lines.extend(result["stderr"].strip().splitlines())
+        log_lines = list(result.get("output") or [])
+        if not log_lines:
+            if result.get("stdout"):
+                log_lines.extend(str(result["stdout"]).strip().splitlines())
+            if result.get("stderr"):
+                log_lines.extend(str(result["stderr"]).strip().splitlines())
+        # Never surface proxy credentials in the UI log pane
+        log_lines = [
+            _CREDS_RE.sub(r"\1\2:***@", (ln or "").replace("\x00", ""))
+            for ln in log_lines
+        ]
 
         preview = "\n".join(log_lines)[:500]
         deploy_hist.record_deploy(
@@ -418,6 +480,9 @@ async def run_deployment(
             "environment": deploy.environment or "all",
             "triggered_by": username,
             "output": log_lines,
+            "mode": result.get("mode") or "single-host",
+            "hosts": result.get("hosts") or [],
+            "targets": result.get("targets") or [],
         }
         return response
     except Exception as e:
@@ -679,6 +744,200 @@ def _cluster_result(
         "environment": environment or "all",
         "targets": targets,
     }
+
+
+# Live multi-compiler r10k (Deploy Now in clustered mode). Same operator workflow as
+# SSH + `r10k deploy environment -pv` on each host — not stage/activate.
+_LIVE_R10K_CMD = (
+    "set -e; "
+    "export HOME=/root USER=root; "
+    "[ -r /etc/profile ] && . /etc/profile >/dev/null 2>&1 || true; "
+    "[ -r /root/.bash_profile ] && . /root/.bash_profile >/dev/null 2>&1 || true; "
+    "[ -r /root/.bashrc ] && . /root/.bashrc >/dev/null 2>&1 || true; "
+    "_gp=$(git config --global --get http.proxy 2>/dev/null || true); "
+    "_gsp=$(git config --global --get https.proxy 2>/dev/null || true); "
+    "[ -n \"$_gp\" ] && export HTTP_PROXY=\"$_gp\" http_proxy=\"$_gp\"; "
+    "[ -n \"$_gsp\" ] && export HTTPS_PROXY=\"$_gsp\" https_proxy=\"$_gsp\"; "
+    "R10K=; "
+    "for c in /opt/puppetlabs/puppet/bin/r10k /opt/puppetlabs/bin/r10k /usr/local/bin/r10k /usr/bin/r10k; do "
+    "  if [ -x \"$c\" ] && \"$c\" version >/dev/null 2>&1; then R10K=$c; break; fi; "
+    "done; "
+    "if [ -z \"$R10K\" ] && [ -x /opt/puppetlabs/puppet/bin/ruby ] && "
+    "  /opt/puppetlabs/puppet/bin/ruby -S r10k version >/dev/null 2>&1; then "
+    "  R10K='/opt/puppetlabs/puppet/bin/ruby -S r10k'; "
+    "fi; "
+    "if [ -z \"$R10K\" ] && [ -x /opt/puppetlabs/puppet/bin/gem ] && "
+    "  /opt/puppetlabs/puppet/bin/gem exec r10k version >/dev/null 2>&1; then "
+    "  R10K='/opt/puppetlabs/puppet/bin/gem exec r10k'; "
+    "fi; "
+    "if [ -z \"$R10K\" ]; then "
+    "  echo MISSING_R10K host=$(hostname -f); exit 2; "
+    "fi; "
+    "if [ ! -f /etc/puppetlabs/r10k/r10k.yaml ]; then "
+    "  echo MISSING_R10K_YAML host=$(hostname -f) r10k=$R10K; exit 3; "
+    "fi; "
+    "echo LIVE_R10K host=$(hostname -f) r10k=$R10K; "
+    "eval \"$R10K\" deploy environment {ENV_ARGS}-pv"
+)
+
+
+def _live_r10k_remote_command(environment: Optional[str]) -> str:
+    """Build the remote shell one-liner for live r10k on compilers."""
+    env = (environment or "").strip()
+    env_args = ""
+    if env and env.lower() not in ("all", "none", "*"):
+        if not _ENV_NAME_RE.match(env):
+            raise ValueError(f"Invalid environment name: {environment!r}")
+        # Quote is unnecessary: allow-list is alnum/._-
+        env_args = f"{env} "
+    return _LIVE_R10K_CMD.replace("{ENV_ARGS}", env_args)
+
+
+async def _run_live_r10k_on_targets(
+    environment: Optional[str],
+    targets: List[str],
+    timeout: int = R10K_DEPLOY_TIMEOUT,
+) -> dict:
+    """``r10k deploy environment -pv`` on every compiler via OpenBolt (clustered Deploy Now)."""
+    from ..routers.bolt_runtime import find_bolt, run_bolt_command
+
+    try:
+        remote_cmd = _live_r10k_remote_command(environment)
+    except ValueError as e:
+        return _cluster_result(
+            "clustered-live", environment, targets, False, 64, [str(e)], []
+        )
+
+    bolt = find_bolt()
+    local_names = _local_hostnames()
+    targets_are_local = bool(targets) and all(t.lower() in local_names for t in targets)
+
+    header = [
+        f"Clustered live r10k deploy on {len(targets)} target(s)",
+        f"Targets: {', '.join(targets)}",
+        f"Environment: {environment or 'all'}",
+        "",
+    ]
+
+    if not bolt and not targets_are_local:
+        msg = (
+            "OpenBolt is not installed (or not on PATH) on this console. "
+            "Clustered Deploy Now needs `bolt` plus SSH as bolt@ to each compiler. "
+            "Install OpenBolt and ensure bolt_user on targets."
+        )
+        return _cluster_result(
+            "clustered-live",
+            environment,
+            targets,
+            False,
+            127,
+            header + [msg],
+            [{"host": t, "success": False, "via": "no-bolt", "exit_code": 127} for t in targets],
+        )
+
+    if bolt and targets and not targets_are_local:
+        probe_args = [
+            "command", "run", _PREP_BOLT_TMPDIR,
+            "--targets", ",".join(targets),
+            "--run-as", "root",
+            "--no-tty",
+            "--connect-timeout", "8",
+            "--no-host-key-check",
+            "--format", "json",
+        ]
+        try:
+            probe = await run_bolt_command(probe_args, timeout=_CLUSTER_SSH_PROBE_TIMEOUT)
+        except Exception as e:
+            logger.error("clustered-live SSH probe raised: %s", e, exc_info=True)
+            return _cluster_result(
+                "clustered-live",
+                environment,
+                targets,
+                False,
+                1,
+                header + [f"OpenBolt SSH probe raised: {e}"],
+                [{"host": t, "success": False, "via": "bolt-probe", "exit_code": -1} for t in targets],
+            )
+        probe_rc, probe_out, probe_hosts = _flatten_bolt_json(
+            probe, targets, via="bolt-probe"
+        )
+        if probe_rc != 0:
+            blob = "\n".join(probe_out)
+            if "MISSING_R10K_YAML" in blob:
+                hint = (
+                    "r10k.yaml missing on one or more compilers "
+                    "(/etc/puppetlabs/r10k/r10k.yaml). Copy from a working compiler."
+                )
+            elif "MISSING_R10K" in blob:
+                hint = (
+                    "r10k not found on one or more compilers. "
+                    "sudo /opt/puppetlabs/puppet/bin/gem install r10k --no-document "
+                    "or bootstrap-compiler.sh"
+                )
+            else:
+                hint = "OpenBolt cannot prepare code-deploy targets as bolt@/root."
+            return _cluster_result(
+                "clustered-live",
+                environment,
+                targets,
+                False,
+                probe_rc or 1,
+                header + [hint, ""] + [ln for ln in probe_out if ln],
+                probe_hosts
+                or [
+                    {"host": t, "success": False, "via": "bolt-probe", "exit_code": probe_rc}
+                    for t in targets
+                ],
+            )
+
+        cmd_args = [
+            "command", "run", remote_cmd,
+            "--targets", ",".join(targets),
+            "--run-as", "root",
+            "--no-tty",
+            "--connect-timeout", "15",
+            "--no-host-key-check",
+            "--format", "json",
+        ]
+        try:
+            result = await run_bolt_command(cmd_args, timeout=timeout)
+        except Exception as e:
+            logger.error("clustered-live bolt command raised: %s", e, exc_info=True)
+            return _cluster_result(
+                "clustered-live",
+                environment,
+                targets,
+                False,
+                1,
+                header + [f"OpenBolt r10k deploy raised: {e}"],
+                [{"host": t, "success": False, "via": "bolt", "exit_code": -1} for t in targets],
+            )
+        rc, out, hosts = _flatten_bolt_json(result, targets, via="bolt-live-r10k")
+        return _cluster_result(
+            "clustered-live",
+            environment,
+            targets,
+            rc == 0,
+            0 if rc == 0 else 1,
+            header + out,
+            hosts,
+        )
+
+    # Local-only (console is also the only target)
+    local = await run_sudo(_r10k_cmd(environment), timeout=timeout)
+    rc = local.get("returncode")
+    rc = -1 if rc is None else int(rc)
+    out = ((local.get("stdout") or "") + "\n" + (local.get("stderr") or "")).splitlines()
+    host_label = targets[0] if targets else "local"
+    return _cluster_result(
+        "clustered-live",
+        environment,
+        targets,
+        rc == 0,
+        0 if rc == 0 else 1,
+        header + [ln for ln in out if ln is not None],
+        [{"host": host_label, "success": rc == 0, "via": "local", "exit_code": rc}],
+    )
 
 
 async def _run_on_targets(

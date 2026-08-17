@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.20] - 2026-08-17 (fix — clustered Code Deploy Now)
+
+### Fixed
+- **Code Deployment → Deploy Now** in clustered mode runs ``r10k deploy environment -pv``
+  on every compiler via OpenBolt (live codedir), matching SSH workflow. No longer
+  requires r10k on the GUI console or falsely reports "no working r10k found" there.
+- **r10k-deploy.sh** (single-host): broader AIO resolution (`ruby -S r10k`, `gem exec`),
+  clearer smoke-test diagnostics, and **proxy URL credentials redacted** in deploy logs.
+
+### Changed
+- Deploy UI labels/mode banner reflect clustered multi-compiler vs local single-host.
+
 ## [3.12.0-rc.19] - 2026-08-17 (ui — quiet ENC environments load)
 
 ### Changed

@@ -320,18 +320,31 @@ export function CodeDeploymentPage() {
     const timestamp = new Date().toLocaleString();
     const env = selectedEnv || 'all';
     const actId = begin(`r10k deploy: ${env}`, { href: '/deployment' });
+    const modeLine = clustered
+      ? `  Mode: clustered (r10k on each compiler via Bolt)`
+      : `  Mode: single-host (local r10k)`;
+    const targetLine = clustered
+      ? `  Targets: ${deployTargets.join(', ') || '(none configured)'}`
+      : null;
     setOutputLog((prev) => [
       ...prev,
       '',
       `═══════════════════════════════════════════════════════`,
       `  Deploy started: ${timestamp}`,
       `  Environment: ${env}`,
-      `  Mode: single-host (local r10k)`,
+      modeLine,
+      ...(targetLine ? [targetLine] : []),
       `═══════════════════════════════════════════════════════`,
       '',
     ]);
 
     try {
+      if (clustered && deployTargets.length === 0) {
+        throw new Error(
+          'Clustered mode is on but no code_deploy_targets / compilers are configured. '
+          + 'Set them under Settings → Application → Cluster (or the Configuration tab).',
+        );
+      }
       const result = await deploy.run(selectedEnv || undefined);
       appendResult(result, 'Deploy');
       end(actId, result.success ? 'done' : 'error', `exit ${result.exit_code}`);
@@ -421,10 +434,14 @@ export function CodeDeploymentPage() {
                   leftSection={deploying ? <Loader size={16} color="white" /> : <IconPlayerPlay size={16} />}
                   color="#EC8622"
                   onClick={() => (skipConfirm ? handleDeploy() : setConfirmDeploy(true))}
-                  disabled={deploying}
-                  loading={deploying}
+                  disabled={deploying || (clustered && deployTargets.length === 0)}
+                  loading={busy === 'deploy'}
                 >
-                  {deploying ? 'Deploying...' : 'Deploy Now'}
+                  {busy === 'deploy'
+                    ? 'Deploying…'
+                    : clustered
+                      ? 'Deploy Now (all compilers)'
+                      : 'Deploy Now'}
                 </Button>
               </Group>
 
@@ -452,9 +469,10 @@ export function CodeDeploymentPage() {
 
               {clustered && (
                 <Text size="xs" c="dimmed" mt="sm">
-                  Stage → r10k into code-staging on each target; Activate → promote to live codedir
-                  on all targets via OpenBolt (SSH as bolt@). Every compiler needs r10k +
-                  /etc/puppetlabs/r10k/r10k.yaml (bootstrap-compiler.sh until Puppet owns it).
+                  <strong>Deploy Now</strong> runs <Code>r10k deploy environment -pv</Code> on each
+                  compiler via OpenBolt (live codedir — same as SSH). Does not require r10k on the
+                  GUI console. <strong>Stage / Activate</strong> is the two-step staging workflow.
+                  Every compiler needs r10k + <Code>/etc/puppetlabs/r10k/r10k.yaml</Code>.
                   Targets: {deployTargets.join(', ') || 'configure under Configuration tab / Settings → Cluster'}.
                 </Text>
               )}
@@ -576,9 +594,17 @@ export function CodeDeploymentPage() {
         onClose={() => setConfirmDeploy(false)}
         onConfirm={handleDeploy}
         title="Run r10k deploy?"
-        body={`Deploy Puppet code${selectedEnv ? ` for environment "${selectedEnv}"` : ' for all environments'} via r10k?`}
-        details={selectedEnv ? [selectedEnv] : ['all environments']}
-        confirmLabel="Deploy Now"
+        body={
+          clustered
+            ? `Run r10k deploy environment -pv on ${deployTargets.length} compiler(s)${selectedEnv ? ` (${selectedEnv})` : ' (all environments)'} via Bolt?`
+            : `Deploy Puppet code${selectedEnv ? ` for environment "${selectedEnv}"` : ' for all environments'} via local r10k?`
+        }
+        details={
+          clustered
+            ? (deployTargets.length ? deployTargets : ['(no targets)'])
+            : (selectedEnv ? [selectedEnv] : ['all environments'])
+        }
+        confirmLabel={clustered ? 'Deploy on compilers' : 'Deploy Now'}
         confirmColor="orange"
         loading={deploying}
       />
