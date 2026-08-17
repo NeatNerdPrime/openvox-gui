@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.16] - 2026-08-17 (CI — pip-audit + npm audit)
+
+### Added
+- **`.github/workflows/security.yml`:** GitHub Actions **Security audits** on
+  push/PR (path-filtered), weekly Mondays, and `workflow_dispatch`.
+  - **pip-audit** job: Python 3.10 + 3.11 on `ubuntu-latest` via
+    `scripts/ci-pip-audit.sh` — installs `backend/requirements.txt` with
+    `--only-binary=psycopg2-binary` so the manylinux **wheel** (not sdist)
+    is always in the audit set, then `pip-audit --strict`.
+  - **npm audit** job: `npm ci` + `npm audit --audit-level=high` in `frontend/`.
+- **`scripts/ci-pip-audit.sh`:** local/CI helper (venv, binary-only psycopg2,
+  environment audit). Gitignore `.venv-pip-audit/`.
+
+### Changed
+- **docs/STATUS.md, SECURITY.md, README:** document CI gates; README workflow badge.
+- Version → **3.12.0-rc.16**.
+
+### Notes
+- Closes the release-readiness gap “CI pip-audit including psycopg2-binary wheels”.
+
 ## [3.12.0-rc.15] - 2026-08-14 (security + release tidy follow-up)
 
 ### Security

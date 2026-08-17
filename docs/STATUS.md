@@ -1,8 +1,8 @@
 # OpenVox GUI — Project status (release readiness)
 
-**As of:** 2026-08-14  
+**As of:** 2026-08-17  
 **Branch:** `main`  
-**VERSION file:** `3.12.0-rc.15`
+**VERSION file:** `3.12.0-rc.16`
 **Last stable GitHub Release:** **3.10.6** (still recommended for production AIO unless you opt into 3.12-rc)
 
 This document freezes **where we are** after the 3.12 clustering/VIP/ovox week, so Monday’s **roles/profiles** work starts from a clean map. It covers **all-in-one (AIO)** and **clustered** installs.
@@ -67,7 +67,7 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 ### Known gaps (not done)
 - **Remote tune apply** to every compiler/ovdb via Bolt  
 - **Puppet roles/profiles** for compiler / CA / PDB / console auto-join (**Monday**)  
-- **CI pip-audit** including `psycopg2-binary` wheel (macOS local cannot build without `pg_config`)  
+- ~~**CI pip-audit** including `psycopg2-binary` wheel~~ → **done** (`.github/workflows/security.yml` + `scripts/ci-pip-audit.sh`)  
 - Promote **3.12.0** stable GitHub Release (deliberate later)
 
 ---
@@ -128,10 +128,11 @@ Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,pu
 | Check | Result |
 |-------|--------|
 | **npm audit** (frontend, prod+dev) | **0 vulnerabilities**. Override `nanoid` ≥3.3.16 (GHSA-28wg-ghj8-5hjv); resolved **3.3.18** |
-| **pip-audit** (backend, installed set minus psycopg2-binary wheel build on macOS) | **0 known vulns** after `cryptography` **48.0.1 → 50.0.0** (PYSEC-2026-3552 PKCS#7 oracle; PYSEC-2026-3553 path-build DoS; PYSEC-2026-3554 nameConstraints wildcard) |
-| **psycopg2-binary** | Still pinned `==2.9.10`; local macOS pip cannot build the wheel without `pg_config`. Audit that package in CI/RHEL (binary wheel) before stable **3.12.0** |
+| **pip-audit** (backend) | **CI gate:** `.github/workflows/security.yml` runs `scripts/ci-pip-audit.sh` on **ubuntu-latest** for Python **3.10** and **3.11**, installing with `--only-binary=psycopg2-binary` so the manylinux wheel is always audited (incl. transitive deps). Local macOS / Python 3.14 may still fail wheel build — use CI. |
+| **psycopg2-binary** | Pinned `==2.9.10`; covered by CI pip-audit on Linux wheels |
+| **npm audit** | CI job on lockfile (`npm ci` + `npm audit --audit-level=high`); local **0** as of rc.15 |
 | **Secret pattern scan** | No production secrets in tree. Dev placeholder `OVOX-DEV-PLACEHOLDER--NEVER-USE-IN-PRODUCTION` in config only. SSL wizard UI text mentions PEM headers (docs, not keys). |
-| **CVE badges (README)** | npm audit **0 vulns** accurate. Backend posture: clean on scanned set after cryptography bump |
+| **CVE badges (README)** | npm + backend audits both CI-gated |
 
 **Note:** `react-router@8` / Vite 7 want Node ≥20.19 or ≥22; lab/build still OK on Node 20. Track before forcing Node 22 in install docs.
 
@@ -163,7 +164,7 @@ Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,pu
 - [ ] Log Viewer empty host → 200 not 502  
 
 ### Before GitHub Release 3.12.0
-- [ ] CI pip-audit + npm audit green  
+- [x] CI pip-audit + npm audit green (workflow `Security audits`)  
 - [ ] CHANGELOG stable section  
 - [ ] Press kit `docs/releases/press_3.12.0.md`  
 - [ ] Tag `v3.12.0` only (not auto-release from every rc)  

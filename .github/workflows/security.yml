@@ -1,0 +1,101 @@
+# Security dependency audits for OpenVox GUI
+#
+# - pip-audit: full backend requirements including psycopg2-binary *wheels*
+#   (ubuntu-latest has manylinux wheels; avoids macOS/pg_config build traps)
+# - npm audit: frontend production + dev tree
+#
+# Fails the job on any known vulnerability. Schedule catches drift between PRs.
+name: Security audits
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/requirements.txt"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "scripts/ci-pip-audit.sh"
+      - ".github/workflows/security.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/requirements.txt"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "scripts/ci-pip-audit.sh"
+      - ".github/workflows/security.yml"
+  schedule:
+    # Mondays 14:00 UTC — catch newly published advisories
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit:
+    name: pip-audit (backend + psycopg2-binary wheel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Match production lab (3.11) and supported floor (3.10)
+        python-version: ["3.10", "3.11"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Run ci-pip-audit.sh
+        env:
+          PYTHON: python
+        run: |
+          chmod +x scripts/ci-pip-audit.sh
+          ./scripts/ci-pip-audit.sh --keep-venv
+
+      - name: Confirm psycopg2-binary is a wheel install
+        run: |
+          source .venv-pip-audit/bin/activate
+          python - <<'PY'
+          import pathlib, psycopg2
+          p = pathlib.Path(psycopg2.__file__).resolve()
+          print("psycopg2 path:", p)
+          # Site-packages layout from a wheel, not a half-built sdist tree
+          assert "site-packages" in str(p), p
+          print("psycopg2-binary version:", psycopg2.__version__)
+          PY
+
+  npm-audit:
+    name: npm audit (frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies (lockfile)
+        run: npm ci
+
+      - name: npm audit (all deps)
+        run: npm audit --audit-level=high

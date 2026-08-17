@@ -15,7 +15,14 @@ We actively support security and operational updates for the latest stable and p
 
 **Default recommendation:** run the latest **stable** GitHub Release (**[v3.10.6](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6)**) for all-in-one production. Use **3.12.0-rc** when you need clustered consoles, VIP session fixes, or the current ovox estate health work — and track [docs/STATUS.md](docs/STATUS.md).
 
-**Dependency audits (2026-08-14, rc.15):** frontend `npm audit` **0** (nanoid ≥3.3.16). Backend `cryptography` **50.0.0** (closes PYSEC-2026-3552/3553/3554); `pip-audit` clean on the installable set. Re-run full audit (including `psycopg2-binary` wheels) in CI before stable **3.12.0**.
+**Dependency audits:** GitHub Actions workflow **Security audits** (`.github/workflows/security.yml`) runs on push/PR (path-filtered), weekly Mondays, and `workflow_dispatch`:
+
+| Job | What |
+|-----|------|
+| **pip-audit** | `scripts/ci-pip-audit.sh` on Ubuntu, Python 3.10 + 3.11; installs `backend/requirements.txt` with `--only-binary=psycopg2-binary` (manylinux wheel, no `pg_config`), then `pip-audit --strict` on the full environment |
+| **npm audit** | `npm ci` + `npm audit --audit-level=high` in `frontend/` |
+
+Local: `./scripts/ci-pip-audit.sh` (needs a Python that has a `psycopg2-binary` wheel — typically Linux CI or macOS with 3.10–3.13, not always 3.14). Backend pin of note: `cryptography==50.0.0` (PYSEC-2026-3552/3553/3554).
 
 ## Reporting a Vulnerability
 
