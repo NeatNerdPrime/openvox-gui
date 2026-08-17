@@ -7,7 +7,7 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   Title, Loader, Center, Alert, Card, Stack, Text, Code, Table, Badge, Group,
   Tabs, TextInput, Textarea, PasswordInput, Select, ActionIcon, Modal, Tooltip, Button,
-  Grid, SegmentedControl, Switch, Divider, Accordion, Collapse,
+  Grid, SegmentedControl, Switch, Divider, Accordion, Collapse, ScrollArea,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -863,6 +863,7 @@ function LdapConfigPanel() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Form state
@@ -920,6 +921,7 @@ function LdapConfigPanel() {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       const payload = { ...form };
       // Don't send empty password if user hasn't changed it
@@ -932,7 +934,14 @@ function LdapConfigPanel() {
       const updated = await ldap.getConfig();
       setLdapConfig(updated);
     } catch (err: any) {
-      notifications.show({ title: 'Error', message: err.message, color: 'red' });
+      const msg = err?.message || String(err);
+      setSaveError(msg);
+      notifications.show({
+        title: 'LDAP save failed',
+        message: msg.length > 180 ? `${msg.slice(0, 180)}… (see details below)` : msg,
+        color: 'red',
+        autoClose: 12000,
+      });
     } finally { setSaving(false); }
   };
 
@@ -1118,6 +1127,26 @@ function LdapConfigPanel() {
           )}
           {testResult.user_base_dn_valid === false && <Text size="xs" c="orange" mt="xs">⚠ {testResult.user_base_dn_warning}</Text>}
           {testResult.user_base_dn_valid === true && <Text size="xs" c="green" mt="xs">✓ User Base DN is valid</Text>}
+        </Alert>
+      )}
+
+      {saveError && (
+        <Alert
+          mt="md"
+          color="red"
+          title="Save failed"
+          withCloseButton
+          onClose={() => setSaveError(null)}
+        >
+          <ScrollArea.Autosize mah={220} type="auto" offsetScrollbars>
+            <Text
+              size="sm"
+              ff="monospace"
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            >
+              {saveError}
+            </Text>
+          </ScrollArea.Autosize>
         </Alert>
       )}
 

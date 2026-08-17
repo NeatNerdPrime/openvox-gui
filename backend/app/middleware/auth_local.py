@@ -353,7 +353,8 @@ async def change_password(username: str, password: str) -> bool:
         if user is None:
             return False
         user.password_hash = _hash_password(password)
-        user.updated_at = datetime.now(timezone.utc)
+        from ..models.user import _utc_naive
+        user.updated_at = _utc_naive()
         await session.commit()
     logger.info(f"Password changed for user '{username}'")
     return True
@@ -370,7 +371,8 @@ async def change_role(username: str, role: str) -> bool:
         if user is None:
             return False
         user.role = role
-        user.updated_at = datetime.now(timezone.utc)
+        from ..models.user import _utc_naive
+        user.updated_at = _utc_naive()
         await session.commit()
     logger.info(f"Role changed for user '{username}' to '{role}'")
     return True
@@ -407,7 +409,8 @@ async def change_auth_source(username: str, auth_source: str) -> bool:
         if auth_source == "ldap" and old_source == "local":
             from ..middleware.auth_ldap import LDAP_PASSWORD_PLACEHOLDER
             user.password_hash = LDAP_PASSWORD_PLACEHOLDER
-        user.updated_at = datetime.now(timezone.utc)
+        from ..models.user import _utc_naive
+        user.updated_at = _utc_naive()
         await session.commit()
     logger.info(f"Auth source changed for user '{username}' from '{old_source}' to '{auth_source}'")
     return True

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.21] - 2026-08-17 (fix — LDAP save timezone + error UI)
+
+### Fixed
+- **LDAP Save Configuration** on Postgres: ``updated_at`` used a tz-aware
+  datetime while the column is ``TIMESTAMP WITHOUT TIME ZONE``, causing
+  asyncpg ``can't subtract offset-naive and offset-aware datetimes``. Now uses
+  naive UTC (``_utc_naive``), same pattern as other models.
+- Same naive-UTC fix for a few user-record ``updated_at`` paths.
+- **Auth Settings LDAP panel:** full save error shown in a scrollable in-page
+  Alert (not only a truncated toast).
+
 ## [3.12.0-rc.20] - 2026-08-17 (fix — clustered Code Deploy Now)
 
 ### Fixed

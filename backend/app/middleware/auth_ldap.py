@@ -26,7 +26,7 @@ from .auth_base import AuthBackend
 from .auth_local import verify_token, create_token
 from ..config import settings
 from ..database import async_session
-from ..models.user import User, LdapConfig
+from ..models.user import User, LdapConfig, _utc_naive
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +50,16 @@ async def save_ldap_config(cfg_data: dict) -> LdapConfig:
             for key, value in cfg_data.items():
                 if hasattr(existing, key) and key not in ("id", "created_at"):
                     setattr(existing, key, value)
-            existing.updated_at = datetime.now(timezone.utc)
+            # TIMESTAMP WITHOUT TIME ZONE — asyncpg rejects tz-aware datetimes
+            existing.updated_at = _utc_naive()
             await session.commit()
             await session.refresh(existing)
             return existing
         else:
             cfg = LdapConfig(**cfg_data)
+            if not getattr(cfg, "created_at", None):
+                cfg.created_at = _utc_naive()
+            cfg.updated_at = _utc_naive()
             session.add(cfg)
             await session.commit()
             await session.refresh(cfg)
@@ -322,7 +326,7 @@ async def ldap_login(username: str, password: str) -> Optional[Dict[str, Any]]:
             # Existing user — preserve their locally-assigned role
             if local_user.auth_source != "ldap":
                 local_user.auth_source = "ldap"
-                local_user.updated_at = datetime.now(timezone.utc)
+                local_user.updated_at = _utc_naive()
             role = local_user.role
         else:
             # New user — auto-provision with default role
