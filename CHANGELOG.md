@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.24] - 2026-08-17 (fix — LDAP bind password keep-on-blank)
+
+### Fixed
+- **Auth Settings LDAP bind password:** leaving the field blank no longer risks
+  clearing or forcing re-entry. Save and Test both treat empty password as
+  "keep stored secret". Backend omits empty password from updates; Test loads
+  the encrypted password from the DB when the form field is blank.
+- Form state no longer spreads API meta (``configured``, ``bind_password_set``)
+  into the save payload. Clearer UI copy when a password is already stored.
+
 ## [3.12.0-rc.23] - 2026-08-17 (fix — login error menu paths)
 
 ### Fixed

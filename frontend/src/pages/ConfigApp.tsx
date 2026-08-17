@@ -857,8 +857,27 @@ function ClusterTab() {
 }
 
 /* ────────────────────── LDAP Configuration Panel ────────────────────── */
+/** Only these keys are editable form fields (never spread API meta into form). */
+const LDAP_FORM_KEYS = [
+  'enabled', 'server_url', 'use_ssl', 'use_starttls', 'ssl_verify', 'ssl_ca_cert',
+  'connection_timeout', 'bind_dn', 'user_base_dn', 'user_search_filter',
+  'user_attr_username', 'user_attr_email', 'user_attr_display_name',
+  'group_base_dn', 'group_search_filter', 'group_member_attr', 'group_attr_name',
+  'admin_group', 'operator_group', 'viewer_group', 'default_role',
+  'ad_domain', 'use_ad_upn',
+] as const;
+
+function pickLdapForm(data: Record<string, any>) {
+  const out: Record<string, any> = {};
+  for (const k of LDAP_FORM_KEYS) {
+    if (data[k] !== undefined && data[k] !== null) out[k] = data[k];
+  }
+  return out;
+}
+
 function LdapConfigPanel() {
   const [ldapConfig, setLdapConfig] = useState<any>(null);
+  const [passwordSet, setPasswordSet] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -866,7 +885,7 @@ function LdapConfigPanel() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Form state
+  // Form state — bind_password is never loaded from the API (leave blank = keep).
   const [form, setForm] = useState({
     enabled: false,
     server_url: 'ldap://localhost:389',
@@ -899,8 +918,8 @@ function LdapConfigPanel() {
       if (data.configured) {
         setForm((prev) => ({
           ...prev,
-          ...data,
-          bind_password: '',  // Never pre-fill password
+          ...pickLdapForm(data),
+          bind_password: '', // never pre-fill; blank means keep stored secret
           ssl_ca_cert: data.ssl_ca_cert || '',
           bind_dn: data.bind_dn || '',
           group_base_dn: data.group_base_dn || '',
@@ -911,6 +930,7 @@ function LdapConfigPanel() {
           ad_domain: data.ad_domain || '',
         }));
         setLdapConfig(data);
+        setPasswordSet(!!data.bind_password_set);
       }
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
@@ -923,16 +943,31 @@ function LdapConfigPanel() {
     setSaving(true);
     setSaveError(null);
     try {
-      const payload = { ...form };
-      // Don't send empty password if user hasn't changed it
-      if (!payload.bind_password && ldapConfig?.bind_password_set) {
-        delete (payload as any).bind_password;
+      const payload: Record<string, any> = pickLdapForm(form);
+      // Only send bind_password when the operator typed a new value.
+      // Empty field → omit key → backend keeps encrypted secret on disk.
+      const typed = (form.bind_password || '').trim();
+      if (typed) {
+        payload.bind_password = typed;
       }
-      await ldap.saveConfig(payload);
-      notifications.show({ title: 'LDAP Configuration Saved', message: form.enabled ? 'LDAP authentication is now enabled.' : 'LDAP configuration saved (currently disabled).', color: 'green' });
-      // Reload config
+      const saveResult = await ldap.saveConfig(payload);
+      notifications.show({
+        title: 'LDAP Configuration Saved',
+        message: form.enabled
+          ? 'LDAP authentication is now enabled.'
+          : 'LDAP configuration saved (currently disabled).',
+        color: 'green',
+      });
       const updated = await ldap.getConfig();
       setLdapConfig(updated);
+      setPasswordSet(Boolean(
+        updated?.bind_password_set
+        || saveResult?.bind_password_set
+        || typed
+        || passwordSet,
+      ));
+      // Clear the password field after successful save (value is now on the server)
+      setForm((prev) => ({ ...prev, bind_password: '' }));
     } catch (err: any) {
       const msg = err?.message || String(err);
       setSaveError(msg);
@@ -949,6 +984,7 @@ function LdapConfigPanel() {
     setTesting(true);
     setTestResult(null);
     try {
+      const typed = (form.bind_password || '').trim();
       const result = await ldap.testConnection({
         server_url: form.server_url,
         use_ssl: form.use_ssl,
@@ -957,7 +993,8 @@ function LdapConfigPanel() {
         ssl_ca_cert: form.ssl_ca_cert || null,
         connection_timeout: form.connection_timeout,
         bind_dn: form.bind_dn || null,
-        bind_password: form.bind_password || null,
+        // Omit password when blank so the API uses the stored secret
+        bind_password: typed || null,
         user_base_dn: form.user_base_dn || null,
       });
       setTestResult(result);
@@ -1075,8 +1112,20 @@ function LdapConfigPanel() {
             onChange={(e) => updateField('bind_dn', e.currentTarget.value)} />
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 6 }}>
-          <PasswordInput label="Bind Password" placeholder={ldapConfig?.bind_password_set ? '(password set — leave blank to keep)' : 'Enter bind password'}
-            value={form.bind_password} onChange={(e) => updateField('bind_password', e.currentTarget.value)} />
+          <PasswordInput
+            label="Bind Password"
+            description={
+              passwordSet
+                ? 'A password is already stored. Leave blank to keep it when testing or saving other fields. Type a new value only to replace it.'
+                : 'Required for service-account bind (unless using AD UPN without a bind DN).'
+            }
+            placeholder={passwordSet ? '••••••••  (stored — leave blank to keep)' : 'Enter bind password'}
+            value={form.bind_password}
+            onChange={(e) => updateField('bind_password', e.currentTarget.value)}
+          />
+          {passwordSet && !form.bind_password && (
+            <Text size="xs" c="teal" mt={4}>Using stored bind password</Text>
+          )}
         </Grid.Col>
       </Grid>
 

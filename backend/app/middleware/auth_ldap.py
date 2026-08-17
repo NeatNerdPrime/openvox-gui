@@ -42,21 +42,38 @@ async def get_ldap_config() -> Optional[LdapConfig]:
 
 
 async def save_ldap_config(cfg_data: dict) -> LdapConfig:
-    """Save or update the LDAP configuration in the database."""
+    """Save or update the LDAP configuration in the database.
+
+    Only keys present in ``cfg_data`` are written. Callers that want to
+    **preserve** ``bind_password`` must omit that key entirely (not send
+    empty string / None), so a blank password field in the UI never wipes
+    the stored secret.
+    """
+    skip = {"id", "created_at"}
     async with async_session() as session:
         result = await session.execute(select(LdapConfig).limit(1))
         existing = result.scalar_one_or_none()
         if existing:
             for key, value in cfg_data.items():
-                if hasattr(existing, key) and key not in ("id", "created_at"):
-                    setattr(existing, key, value)
+                if key in skip or not hasattr(existing, key):
+                    continue
+                # Never blank-out bind_password via accidental empty payload
+                if key == "bind_password" and (value is None or value == ""):
+                    continue
+                setattr(existing, key, value)
             # TIMESTAMP WITHOUT TIME ZONE — asyncpg rejects tz-aware datetimes
             existing.updated_at = _utc_naive()
             await session.commit()
             await session.refresh(existing)
             return existing
         else:
-            cfg = LdapConfig(**cfg_data)
+            # First insert: drop empty password so column stays NULL
+            create_data = {
+                k: v for k, v in cfg_data.items()
+                if k not in skip and hasattr(LdapConfig, k)
+                and not (k == "bind_password" and not v)
+            }
+            cfg = LdapConfig(**create_data)
             if not getattr(cfg, "created_at", None):
                 cfg.created_at = _utc_naive()
             cfg.updated_at = _utc_naive()

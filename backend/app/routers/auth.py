@@ -433,42 +433,68 @@ async def get_ldap_configuration(request: Request):
 
 @router.put("/ldap/config")
 async def update_ldap_configuration(data: LdapConfigRequest, request: Request):
-    """Save LDAP configuration (admin only)."""
+    """Save LDAP configuration (admin only).
+
+    Empty / omitted ``bind_password`` means **keep the stored secret**.
+    Only a non-empty value replaces the bind password (then encrypted at rest).
+    """
     user = getattr(request.state, "user", None)
     if not user or user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    cfg_data = data.model_dump(exclude_none=False)
+    from ..services.secrets import encrypt_secret
 
-    # If bind_password is None or empty, preserve existing password
-    # (already encrypted on disk, so just pass it through unchanged).
-    if not cfg_data.get("bind_password"):
-        existing = await get_ldap_config()
-        if existing and existing.bind_password:
-            cfg_data["bind_password"] = existing.bind_password
+    # Do not default-fill missing optionals over the DB row with Nones that
+    # could clear secrets. Only apply fields the client actually cares about;
+    # bind_password is handled separately.
+    cfg_data = data.model_dump(exclude_none=False)
+    new_password = (cfg_data.pop("bind_password", None) or "").strip()
+    if new_password:
+        cfg_data["bind_password"] = encrypt_secret(new_password)
     else:
-        # Encrypt the new value before it's persisted (3.3.5-28 audit
-        # finding HIGH-6 -- this column was previously plaintext-at-rest
-        # despite the model column comment saying otherwise).
-        from ..services.secrets import encrypt_secret
-        cfg_data["bind_password"] = encrypt_secret(cfg_data["bind_password"])
+        # Omit key entirely so save_ldap_config leaves the column alone.
+        cfg_data.pop("bind_password", None)
 
     try:
         cfg = await save_ldap_config(cfg_data)
-        logger.info(f"LDAP configuration updated by '{user.get('user_id')}' (enabled: {cfg.enabled})")
-        return {"status": "ok", "message": "LDAP configuration saved", "enabled": cfg.enabled}
+        logger.info(
+            "LDAP configuration updated by '%s' (enabled: %s, password_updated: %s)",
+            user.get("user_id"),
+            cfg.enabled,
+            bool(new_password),
+        )
+        return {
+            "status": "ok",
+            "message": "LDAP configuration saved",
+            "enabled": cfg.enabled,
+            "bind_password_set": bool(cfg.bind_password),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/ldap/test")
 async def test_ldap(data: LdapTestRequest, request: Request):
-    """Test LDAP connectivity (admin only)."""
+    """Test LDAP connectivity (admin only).
+
+    If ``bind_password`` is omitted/empty, use the encrypted password already
+    stored in the database (same UX as Save: leave blank to keep).
+    """
     user = getattr(request.state, "user", None)
     if not user or user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    result = await test_ldap_connection(data.model_dump())
+    from ..services.secrets import decrypt_secret
+
+    payload = data.model_dump()
+    if not (payload.get("bind_password") or "").strip():
+        existing = await get_ldap_config()
+        if existing and existing.bind_password:
+            payload["bind_password"] = decrypt_secret(existing.bind_password)
+        else:
+            payload["bind_password"] = None
+
+    result = await test_ldap_connection(payload)
     return result
 
 
