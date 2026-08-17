@@ -141,6 +141,10 @@ export function NodeHealthGlance({ certname }: { certname: string }) {
   const { data, loading, error, refetch, refreshing } = useApi(
     () => nodes.getHealthGlance(certname),
     [certname],
+    {
+      cacheKey: `openvox_node_health_glance_v1_${certname}`,
+      keepPreviousData: true,
+    },
   );
   const [sampling, setSampling] = useState(false);
   /** Last one-shot sample from POST (not returned by plain GET). */

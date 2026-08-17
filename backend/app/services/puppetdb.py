@@ -394,6 +394,64 @@ class PuppetDBService:
         """Get all resources for a node."""
         return await self._query(f"nodes/{certname}/resources")
 
+    async def get_node_applied_classes(self, certname: str) -> List[str]:
+        """Class titles only (not the full catalog) — used by Node Detail."""
+        safe = certname.replace("\\", "\\\\").replace('"', '\\"')
+        try:
+            rows = await self._query(
+                "",
+                params={
+                    "query": (
+                        f'resources[title]{{type = "Class" and certname = "{safe}" '
+                        f'order by title}}'
+                    )
+                },
+            )
+        except Exception:
+            # Fallback: full resources (slower) if PQL extract fails
+            resources = await self.get_node_resources(certname) or []
+            return sorted(
+                {
+                    r.get("title")
+                    for r in resources
+                    if r.get("type") == "Class"
+                    and r.get("title") not in ("main", "Settings")
+                    and r.get("title")
+                }
+            )
+        titles = []
+        for r in rows or []:
+            t = r.get("title") if isinstance(r, dict) else None
+            if t and t not in ("main", "Settings"):
+                titles.append(t)
+        return titles
+
+    async def get_node_resource_count(self, certname: str) -> int:
+        """Catalog size without downloading every resource document."""
+        safe = certname.replace("\\", "\\\\").replace('"', '\\"')
+        try:
+            rows = await self._query(
+                "",
+                params={"query": f'resources[count()]{{certname = "{safe}"}}'},
+            )
+            if isinstance(rows, list) and rows:
+                row = rows[0]
+                if isinstance(row, dict):
+                    for v in row.values():
+                        if isinstance(v, int):
+                            return v
+                        try:
+                            return int(v)
+                        except (TypeError, ValueError):
+                            continue
+        except Exception as e:
+            logger.debug("resource count PQL failed for %s: %s", certname, e)
+        try:
+            resources = await self.get_node_resources(certname) or []
+            return len(resources)
+        except Exception:
+            return 0
+
     async def deactivate_node(self, certname: str) -> bool:
         """Deactivate a node in PuppetDB via the command API.
 

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.25] - 2026-08-17 (perf — snappier Node Detail + UI paint)
+
+### Changed
+- **Node Detail:** parallel lean PDB fetches (class titles + resource count instead of
+  full catalog download); progressive shell with certname while loading; session
+  cache / SWR so return visits paint instantly; defer Host Health + casual SVG
+  until after first paint; All Facts PrettyJson only mounts when that tab is open.
+- **Host health glance:** session cache for faster revisit.
+
 ## [3.12.0-rc.24] - 2026-08-17 (fix — LDAP bind password keep-on-blank)
 
 ### Fixed

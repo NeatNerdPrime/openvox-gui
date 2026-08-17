@@ -386,34 +386,27 @@ async def sample_node_health_glance(
 async def get_node_detail(certname: str, db: AsyncSession = Depends(get_db)):
     """Get detailed information about a specific node.
 
-    Fetches the node record, all facts, and all resources from PuppetDB,
-    then assembles them into a single NodeDetail response. The list of
-    applied Puppet classes is derived from resources of type "Class",
-    excluding the synthetic "main" and "Settings" classes that Puppet
-    always includes.
+    Parallel PuppetDB fetches: node record, facts, class titles only, and
+    resource count. Avoids downloading the full catalog just to list applied
+    classes (large fleets / fat catalogs were making Node Detail feel slow).
     """
+    import asyncio
+
     certname = validate_pql_value(certname, "certname")
     try:
         node = await puppetdb_service.get_node(certname)
         await apply_live_run_status([node], db)
-        facts_raw = await puppetdb_service.get_node_facts(certname)
-        resources = await puppetdb_service.get_node_resources(certname)
 
-        # Build a flat dictionary of fact_name → fact_value from the list
-        # of individual fact objects returned by PuppetDB.
+        facts_raw, classes, resources_count = await asyncio.gather(
+            puppetdb_service.get_node_facts(certname),
+            puppetdb_service.get_node_applied_classes(certname),
+            puppetdb_service.get_node_resource_count(certname),
+        )
+
         facts = {}
-        for f in facts_raw:
-            facts[f["name"]] = f["value"]
-
-        # Extract the list of applied Puppet classes from the resource
-        # catalogue. Puppet represents every applied class as a resource
-        # of type "Class". We exclude "main" (the default top-level scope)
-        # and "Settings" (internal Puppet configuration class) because
-        # they are not meaningful user-facing classifications.
-        classes = [
-            r["title"] for r in resources
-            if r.get("type") == "Class" and r["title"] not in ("main", "Settings")
-        ]
+        for f in facts_raw or []:
+            if isinstance(f, dict) and "name" in f:
+                facts[f["name"]] = f.get("value")
 
         return NodeDetail(
             certname=certname,
@@ -422,8 +415,8 @@ async def get_node_detail(certname: str, db: AsyncSession = Depends(get_db)):
             report_timestamp=node.get("report_timestamp"),
             catalog_timestamp=node.get("catalog_timestamp"),
             report_environment=node.get("report_environment"),
-            classes=classes,
-            resources_count=len(resources),
+            classes=list(classes or []),
+            resources_count=int(resources_count or 0),
             status_source=node.get("status_source"),
             node_index_status=node.get("node_index_status"),
             latest_report_hash=node.get("latest_report_hash"),

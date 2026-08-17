@@ -54,6 +54,13 @@ Return visits in the same tab paint the last-good snapshot immediately, then ref
 
 If Dashboard is still slow on **first** login of the day, the remaining cost is co-located PuppetDB/CA latency for `get_live_nodes()` (active nodes ∩ signed certs). Check `ovox infra health` and PDB heap before raising GUI workers further.
 
+
+## Node Detail
+
+Cold open used to wait on **all** catalog resources just to list applied classes.
+Now: parallel facts + class-title PQL + resource count; UI progressive paint +
+session cache (`openvox_node_detail_v1_*`). Host Health glance is deferred and cached.
+
 ## What we optimized in the product
 
 1. **Dashboard `/api/dashboard/data`** — lean report extract + ≈20s TTL (single-flight); UI SWR + session cache (see above).

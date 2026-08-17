@@ -3,7 +3,7 @@
  * 
  * Component documentation to be expanded.
  */
-import { useState } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import {
   Title, Card, Loader, Stack, Group, Text, Badge,
@@ -22,7 +22,11 @@ import { notifications } from '@mantine/notifications';
 import { useAppTheme } from '../hooks/ThemeContext';
 import { useActivity } from '../hooks/ActivityContext';
 import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
-import { NodeHealthGlance } from '../components/NodeHealthGlance';
+
+/** Defer health glance (extra API + charts) until after first paint. */
+const NodeHealthGlance = lazy(() =>
+  import('../components/NodeHealthGlance').then((m) => ({ default: m.NodeHealthGlance })),
+);
 
 /* ═══════════════════════════════════════════════════════════════
    INSPECT-O-BOT 2000 — the node inspection robot
@@ -125,16 +129,42 @@ export function NodeDetailPage() {
   const { isRobots } = useAppTheme();
   const { certname } = useParams<{ certname: string }>();
   const navigate = useNavigate();
-  const { data: node, loading, error } = useApi(() => nodes.get(certname!), [certname]);
-  const { data: reportList } = useApi(() => nodes.getReports(certname!, 10), [certname]);
+  // Session cache + SWR: return visits paint instantly; no full-page blank on refetch.
+  const { data: node, loading, refreshing, error } = useApi(
+    () => nodes.get(certname!),
+    [certname],
+    {
+      cacheKey: certname ? `openvox_node_detail_v1_${certname}` : undefined,
+      keepPreviousData: true,
+    },
+  );
+  // Reports are secondary — load after shell, don't block first paint.
+  const { data: reportList } = useApi(
+    () => nodes.getReports(certname!, 10),
+    [certname],
+    {
+      cacheKey: certname ? `openvox_node_reports_v1_${certname}` : undefined,
+      keepPreviousData: true,
+    },
+  );
 
   const [runningPuppet, setRunningPuppet] = useState(false);
   const [puppetResult, setPuppetResult] = useState<any>(null);
   const [runConfirmOpen, setRunConfirmOpen] = useState(false);
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const [purging, setPurging] = useState(false);
+  /** Defer heavy below-fold widgets one tick after first content paint. */
+  const [deferHeavy, setDeferHeavy] = useState(false);
+  const [factsTab, setFactsTab] = useState<string | null>('facts');
   const { begin, end } = useActivity();
   const skipConfirm = useSkipAdhocConfirm();
+
+  useEffect(() => {
+    setDeferHeavy(false);
+    if (!node) return;
+    const t = window.setTimeout(() => setDeferHeavy(true), 0);
+    return () => window.clearTimeout(t);
+  }, [node, certname]);
 
   const handleRunPuppet = async () => {
     if (!certname) return;
@@ -211,8 +241,20 @@ export function NodeDetailPage() {
     setPurging(false);
   };
 
-  if (loading) return <LoadingState label="Loading node…" />;
-  if (error) return <ErrorState title="Failed to load node" message={error} />;
+  // Progressive shell: show certname from the URL immediately while PDB loads.
+  if (loading && !node) {
+    return (
+      <Stack>
+        <Group>
+          <Title order={2}>{certname || 'Node'}</Title>
+          <Loader size="sm" />
+          <Text size="sm" c="dimmed">Loading node…</Text>
+        </Group>
+        <LoadingState label="Fetching facts and classification…" height={200} />
+      </Stack>
+    );
+  }
+  if (error && !node) return <ErrorState title="Failed to load node" message={error} />;
   if (!node) {
     return (
       <EmptyState
@@ -230,6 +272,7 @@ export function NodeDetailPage() {
     <Stack>
       <Group>
         <Title order={2}>{node.certname}</Title>
+        {refreshing && <Loader size="xs" />}
         <StatusBadge status={node.latest_report_status} size="lg" />
         {(node as any).status_source && (
           <Text size="xs" c="dimmed">
@@ -333,8 +376,8 @@ export function NodeDetailPage() {
               </Stack>
             </Card>
 
-            {/* Robots!! illustration */}
-            {isRobots && (
+            {/* Casual mascot — after first paint (SVG is non-trivial) */}
+            {isRobots && deferHeavy && (
               <Card withBorder shadow="sm" padding="sm" style={{ overflow: 'hidden' }}>
                 <InspectOBot />
               </Card>
@@ -344,23 +387,31 @@ export function NodeDetailPage() {
 
         <Grid.Col span={{ base: 12, md: isRobots ? 9 : 8 }}>
           <Card withBorder shadow="sm" padding="md">
-            <Text fw={700} mb="sm">Applied Classes ({node.classes.length})</Text>
+            <Text fw={700} mb="sm">Applied Classes ({node.classes?.length ?? 0})</Text>
             <Group gap="xs">
-              {node.classes.map((cls: string) => (
+              {(node.classes || []).map((cls: string) => (
                 <Badge key={cls} variant="light" size="sm">{cls}</Badge>
               ))}
-              {node.classes.length === 0 && <Text c="dimmed" size="sm">No classes applied</Text>}
+              {(!node.classes || node.classes.length === 0) && <Text c="dimmed" size="sm">No classes applied</Text>}
             </Group>
           </Card>
         </Grid.Col>
 
-        {/* Host health: full width under Overview + Applied Classes, above facts tabs */}
+        {/* Host health: full width; lazy + deferred so it does not block Overview */}
         <Grid.Col span={12}>
-          {certname && <NodeHealthGlance certname={certname} />}
+          {certname && deferHeavy && (
+            <Suspense fallback={
+              <Card withBorder padding="md">
+                <Group gap="sm"><Loader size="sm" /><Text size="sm" c="dimmed">Loading host health…</Text></Group>
+              </Card>
+            }>
+              <NodeHealthGlance certname={certname} />
+            </Suspense>
+          )}
         </Grid.Col>
       </Grid>
 
-      <Tabs defaultValue="facts">
+      <Tabs value={factsTab} onChange={setFactsTab}>
         <Tabs.List>
           <Tabs.Tab value="facts" leftSection={<IconList size={16} />}>Key Facts</Tabs.Tab>
           <Tabs.Tab value="allfacts" leftSection={<IconCode size={16} />}>All Facts</Tabs.Tab>
@@ -378,7 +429,7 @@ export function NodeDetailPage() {
               </Table.Thead>
               <Table.Tbody>
                 {keyFacts.map((fact) => (
-                  node.facts[fact] !== undefined ? (
+                  node.facts?.[fact] !== undefined ? (
                     <Table.Tr key={fact}>
                       <Table.Td style={{ whiteSpace: 'nowrap', verticalAlign: 'top' }}><Text fw={500} size="sm">{fact}</Text></Table.Td>
                       <Table.Td style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
@@ -395,11 +446,14 @@ export function NodeDetailPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="allfacts" pt="md">
-          <Paper withBorder p="md">
-            <ScrollArea style={{ height: '500px' }}>
-              <PrettyJson data={node.facts} maxHeight={false} withBorder={false} />
-            </ScrollArea>
-          </Paper>
+          {/* PrettyJson of full facts is expensive — only mount when tab is open */}
+          {factsTab === 'allfacts' ? (
+            <Paper withBorder p="md">
+              <ScrollArea style={{ height: '500px' }}>
+                <PrettyJson data={node.facts || {}} maxHeight={false} withBorder={false} />
+              </ScrollArea>
+            </Paper>
+          ) : null}
         </Tabs.Panel>
 
         <Tabs.Panel value="reports" pt="md">
