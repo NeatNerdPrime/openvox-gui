@@ -33,6 +33,32 @@ _LOCK_NOTICE_RE = re.compile(
     r"already in progress|agent_catalog_run\.lock",
     re.IGNORECASE,
 )
+# Bolt human format noise (inventory tty vs --no-tty, progress spinner glyphs)
+_CLI_OVERRIDES_RE = re.compile(
+    r"CLI arguments\s+\[.*?\]\s+might be overridden by Inventory:[^\n]*\n?",
+    re.IGNORECASE,
+)
+_BOLT_SPINNER_RE = re.compile(r"(?:\\\|/\\-)+")
+_HUMAN_EXIT_RE = re.compile(
+    r"The command failed with exit code\s+(\d+)",
+    re.IGNORECASE,
+)
+_HUMAN_FAILED_ON_RE = re.compile(
+    r"Failed on\s+(\S+):\s*The command failed with exit code\s+(\d+)",
+    re.IGNORECASE,
+)
+
+
+def clean_bolt_console_text(text: str) -> str:
+    """Strip NULs, inventory override banners, and spinner junk from Bolt human output."""
+    if not text:
+        return ""
+    t = text.replace("\x00", "")
+    t = _CLI_OVERRIDES_RE.sub("", t)
+    t = _BOLT_SPINNER_RE.sub("", t)
+    # Collapse runs of blank lines
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
 
 
 class BoltRunResultModel(BaseModel):
@@ -145,14 +171,19 @@ def reinterpret_puppet_agent_bolt_result(
     """
     Adjust Bolt result for GUI semantics on ``puppet agent`` runs.
 
-    - Puppet exit **2** (changes applied) is success; Bolt often surfaces it as failure.
+    - Puppet exit **2** (changes applied) is success; Bolt often surfaces it as failure
+      with human text ``Failed on … exit code 2``.
     - Prefer per-target exit codes from ``--format json`` when available.
+    - Strip inventory tty / spinner noise from console text.
     - Annotate lock-related failures so operators know it is not SSH/sudo failure.
     """
-    if not _is_puppet_agent_invocation(original_command):
-        return result
-
     out = dict(result)
+    out["stdout"] = clean_bolt_console_text(out.get("stdout") or "")
+    out["stderr"] = clean_bolt_console_text(out.get("stderr") or "")
+
+    if not _is_puppet_agent_invocation(original_command):
+        return out
+
     stdout = out.get("stdout") or ""
     items = _iter_bolt_result_items(stdout)
     notes: List[str] = []
@@ -161,7 +192,6 @@ def reinterpret_puppet_agent_bolt_result(
         exits = [_target_exit_code(i) for i in items]
         known = [e for e in exits if e is not None]
         all_ok = bool(known) and all(e in PUPPET_AGENT_SUCCESS_EXIT_CODES for e in known)
-        any_lock = any(_LOCK_NOTICE_RE.search(_target_merged_text(i) or "") for i in items)
         failed = [
             (i.get("target") or "?", _target_exit_code(i))
             for i in items
@@ -202,18 +232,58 @@ def reinterpret_puppet_agent_bolt_result(
             out["stderr"] = (prev_err + "\n" + hint).strip() if hint else prev_err
             return out
     else:
-        # Human/plain output — promote returncode 2 → success semantics for history/UI
+        # Human/plain output — Bolt prints "Failed on … exit code 2" even when Puppet succeeded
         rc = out.get("returncode")
         try:
             rc_i = int(rc) if rc is not None else -1
         except (TypeError, ValueError):
             rc_i = -1
         text = f"{stdout}\n{out.get('stderr') or ''}"
-        if rc_i == 2:
+
+        # Prefer explicit "exit code N" in Bolt human banner over process rc
+        human_exits = [int(m.group(2)) for m in _HUMAN_FAILED_ON_RE.finditer(text)]
+        if not human_exits:
+            human_exits = [int(m.group(1)) for m in _HUMAN_EXIT_RE.finditer(text)]
+        if human_exits and all(e in PUPPET_AGENT_SUCCESS_EXIT_CODES for e in human_exits):
+            rc_i = 2 if 2 in human_exits else 0
+            out["returncode"] = rc_i
+            # Rewrite misleading Failed banners
+            cleaned = stdout
+            cleaned = _HUMAN_FAILED_ON_RE.sub(
+                lambda m: (
+                    f"Succeeded on {m.group(1)}: puppet agent finished with exit code {m.group(2)}"
+                    + (
+                        " (changes applied)"
+                        if m.group(2) == "2"
+                        else " (no changes)"
+                    )
+                ),
+                cleaned,
+            )
+            out["stdout"] = cleaned
+            stdout = cleaned
+            if rc_i == 2:
+                notes.append(
+                    "Note: Puppet exit code 2 means changes were applied (success). "
+                    "Bolt human format labels that as Failed; the GUI treats 0 and 2 as success."
+                )
+            else:
+                notes.append("Note: Puppet agent completed successfully (exit 0).")
+        elif rc_i == 2:
             out["returncode"] = 2
             notes.append(
                 "Note: Puppet exit code 2 means changes were applied (success)."
             )
+            # Still rewrite Failed-on lines if present with code 2
+            if _HUMAN_FAILED_ON_RE.search(stdout):
+                out["stdout"] = _HUMAN_FAILED_ON_RE.sub(
+                    lambda m: (
+                        f"Succeeded on {m.group(1)}: puppet agent finished with exit code {m.group(2)}"
+                        + (" (changes applied)" if m.group(2) == "2" else "")
+                    ),
+                    stdout,
+                )
+                stdout = out["stdout"]
         elif rc_i == 1 and _LOCK_NOTICE_RE.search(text):
             notes.append(
                 "Agent run skipped: catalog run lock exists (another run in progress). "
@@ -232,7 +302,7 @@ def reinterpret_puppet_agent_bolt_result(
     if notes and not items:
         hint = "\n".join(notes)
         prev_err = out.get("stderr") or ""
-        if "exit code 2" in hint.lower() or "changes were applied" in hint.lower():
+        if "exit code 2" in hint.lower() or "changes were applied" in hint.lower() or "completed successfully" in hint.lower():
             out["stdout"] = ((stdout or "") + "\n\n" + hint).strip()
         else:
             out["stderr"] = (prev_err + "\n" + hint).strip() if hint else prev_err
@@ -380,9 +450,9 @@ async def finish_execution_history(
 
 
 def sanitize_bolt_result(result: Dict[str, Any]) -> BoltRunResultModel:
-    """Map run_bolt_command dict → API model with ANSI stripped."""
+    """Map run_bolt_command dict → API model with ANSI / Bolt noise stripped."""
     return BoltRunResultModel(
         returncode=int(result.get("returncode") if result.get("returncode") is not None else -1),
-        output=strip_ansi(result.get("stdout") or ""),
-        error=strip_ansi(result.get("stderr") or ""),
+        output=strip_ansi(clean_bolt_console_text(result.get("stdout") or "")),
+        error=strip_ansi(clean_bolt_console_text(result.get("stderr") or "")),
     )

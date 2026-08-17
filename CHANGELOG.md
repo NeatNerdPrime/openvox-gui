@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.28] - 2026-08-17 (fix — Run OpenVox exit 2 looks like failure)
+
+### Fixed
+- **Nodes / Node Detail → Run OpenVox:** Bolt human format prints ``Failed on … exit code 2``
+  even when Puppet applied changes successfully. Agent runs now force ``--format json``,
+  reinterpret exit **0 and 2** as success, rewrite misleading Failed banners, and strip
+  inventory tty / spinner / NUL noise from the message.
+
 ## [3.12.0-rc.27] - 2026-08-17 (perf — fast Classification ENC page)
 
 ### Changed

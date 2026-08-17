@@ -179,10 +179,9 @@ export function NodeDetailPage() {
         // Explicitly privileged so the backend treats this as a root-requiring
         // operation on the target: prepends "sudo " (to exercise the bolt
         // user's sudoers on the target) and ensures the full normalization
-        // (PUPPET_* env vars + --config/--ssldir/--vardir flags) is applied.
-        // Without this, the agent can fall back to per-user paths under ~bolt
-        // and resolve the server as the unqualified name "puppet".
+        // (PUPPET_* env vars + --config flags) is applied.
         run_as: 'root',
+        format: 'json',
       });
       setPuppetResult(r);
       const ok = r.returncode === 0 || r.returncode === 2;
@@ -191,12 +190,21 @@ export function NodeDetailPage() {
       if (r.returncode === 0) {
         notifications.show({ title: 'OpenVox Run Complete', message: `No changes needed on ${certname}`, color: 'green' });
       } else if (r.returncode === 2) {
-        notifications.show({ title: 'OpenVox Run Complete', message: `Changes applied successfully on ${certname}`, color: 'green' });
+        notifications.show({
+          title: 'OpenVox Run Complete',
+          message: `Changes applied on ${certname} (Puppet exit 2 = success)`,
+          color: 'green',
+        });
       } else {
+        const detail = (r.error || r.output || `Agent run failed with exit code ${r.returncode}`)
+          .replace(/\x00/g, '')
+          .replace(/CLI arguments[\s\S]*?\[ID: cli_overrides\]\s*/gi, '')
+          .slice(0, 280);
         notifications.show({
           title: 'OpenVox Run Failed',
-          message: (r.error || r.output || `Agent run failed with exit code ${r.returncode}`).slice(0, 280),
+          message: detail,
           color: 'red',
+          autoClose: 12000,
         });
       }
     } catch (e: any) {

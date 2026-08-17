@@ -187,6 +187,9 @@ async def run_command(
         raise HTTPException(status_code=400, detail=str(e))
 
     fmt = req.format if req.format in ("human", "json", "rainbow") else "human"
+    # Puppet agent: always use JSON so exit 0/2 are reliable (human format says "Failed on… exit 2")
+    if bolt_orch._is_puppet_agent_invocation(req.command) and fmt == "human":
+        fmt = "json"
     try:
         resolved_targets = await resolve_targets(req.targets, db)
 

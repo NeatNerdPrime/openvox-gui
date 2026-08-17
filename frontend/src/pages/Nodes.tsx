@@ -253,16 +253,24 @@ export function NodesPage() {
         command: '/opt/puppetlabs/bin/puppet agent -t',
         targets: certname,
         run_as: 'root',
+        format: 'json',
       });
       const ok = r.returncode === 0 || r.returncode === 2;
       end(actId, ok ? 'done' : 'error', `exit ${r.returncode}`);
-      const failDetail = (r.error || r.output || `Exit code ${r.returncode} on ${certname}`).slice(0, 280);
+      // Prefer a short human summary — raw Bolt human text says "Failed on… exit 2" even on success
+      const failDetail = (r.error || r.output || `Exit code ${r.returncode} on ${certname}`)
+        .replace(/\x00/g, '')
+        .replace(/CLI arguments[\s\S]*?\[ID: cli_overrides\]\s*/gi, '')
+        .slice(0, 280);
       notifications.show({
         title: ok ? 'OpenVox Run Complete' : 'OpenVox Run Failed',
         message: ok
-          ? (r.returncode === 2 ? `Changes applied on ${certname}` : `No changes on ${certname}`)
+          ? (r.returncode === 2
+            ? `Changes applied on ${certname} (Puppet exit 2 = success)`
+            : `No changes on ${certname}`)
           : failDetail,
         color: ok ? 'green' : 'red',
+        autoClose: ok ? 6000 : 12000,
       });
       // Newest-report overlay + live-run can take a beat to land
       refetch();
