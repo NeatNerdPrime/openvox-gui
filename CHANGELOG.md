@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.29] - 2026-08-19 (docs — clustered LDAP + STATUS sync)
+
+### Changed
+- **STATUS.md:** freeze at `3.12.0-rc.28`; compiler role on itsys-control_repo staging; LDAP SECRET_KEY split; clustered architecture notes.
+- **LDAP.md / TROUBLESHOOTING.md / CLUSTERED_SHARED_DB.txt:** two-console bind-password decrypt (same user works on one site only).
+
 ## [3.12.0-rc.28] - 2026-08-17 (fix — Run OpenVox exit 2 looks like failure)
 
 ### Fixed

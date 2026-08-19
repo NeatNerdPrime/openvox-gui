@@ -313,6 +313,7 @@ The **User Base DN** must exactly match the directory's structure (e.g. include 
 - Verify the Bind DN and password are correct
 - Check that the service account has search permissions
 - For AD: ensure the account is not locked or expired
+- **Two consoles, LDAP works on one site only:** both hosts **must** share `OPENVOX_GUI_SECRET_KEY` and `OPENVOX_GUI_DATABASE_URL` (`openvox_gui` DB, not `puppetdb`). Bind passwords are Fernet-encrypted from that key. A different key decrypts to empty → `LDAP service account bind failed`. Compare `.env` on both consoles. Do **not** Save LDAP settings on the broken console first (writes ciphertext the other cannot read). See [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 
 ### User Not Found
 

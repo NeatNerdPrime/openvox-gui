@@ -1,10 +1,10 @@
 OpenVox GUI — two consoles, shared ENC database, clustered switchover
 =====================================================================
-Date: 2026-08-10
+Date: 2026-08-19
 Estate: PDXC + ATLC
 Consoles: openvox.pdxc-it.corp.int-x.ai  AND  openvox.atlc-it.corp.int-x.ai
 PuppetDB Postgres: four ovdb* hosts (PG 17 + Spock)
-Code train: openvox-gui v3.11.0-alpha.9+ (this work)
+Code train: openvox-gui **3.12.0-rc.28** on `main` (3.11 alphas are historical)
 
 Read this top to bottom tomorrow morning. Do not skip. Do not put GUI
 tables inside the PuppetDB database named "puppetdb".
@@ -33,6 +33,8 @@ A. PRINCIPLES (read first)
 5.  Both consoles MUST use the identical OPENVOX_GUI_SECRET_KEY.
     Secrets and LDAP bind passwords are Fernet-encrypted from that key.
     Different keys = cannot decrypt = broken LDAP / cluster secrets.
+    Symptom in the field (2026-08-19): same LDAP user works on ATLC and
+    fails on PDXC. Fix the key/DSN; do not re-save LDAP on PDXC first.
 
 6.  Compilers do not open SQLite. enc.py calls the GUI HTTP API. Point
     every compiler at BOTH console URLs (comma-separated). Both GUIs

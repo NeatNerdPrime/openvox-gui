@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.28**
+**OpenVox GUI Version 3.12.0-rc.29**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -131,7 +131,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.28"}
+   # Should return: {"status":"ok","version":"3.12.0-rc.29"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -172,7 +172,15 @@ sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py a
 4. **Check if authentication is enabled:**
    ```bash
    grep AUTH_BACKEND /opt/openvox-gui/config/.env
-   # Should show: AUTH_BACKEND=local
+   # local users: AUTH_BACKEND=local
+   # LDAP users: AUTH_BACKEND=ldap (or local+LDAP enabled) and manage_users list shows auth_source=ldap
+   ```
+
+5. **Clustered consoles — LDAP works on ATLC but not PDXC (or the reverse):**
+   Compare `OPENVOX_GUI_SECRET_KEY` and `OPENVOX_GUI_DATABASE_URL` on **both** hosts. They must match. See [docs/LDAP.md](docs/LDAP.md) (Bind Failed) and [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt).
+   ```bash
+   sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py list
+   sudo journalctl -u openvox-gui -n 80 --no-pager | grep -i ldap
    ```
 
 ### Problem: Certificate Warning in Browser

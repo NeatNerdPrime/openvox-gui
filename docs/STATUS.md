@@ -1,8 +1,8 @@
 # OpenVox GUI — Project status (release readiness)
 
-**As of:** 2026-08-17  
+**As of:** 2026-08-19  
 **Branch:** `main`  
-**VERSION file:** `3.12.0-rc.18`
+**VERSION file:** `3.12.0-rc.28`  
 **Last stable GitHub Release:** **3.10.6** (still recommended for production AIO unless you opt into 3.12-rc)
 
 This document freezes **where we are** after the 3.12 clustering/VIP/ovox week, so Monday’s **roles/profiles** work starts from a clean map. It covers **all-in-one (AIO)** and **clustered** installs.
@@ -66,9 +66,17 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 
 ### Known gaps (not done)
 - **Remote tune apply** to every compiler/ovdb via Bolt  
-- **Puppet roles/profiles** for compiler / CA / PDB / console auto-join (**Monday**)  
-- ~~**CI pip-audit** including `psycopg2-binary` wheel~~ → **done** (`.github/workflows/security.yml` + `scripts/ci-pip-audit.sh`)  
+- Classify live compilers with **`roles::catalog_compiler`** (profile exists on itsys-control_repo `staging` / PR #46; production classify not confirmed)  
+- Dual-console **same** `OPENVOX_GUI_SECRET_KEY` + `openvox_gui` DSN (LDAP works ATLC, fails PDXC when keys differ)  
 - Promote **3.12.0** stable GitHub Release (deliberate later)
+
+### Also in 3.12.0-rc.19–rc.28
+- pip-audit + npm audit CI; cryptography 50  
+- ENC Classification: no triple-refresh / no “Environments loaded” toast  
+- Node Detail lean PDB + Host Health strip / CPU panes  
+- LDAP: 401 vs session-expired; bind password kept on blank save  
+- Clustered Deploy Now via Bolt r10k; Stage off CIS `noexec` `/tmp`  
+- **Run OpenVox:** Puppet exit **0 and 2** = success (`rc.28`)
 
 ---
 
@@ -97,9 +105,9 @@ Infra: local files + local systemd; `ovox infra *` works on-box.
   cluster_config.json (members + VIPs)
   Bolt SSH → estate (generated inventory)
 
-[ Compilers ]  reports=store,puppetdb → PDB VIP; termini; no CA admin
-[ CA HA ]      Pacemaker+DRBD; pcs owns puppetserver; auth.conf cert-status allow
-[ OpenVoxDB ]  mesh / VIP; not termini clients
+[ Compilers ]  CA-off; termini → ovdb.corp.int-x.ai:8081 (single A); full control-repo; not location-sharded
+[ CA HA ]      Pacemaker+DRBD; pcs owns openvox-server or puppetserver (discover); auth.conf cert-status allow
+[ OpenVoxDB ]  Spock mesh / site HAProxy first+backup; not termini clients
 ```
 
 Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,puppetdb`, **no** facts→puppetdb terminus.
