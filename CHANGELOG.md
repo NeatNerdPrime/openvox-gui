@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.39] - 2026-08-21 (ops — estate health check, clustered Bolt)
+
+### Added
+- **scripts/estate-health-check.sh:** top-to-bottom console check
+  (VIP preflight, bolt user/key, inventory host-key-check, ENC
+  plugin, sample Bolt SSH). Assumes VIPs — does not pin ovdb1.
+- **scripts/seed-bolt-known-hosts.sh:** ssh-keyscan live /nodes +
+  cluster members into bolt known_hosts.
+- **docs/ESTATE_HEALTH.md:** clustered remediations (keep ovdb.corp).
+
 ## [3.12.0-rc.38] - 2026-08-21 (fix — Play button shows real Bolt stderr)
 
 ### Fixed

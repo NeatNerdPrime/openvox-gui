@@ -350,6 +350,7 @@ Same RBAC as the web UI via session or service token.
 | Maintenance pages + flag | UPDATE.md + `ovox maintenance` |
 | Dual-console VIP sessions | [VIP_SESSIONS.md](VIP_SESSIONS.md) |
 | Shared DB / Spock notes | [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) |
+| Estate health (clustered) | [ESTATE_HEALTH.md](ESTATE_HEALTH.md) |
 | Agent disabled fact | [puppet-agent-disabled-fact.md](puppet-agent-disabled-fact.md) |
 
 ---
