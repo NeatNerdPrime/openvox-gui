@@ -417,8 +417,10 @@ purge-stale.
 
 A **Failed** latest report older than
 `OPENVOX_GUI_FAILED_ALERT_HOURS` (default **8**) is shown as
-**unreported** on Overview / Nodes so yesterday’s failure does not
-stay red. Set `0` to keep Failed until a newer report arrives.
+**unreported** so yesterday’s failure does not stay red. Any status
+(including Unchanged) older than `OPENVOX_GUI_NODE_FRESH_HOURS`
+(default **24**) is also **unreported**. Set either to `0` to disable
+that cutoff.
 
 ### First-time clustered setup (Nodes membership)
 

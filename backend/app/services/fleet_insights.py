@@ -31,19 +31,42 @@ def downgrade_stale_failed(nodes: List[Dict], hours: float = 8.0) -> List[Dict]:
     nodes as unreported so Overview does not stay red. Set hours<=0 to
     disable. Original status is kept in node_index_status.
     """
-    if hours <= 0 or not nodes:
+    return apply_report_freshness(nodes, failed_hours=hours, fresh_hours=0)
+
+
+def apply_report_freshness(
+    nodes: List[Dict],
+    failed_hours: float = 8.0,
+    fresh_hours: float = 24.0,
+) -> List[Dict]:
+    """Normalize display status from report age.
+
+    - ``failed`` older than *failed_hours* → unreported (stop alerting).
+    - any status older than *fresh_hours* → unreported (not current).
+    Hours <= 0 disables that cutoff. Original status stays in
+    node_index_status.
+    """
+    if not nodes:
         return nodes
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    now = datetime.utcnow()
+    fail_cut = now - timedelta(hours=failed_hours) if failed_hours > 0 else None
+    fresh_cut = now - timedelta(hours=fresh_hours) if fresh_hours > 0 else None
     for node in nodes:
         status = (node.get("latest_report_status") or "").lower()
-        if status != "failed":
-            continue
         ts = _parse_report_ts(node.get("report_timestamp"))
-        if ts is not None and ts >= cutoff:
-            continue
-        node["node_index_status"] = node.get("node_index_status") or "failed"
-        node["latest_report_status"] = "unreported"
-        node["status_source"] = "stale_failed"
+        reason = None
+        if status == "failed" and fail_cut is not None:
+            if ts is None or ts < fail_cut:
+                reason = "stale_failed"
+        if reason is None and fresh_cut is not None and status and status != "unreported":
+            if ts is None or ts < fresh_cut:
+                reason = "stale_report"
+        if reason:
+            node["node_index_status"] = node.get("node_index_status") or (
+                status or "failed"
+            )
+            node["latest_report_status"] = "unreported"
+            node["status_source"] = reason
     return nodes
 
 

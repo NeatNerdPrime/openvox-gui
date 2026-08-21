@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.fleet_insights import downgrade_stale_failed
+from app.services.fleet_insights import apply_report_freshness, downgrade_stale_failed
 from app.services.puppetdb import PuppetDBService
 
 
@@ -61,3 +61,33 @@ def test_downgrade_stale_failed_after_eight_hours():
     assert by_cn["old.example"]["status_source"] == "stale_failed"
     assert by_cn["fresh.example"]["latest_report_status"] == "failed"
     assert by_cn["ok.example"]["latest_report_status"] == "unchanged"
+
+
+def test_stale_unchanged_becomes_unreported_after_a_day():
+    two_days = (datetime.utcnow() - timedelta(days=2)).isoformat() + "Z"
+    six_hours = (datetime.utcnow() - timedelta(hours=6)).isoformat() + "Z"
+    nodes = [
+        {
+            "certname": "old-ok.example",
+            "latest_report_status": "unchanged",
+            "report_timestamp": two_days,
+        },
+        {
+            "certname": "recent-ok.example",
+            "latest_report_status": "unchanged",
+            "report_timestamp": six_hours,
+        },
+        {
+            "certname": "day-old-failed.example",
+            "latest_report_status": "failed",
+            "report_timestamp": (datetime.utcnow() - timedelta(hours=25)).isoformat()
+            + "Z",
+        },
+    ]
+    apply_report_freshness(nodes, failed_hours=8.0, fresh_hours=24.0)
+    by_cn = {n["certname"]: n for n in nodes}
+    assert by_cn["old-ok.example"]["latest_report_status"] == "unreported"
+    assert by_cn["old-ok.example"]["status_source"] == "stale_report"
+    assert by_cn["recent-ok.example"]["latest_report_status"] == "unchanged"
+    assert by_cn["day-old-failed.example"]["latest_report_status"] == "unreported"
+    assert by_cn["day-old-failed.example"]["status_source"] == "stale_failed"

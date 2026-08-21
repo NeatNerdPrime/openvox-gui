@@ -244,10 +244,13 @@ class PuppetDBService:
             )
         try:
             from ..config import settings
-            from .fleet_insights import downgrade_stale_failed
+            from .fleet_insights import apply_report_freshness
 
-            hours = float(getattr(settings, "failed_alert_hours", 8.0) or 0)
-            downgrade_stale_failed(live, hours=hours)
+            apply_report_freshness(
+                live,
+                failed_hours=float(getattr(settings, "failed_alert_hours", 8.0) or 0),
+                fresh_hours=float(getattr(settings, "node_fresh_hours", 24.0) or 0),
+            )
         except Exception:
             logger.debug("stale-failed downgrade skipped", exc_info=True)
         return live

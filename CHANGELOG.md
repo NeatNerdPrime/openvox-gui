@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.35] - 2026-08-21 (fix — stale Unchanged is Unreported)
+
+### Changed
+- **Overview / Nodes:** any latest-report older than 24 hours
+  (`OPENVOX_GUI_NODE_FRESH_HOURS`) displays as **unreported**. Failed
+  still ages out at 8 hours. 2–4 day "Unchanged" is no longer a
+  green badge.
+
 ## [3.12.0-rc.34] - 2026-08-21 (fix — Failed alerts expire after 8h)
 
 ### Changed
