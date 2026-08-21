@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.32] - 2026-08-21 (docs — HAProxy vs DNS RR in INSTALL/FEATURES)
+
+### Changed
+- **FEATURES.md / INSTALL.md / ARCHITECTURE.md:** first-time clustered
+  Nodes membership, DNS RR hide list vs `ovcompilers.<site>` HAProxy
+  VMs, and the checklist for adding another site’s frontend. No extra
+  doc file.
+
 ## [3.12.0-rc.31] - 2026-08-21 (fix — never hide ovcompilers.* HAProxy agents)
 
 ### Changed

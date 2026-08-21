@@ -361,34 +361,101 @@ Unless a page is **CA-authoritative** (Certificates) or explicitly historical:
 **Shown nodes = active OpenVoxDB `certnames` − DNS RR names only.**
 
 PuppetDB is the CMDB. The CA list is **not** intersected (a site-wrong
-`ovca.corp` lookup must not hide agents). Certificates page stays CA-centric.
+`ovca.corp` lookup must not hide agents). Certificates page stays
+CA-centric. Two things are both called “VIPs” — they are not the same.
 
-### DNS RR vs real HAProxy boxes
+### DNS round-robin (no computer)
 
-| Kind | Example | In Nodes? |
-|------|---------|-----------|
-| DNS round-robin (no VM) | `ovca.corp.int-x.ai`, `ovdb.corp.int-x.ai` | Hide |
-| HAProxy VM with an agent | `ovcompilers.atlc-it.corp.int-x.ai` | **Show** |
+Examples: `ovca.corp.int-x.ai`, `ovdb.corp.int-x.ai`.
 
-Hide only via **Settings → Application → Cluster**:
+These names exist only in DNS (two or more A records). There is no VM,
+no SSH, no Puppet agent. **Hide them from Nodes** in
+Settings → Cluster:
 
-| Field | Purpose |
-|-------|---------|
-| **CA VIP FQDNs** (`ca_vips`) | DNS RR for the CA |
-| **DNS RR VIPs** (`dns_rr_vips`) | Other names with no OS (`ovdb.corp`) |
+| Field | Typical value |
+|-------|----------------|
+| **CA VIP FQDNs** (`ca_vips`) | `ovca.corp.int-x.ai` |
+| **DNS RR VIPs** (`dns_rr_vips`) | `ovdb.corp.int-x.ai` |
 | **Console VIP** (`vip_hosts`) | GUI RR hostname if it is not a box |
-| **Extra fleet exclusions** (`fleet_exclude`) | Anything else that is not an agent |
+| **Extra fleet exclusions** (`fleet_exclude`) | anything else with no OS |
 
-`infra_vips` is for health probes only — it does **not** hide Nodes.
-First-label ``ovcompilers`` (any site) is **never** hidden, even if
-listed in `ca_vips` / `dns_rr_vips` / `fleet_exclude`. New DCs: name
-the HAProxy box `ovcompilers.<site>-it.…`, point agents at that
-certname, do **not** invent a second DNS-only name for the same role.
+```bash
+OPENVOX_GUI_FLEET_EXCLUDE=ovdb.corp.int-x.ai,ovca.corp.int-x.ai
+```
 
-Env: `OPENVOX_GUI_FLEET_EXCLUDE=ovdb.corp.int-x.ai,ovca.corp.int-x.ai`
+`infra_vips` is **not** a hide list. It is only for health probes.
 
-After PDB deactivate/expire, hosts drop from Dashboard, Nodes, Inventory,
-ENC unclassified, and Node Health. ENC rows still need purge-stale.
+### HAProxy compiler frontend (real VM)
+
+Examples: `ovcompilers.atlc-it.corp.int-x.ai`,
+`ovcompilers.pdxc-it.corp.int-x.ai`.
+
+This **is** a computer: OS, HAProxy, and its own Puppet agent.
+Site agents set `server = ovcompilers.<site>-it.…`. HAProxy spreads
+:8140 to `ovcompiler1`, `ovcompiler2`, … on that site.
+
+**Always show these on Nodes.** Classify as HAProxy / base, **not**
+as a catalog compiler. The GUI never hides a certname whose first
+label is `ovcompilers`, even if someone pastes it into a hide field.
+
+`ovcompiler1.*` (one “r”) is a **backend compiler** — also a real
+agent, also visible.
+
+| You are looking at… | Hide? | Classify as |
+|---------------------|-------|-------------|
+| `ovca.corp…` / `ovdb.corp…` | Yes (DNS RR) | Never — not a host |
+| `ovcompilers.<site>-it…` | **No** | HAProxy / base agent |
+| `ovcompiler1.<site>-it…` | No | Catalog compiler |
+| `ovdb1.<site>-it…` | No | OpenVoxDB member |
+
+Rule of thumb: if you can SSH to it and run `puppet agent`, it is a
+node. If you cannot, it is a DNS name and belongs on the hide list.
+
+After PDB deactivate/expire, hosts drop from Dashboard, Nodes,
+Inventory, ENC unclassified, and Node Health. ENC rows still need
+purge-stale.
+
+### First-time clustered setup (Nodes membership)
+
+When you first turn on Settings → Cluster:
+
+1. List hostnames that are **only** DNS (no `hostname -f` on a box
+   matches). Those go in `ca_vips` / `dns_rr_vips` / `fleet_exclude`.
+2. List HAProxy frontends. Name them `ovcompilers.<site>-it.…`.
+   Do **not** put those names in the hide fields.
+3. Point `OPENVOX_GUI_PUPPETDB_HOST` at one healthy OpenVoxDB
+   (`ovdb1.<site>-it.…`) until every address behind `ovdb.corp` has
+   the same `certnames` table.
+4. Point `OPENVOX_GUI_PUPPET_CA_HOST` at the CA you sign on
+   (Certificates page only). Nodes do not use the CA for membership.
+5. After the HAProxy box’s first successful `puppet agent` run, it
+   appears on Nodes. Classify it.
+
+### Adding another site’s HAProxy frontend
+
+Same recipe every time (`iad`, `atlc`, …):
+
+1. **Name:** VM / `certname` = `ovcompilers.<site>-it.corp.int-x.ai`.
+   First DNS label must be `ovcompilers`. A records point at **this
+   VM**, not at `ovcompiler1` / `ovcompiler2`. Do not invent a second
+   DNS-only name for the same role.
+2. **Software:** OpenVox agent on the box; HAProxy :8140 to
+   `ovcompiler1.<site>-it.…`, `ovcompiler2.<site>-it.…`. Site agents
+   use `server = ovcompilers.<site>-it.corp.int-x.ai`.
+3. **Cert:** sign that certname on the CA agents trust.
+4. **GUI:** do not add the name to hide lists. Optional: `infra_vips`
+   for a health probe. Add backends to `compilers` /
+   `code_deploy_targets`.
+5. **Classify** as HAProxy / base after the first report. Never
+   `roles::catalog_compiler`.
+
+```bash
+ovox nodes list --limit 500 | grep ovcompilers
+```
+
+If it is missing, the agent has not reported to the OpenVoxDB **this**
+console queries. Check `OPENVOX_GUI_PUPPETDB_HOST` and
+`SELECT certname FROM certnames WHERE certname LIKE 'ovcompilers%';`.
 
 ---
 

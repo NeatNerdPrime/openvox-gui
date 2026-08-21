@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.0-rc.31**
+**OpenVox GUI Version 3.12.0-rc.32**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -332,7 +332,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.0-rc.31"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.0-rc.32"}` if everything is working.
 
 ---
 
@@ -677,6 +677,7 @@ Now that you have OpenVox GUI installed:
 | **Opt-in clustered mode** | A explicit **Settings → Cluster** switch turns on multi-server awareness. Until then, the product behaves as a classic one-box console. |
 | **GUI is not the control plane fabric** | Compilers, OpenVoxDB mesh, and CA HA are **infrastructure** concerns. OpenVox GUI observes, configures, deploys, and classifies—it does not replace Pacemaker, Spock, or your load balancers. |
 | **FQDN over VIP for member health** | When checking individual machines, probe **each host’s FQDN** (compiler :8140, OpenVoxDB :8081, CA members :8140). VIPs answer “is the service reachable?”; FQDNs answer “is **this** member healthy?” |
+| **HAProxy frontends are nodes** | `ovcompilers.<site>-it.…` is a real VM (HAProxy + agent). DNS RR names (`ovca.corp`, `ovdb.corp`) are not. Details under **Compiler VIP names** below and in [docs/FEATURES.md](docs/FEATURES.md) (Live fleet). |
 | **Same moment, same code** | In multi-compiler estates, code must not go live on one compiler minutes before another. Clustered **stage → activate** is about aligning that cutover. |
 | **Classification segments roles** | Compilers and OpenVoxDB hosts are fleet members too. ENC groups such as **Puppet Compiler** and **PuppetDB** keep roles visible and manageable without inventing a second inventory system. |
 
@@ -770,6 +771,36 @@ This is the **console workflow**, not a green-field build checklist.
 7. Use **Classification** to manage group membership and classes for infrastructure roles.
 
 If Cluster mode is left at **Single server**, multi-host panels and stage/activate stay out of the way.
+
+### Compiler VIP names (HAProxy VM vs DNS RR)
+
+Two things get called “VIPs.” The GUI treats them differently.
+OpenVoxDB `certnames` is the Nodes list (the CMDB).
+
+**DNS round-robin** (`ovca.corp.int-x.ai`, `ovdb.corp.int-x.ai`) is
+not a computer — only A records. Put those names in **CA VIP FQDNs**,
+**DNS RR VIPs**, or **Extra fleet exclude**. They must not appear on
+Nodes.
+
+**HAProxy compiler frontend** (`ovcompilers.<site>-it.corp.int-x.ai`)
+**is** a VM: OS, HAProxy, and a Puppet agent. Agents in that site use
+it as `server`. Classify it as HAProxy / base, not as a catalog
+compiler. Do **not** put `ovcompilers.*` in the hide fields. The GUI
+will not hide a name whose first label is `ovcompilers`.
+
+`ovcompiler1.*` (one “r”) is a backend compiler — also a real node.
+
+When you add another site:
+
+1. Name the LB `ovcompilers.<site>-it.…` (plural, with an “s”).
+2. Point that name’s A record at **this** VM, not at compiler1/2.
+3. Sign its cert; run `puppet agent -t` on the box.
+4. Add compiler backends to **Compiler FQDNs** / code-deploy targets.
+5. Optional: `infra_vips` for a health probe only (does not hide Nodes).
+
+Rule: if you can SSH and run `puppet agent`, it is a node. If you
+cannot, hide the DNS name. Full tables live in
+[docs/FEATURES.md](docs/FEATURES.md#live-fleet-membership-cross-cutting-rule).
 
 ### When to call for design help
 
