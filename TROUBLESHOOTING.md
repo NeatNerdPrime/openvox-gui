@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.36**
+**OpenVox GUI Version 3.12.0-rc.37**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.36"}
+   # Should return: {"status":"ok","version":"3.12.0-rc.37"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -645,6 +645,50 @@ Typical causes this script catches:
 3. Dashboard **Failed** after a good `puppet agent -t`: the new report is on the other site’s PDB. Compile once against the other site’s compiler, or put `reports` in the Spock `default` set.
 
 Never `INSERT` into `certnames`/`factsets`/`catalogs` and expect `/nodes` to change. Never `sub_resync_table` on `certnames`. Grant origin functions with `scripts/ensure-puppetdb-spock.sh` on every ovdb.
+
+### Unreported on Overview vs Monitoring
+
+Both pages use the same live census (after rc.37). A node is
+**Unreported** when any of these is true:
+
+1. No `latest_report_status` / no report on the OpenVoxDB this GUI
+   queried.
+2. Last report is **Failed** and older than 8 hours
+   (`OPENVOX_GUI_FAILED_ALERT_HOURS`).
+3. Last report is Unchanged/Changed and older than 24 hours
+   (`OPENVOX_GUI_NODE_FRESH_HOURS`).
+
+It is **not** “puppet agent -tv printed Applied.” The report must exist
+on **this** PDB (often `ovdb.corp` → one site). An ATLC compile stores
+the report on ATLC; PDXC can still say Unreported.
+
+**See why one name is Unreported** (console, as root):
+
+```bash
+CERT=/etc/puppetlabs/puppet/ssl/certs/$(puppet config print certname).pem
+KEY=/etc/puppetlabs/puppet/ssl/private_keys/$(puppet config print certname).pem
+CA=/etc/puppetlabs/puppet/ssl/certs/ca.pem
+CN=THE.CERT.NAME
+
+for ip in 172.29.32.76 172.29.160.76; do
+  echo "=== $ip ==="
+  curl -sk --cert "$CERT" --key "$KEY" --cacert "$CA" \
+    --resolve "ovdb.corp.int-x.ai:8081:${ip}" \
+    -G 'https://ovdb.corp.int-x.ai:8081/pdb/query/v4/nodes' \
+    --data-urlencode "query=[\"=\",\"certname\",\"${CN}\"]" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); n=(d[0] if d else {});
+print("status", n.get("latest_report_status"), "report", n.get("report_timestamp"))'
+done
+```
+
+**Clear it:** a new report on the PDB that showed `None` / old timestamp:
+
+```bash
+/opt/puppetlabs/bin/puppet agent -tv --server ovcompiler1.pdxc-it.corp.int-x.ai
+```
+
+(Use an ATLC compiler if the empty side is `.160.76`.) Then hard-refresh
+Overview and Monitoring. Both must list the same Unreported certnames.
 
 Live-fleet rules and HAProxy vs DNS RR: [docs/FEATURES.md](docs/FEATURES.md#live-fleet-membership-cross-cutting-rule).
 

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.37] - 2026-08-21 (fix — Overview and Monitoring share census)
+
+### Changed
+- **Status buckets:** Overview, Nodes, and Insights | Monitoring use
+  `display_status()` — empty PDB status is Unreported (not Unchanged).
+  Monitoring applies the same freshness + live-run overlay as Dashboard.
+- **TROUBLESHOOTING:** Unreported means no current report on the PDB
+  this GUI read; how to compare `.32.76` vs `.160.76` and clear it.
+
 ## [3.12.0-rc.36] - 2026-08-21 (fix — Monitoring Failed is now)
 
 ### Changed

@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.fleet_insights import apply_report_freshness, downgrade_stale_failed
+from app.services.fleet_insights import (
+    apply_report_freshness,
+    compute_status_counts,
+    display_status,
+    downgrade_stale_failed,
+    partition_display_nodes,
+)
 from app.services.puppetdb import PuppetDBService
 
 
@@ -91,3 +97,19 @@ def test_stale_unchanged_becomes_unreported_after_a_day():
     assert by_cn["recent-ok.example"]["latest_report_status"] == "unchanged"
     assert by_cn["day-old-failed.example"]["latest_report_status"] == "unreported"
     assert by_cn["day-old-failed.example"]["status_source"] == "stale_failed"
+
+
+def test_empty_status_is_unreported_not_unchanged():
+    nodes = [
+        {"certname": "a", "latest_report_status": None},
+        {"certname": "b", "latest_report_status": ""},
+        {"certname": "c", "latest_report_status": "unreported"},
+        {"certname": "d", "latest_report_status": "unchanged"},
+    ]
+    assert display_status(nodes[0]) == "unreported"
+    assert display_status(nodes[1]) == "unreported"
+    counts = compute_status_counts(nodes)
+    parts = partition_display_nodes(nodes)
+    assert counts["unreported"] == 3
+    assert counts["unchanged"] == 1
+    assert {n["certname"] for n in parts["unreported"]} == {"a", "b", "c"}

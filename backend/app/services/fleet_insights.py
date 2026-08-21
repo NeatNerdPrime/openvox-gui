@@ -70,8 +70,21 @@ def apply_report_freshness(
     return nodes
 
 
+def display_status(node: Dict) -> str:
+    """Single display bucket for Overview, Nodes, and Monitoring.
+
+    Empty / unknown latest_report_status is unreported (not unchanged).
+    """
+    if node.get("latest_report_noop"):
+        return "noop"
+    status = (node.get("latest_report_status") or "").strip().lower()
+    if status in ("failed", "unchanged", "changed", "unreported", "noop"):
+        return status
+    return "unreported"
+
+
 def compute_status_counts(nodes: List[Dict]) -> Dict[str, int]:
-    """Categorise nodes by latest_report_status / noop (dashboard + PDB parity)."""
+    """Categorise nodes by display_status (dashboard + Monitoring parity)."""
     counts = {
         "changed": 0,
         "unchanged": 0,
@@ -81,16 +94,39 @@ def compute_status_counts(nodes: List[Dict]) -> Dict[str, int]:
         "total": len(nodes),
     }
     for node in nodes:
-        status = node.get("latest_report_status")
-        if node.get("latest_report_noop"):
-            counts["noop"] += 1
-        elif status in counts:
-            counts[status] += 1
-        elif status is None:
-            counts["unreported"] += 1
-        else:
-            counts["unchanged"] += 1
+        status = display_status(node)
+        counts[status] = counts.get(status, 0) + 1
     return counts
+
+
+def partition_display_nodes(nodes: List[Dict]) -> Dict[str, List[Dict]]:
+    """Same buckets as compute_status_counts, with node rows."""
+    out: Dict[str, List[Dict]] = {
+        "changed": [],
+        "unchanged": [],
+        "failed": [],
+        "unreported": [],
+        "noop": [],
+        "compliant": [],
+        "drifted": [],
+    }
+    for node in nodes:
+        entry = {
+            "certname": node.get("certname"),
+            "status": display_status(node),
+            "corrective": node.get("latest_report_corrective_change", False),
+            "environment": node.get("report_environment"),
+            "report_timestamp": node.get("report_timestamp"),
+            "status_source": node.get("status_source"),
+        }
+        st = entry["status"]
+        if st in out:
+            out[st].append(entry)
+        if entry["corrective"] and st != "failed":
+            out["drifted"].append(entry)
+        elif st in ("unchanged", "changed"):
+            out["compliant"].append(entry)
+    return out
 
 
 def compute_trends(nodes: List[Dict], reports: List[Any]) -> List[Dict]:
@@ -100,12 +136,7 @@ def compute_trends(nodes: List[Dict], reports: List[Any]) -> List[Dict]:
         cn = n.get("certname", "")
         if not cn:
             continue
-        if n.get("latest_report_noop"):
-            node_state[cn] = "noop"
-        elif n.get("latest_report_status"):
-            node_state[cn] = n["latest_report_status"]
-        else:
-            node_state[cn] = "unreported"
+        node_state[cn] = display_status(n)
 
     bucket_reports: Dict[str, list] = defaultdict(list)
     for report in reports:

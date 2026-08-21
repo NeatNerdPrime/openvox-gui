@@ -85,7 +85,7 @@ async def get_compliance(
     hours_key = round(float(hours), 4)
     cn_list = [c.strip() for c in (certnames or "").split(",") if c.strip()]
     cache_key = (
-        f"compliance_v3now_{hours_key}_{scope or 'all'}_"
+        f"compliance_v4parity_{hours_key}_{scope or 'all'}_"
         f"{location or ''}_{certname_re or ''}_{','.join(sorted(cn_list))}"
     )
     cached = _get_cached(cache_key)
@@ -106,7 +106,12 @@ async def get_compliance(
     # Monitoring "Failed" is *now* (freshness rules), not reports in the
     # lookback window.
     from ..config import settings
-    from ..services.fleet_insights import apply_report_freshness
+    from ..database import async_session
+    from ..routers.nodes import apply_live_run_status
+    from ..services.fleet_insights import (
+        apply_report_freshness,
+        partition_display_nodes,
+    )
 
     try:
         all_nodes = await puppetdb_service.get_live_nodes()
@@ -117,36 +122,18 @@ async def get_compliance(
         failed_hours=float(getattr(settings, "failed_alert_hours", 8.0) or 0),
         fresh_hours=float(getattr(settings, "node_fresh_hours", 24.0) or 0),
     )
+    try:
+        async with async_session() as db:
+            await apply_live_run_status(all_nodes, db)
+    except Exception as e:
+        logger.warning("compliance live-run overlay failed: %s", e)
     nodes = filter_nodes_by_scope(all_nodes, scope_result)
-
-    compliant = []
-    drifted = []
-    failed = []
-    noop = []
-    unreported = []
-
-    for node in nodes:
-        status = node.get("latest_report_status", "")
-        corrective = node.get("latest_report_corrective_change", False)
-        entry = {
-            "certname": node.get("certname"),
-            "status": status,
-            "corrective": corrective,
-            "environment": node.get("report_environment"),
-            "report_timestamp": node.get("report_timestamp"),
-        }
-        if status == "failed":
-            failed.append(entry)
-        elif corrective:
-            drifted.append(entry)
-        elif status == "unchanged":
-            compliant.append(entry)
-        elif status == "changed":
-            compliant.append(entry)
-        elif status == "noop":
-            noop.append(entry)
-        else:
-            unreported.append(entry)
+    parts = partition_display_nodes(nodes)
+    compliant = parts["compliant"]
+    drifted = parts["drifted"]
+    failed = parts["failed"]
+    noop = parts["noop"]
+    unreported = parts["unreported"]
 
     # Rolling census trend for this scope (sum of series ≈ scoped fleet size)
     since = (datetime.now(timezone.utc) - timedelta(hours=float(hours))).isoformat()
