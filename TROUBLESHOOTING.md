@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.32**
+**OpenVox GUI Version 3.12.0-rc.33**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -16,6 +16,7 @@ This guide helps you solve common problems with OpenVox GUI. Think of it as your
 6. [Performance Issues](#performance-issues)
 7. [Display and UI Problems](#display-and-ui-problems)
 8. [Data and Report Issues](#data-and-report-issues)
+8a. [GUI node count ≠ PuppetDB](#gui-node-count--puppetdb)
 9. [Certificate Problems](#certificate-problems)
 10. [CA log noise (already signed / no CSR)](#ca-log-noise-already-signed--no-csr)
 11. [Update and Deployment Issues](#update-and-deployment-issues)
@@ -131,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.32"}
+   # Should return: {"status":"ok","version":"3.12.0-rc.33"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -618,6 +619,34 @@ Use `sudo puppet config print ssldir`.
    ```
 
 ---
+
+## GUI node count ≠ PuppetDB
+
+**Symptoms:** `ovox nodes list` shows 7 (or 8) names; `SELECT count(*) FROM certnames` on an ovdb is 16.
+
+**This is not a cache.** Three different numbers:
+
+| Source | What it counts |
+|--------|----------------|
+| `certnames` SQL | Every row, including stubs you INSERTed |
+| `GET /pdb/query/v4/nodes` | Nodes with a **catalog** (what the GUI uses) |
+| CA `ca/signed` | Signed PEMs, including hosts that never reported |
+
+**Fix (automated check):**
+
+```bash
+sudo /opt/openvox-gui/scripts/cluster-preflight.sh
+```
+
+Typical causes this script catches:
+
+1. `/etc/hosts` pins `ovdb.corp.int-x.ai` to **one** site VIP. `hosts: files dns` then never sees the other A record. Delete that line. Members (`ovdb1`/`ovdb2`) may stay in hosts.
+2. VIP A records (`.78`) are **not** the member IPs (`.76`/`.77`). Probe `/nodes` on **every** A record — they must match.
+3. Dashboard **Failed** after a good `puppet agent -t`: the new report is on the other site’s PDB. Compile once against the other site’s compiler, or put `reports` in the Spock `default` set.
+
+Never `INSERT` into `certnames`/`factsets`/`catalogs` and expect `/nodes` to change. Never `sub_resync_table` on `certnames`. Grant origin functions with `scripts/ensure-puppetdb-spock.sh` on every ovdb.
+
+Live-fleet rules and HAProxy vs DNS RR: [docs/FEATURES.md](docs/FEATURES.md#live-fleet-membership-cross-cutting-rule).
 
 ## Certificate Problems
 

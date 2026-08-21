@@ -9,6 +9,10 @@ Code train: openvox-gui **3.12.0-rc.28** on `main` (3.11 alphas are historical)
 Read this top to bottom tomorrow morning. Do not skip. Do not put GUI
 tables inside the PuppetDB database named "puppetdb".
 
+After 2026-08-21: run scripts/cluster-preflight.sh on every console
+and scripts/ensure-puppetdb-spock.sh on every ovdb. See INSTALL
+"Compiler VIP names" and FEATURES "Live fleet".
+
 
 ------------------------------------------------------------------------
 A. PRINCIPLES (read first)

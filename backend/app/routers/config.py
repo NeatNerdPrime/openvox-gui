@@ -412,9 +412,11 @@ class ClusterConfigUpdate(BaseModel):
     puppetdb_nodes: List[str] = []
     ca_nodes: List[str] = []
     ca_vips: List[str] = []
-    # Compiler/PDB HAProxy or DNS VIP FQDNs — excluded from live fleet
+    # Health probes only — ovcompilers.* stay on Nodes
     infra_vips: List[str] = []
-    # Extra certnames to hide from Nodes / Inventory / Dashboard membership
+    # DNS RR names with no VM (ovdb.corp) — hidden from Nodes
+    dns_rr_vips: List[str] = []
+    # Extra hide list (never ovcompilers.*)
     fleet_exclude: List[str] = []
     code_deploy_targets: List[str] = []
     consoles: List[str] = []

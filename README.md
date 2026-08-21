@@ -107,7 +107,7 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 > Full detail: **[docs/FEATURES.md](docs/FEATURES.md)**. Nav groups: **Overview** → **Infrastructure** → **Classification & Code** → **Data** → **Explore** → **Insights** → **Settings**.
 
 ### Overview — Dashboard, Nodes, Reports
-- **Live fleet** = active OpenVoxDB ∩ signed CA (ghosts after `ca clean` / deactivate drop out)
+- **Live fleet** = active OpenVoxDB `/nodes` (catalogs). DNS RR names hidden; `ovcompilers.*` HAProxy VMs stay visible.
 - Dashboard trends, sessions, optional auto-refresh (SWR — no blank flash)
 - Nodes OpsTable / filters / export; node detail **Run OpenVox**, purge, classify
 - Reports list + detail (hash prefix / peer-aware); exit code **2** = successful apply with changes

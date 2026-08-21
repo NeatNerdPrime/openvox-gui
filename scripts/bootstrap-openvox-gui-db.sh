@@ -278,6 +278,13 @@ GRANT ALL ON ALL TABLES IN SCHEMA spock TO ${REPL_USER};
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA spock TO ${REPL_USER};
 GRANT USAGE ON SCHEMA public TO ${REPL_USER};
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${REPL_USER};
+-- PG17: table-sync BEGIN calls these; deny = crash-loop (exit 1 every 2s)
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_replication_origin_oid(text) TO ${REPL_USER};
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_replication_origin_session_setup(text) TO ${REPL_USER};
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_replication_origin_session_reset() TO ${REPL_USER};
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_replication_origin_advance(text, pg_lsn) TO ${REPL_USER};
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_replication_origin_create(text) TO ${REPL_USER};
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_replication_origin_drop(text) TO ${REPL_USER};
 SQL
     # Local Spock node if missing
     EXISTS=$(psql_uri "$HAPP" -tAc "SELECT count(*) FROM spock.node WHERE node_name='${NODE}'" 2>/dev/null || echo 0)

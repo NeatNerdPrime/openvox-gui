@@ -45,8 +45,9 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 - Cluster fields: `vip_hosts`, `infra_vips`, `fleet_exclude`
 
 ### Fleet / Nodes
-- Live fleet = active PDB − DNS RR names (`ovcompilers.*` stay)  
-- VIP LB names (e.g. `ovcompilers.*`) excluded when listed in cluster config / env  
+- Live fleet = active PDB `/nodes` − DNS RR names only (`ovcompilers.*` stay)  
+- `cluster-preflight.sh` refuses `/etc/hosts` pins of the PDB VIP  
+- `ensure-puppetdb-spock.sh` grants `pg_replication_origin_*` to `repl_user`  
 - Status badge = newest OpenVoxDB **report** `status` (not CA)
 
 ### Log Viewer

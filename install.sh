@@ -1156,6 +1156,17 @@ OPENVOX_GUI_FLEET_HEALTH_REPORT_OUTPUT_DIR=${INSTALL_DIR}/data/reports
 ENVEOF
 log_ok "Generated ${INSTALL_DIR}/config/.env"
 
+# Clustered: never pin the PDB VIP in /etc/hosts (files beats DNS).
+if [ -n "${PUPPETDB_HOST}" ] && grep -E "^[^#]*[[:space:]]${PUPPETDB_HOST}([[:space:]]|\$)" /etc/hosts >/dev/null 2>&1; then
+    log_warn "/etc/hosts contains ${PUPPETDB_HOST} — that replaces a DNS RR with one IP."
+    log_warn "Remove that line. Members (ovdb1/ovdb2) may stay in hosts; VIP FQDNs must not."
+fi
+if [ -x "${INSTALL_DIR}/scripts/cluster-preflight.sh" ]; then
+    log_info "Running cluster-preflight (warnings only)…"
+    bash "${INSTALL_DIR}/scripts/cluster-preflight.sh" --env "${INSTALL_DIR}/config/.env" \
+        || log_warn "cluster-preflight reported problems — see scripts/cluster-preflight.sh"
+fi
+
 # ─── PostgreSQL application DB (optional; preferred for production DR) ──
 # Provisions role, database, full schema, alembic stamp, optional Spock mesh.
 # Operator only supplies install.conf credentials — no hand SQL.

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.33] - 2026-08-21 (ops — cluster preflight + Spock grants)
+
+### Changed
+- **scripts/cluster-preflight.sh:** refuse `/etc/hosts` pins of the PDB
+  VIP; compare `/nodes` on every A record; check compiler disk vs :8140.
+  install.sh runs it after writing `.env`.
+- **scripts/ensure-puppetdb-spock.sh:** grant `pg_replication_origin_*`
+  to `repl_user` on database `puppetdb`. Same grants in
+  bootstrap-openvox-gui-db.sh for the GUI mesh.
+- **TROUBLESHOOTING / STATUS / README / INSTALL:** GUI count ≠ PDB
+  playbook; `/nodes` follows catalogs; never SQL-insert fleet rows.
+
 ## [3.12.0-rc.32] - 2026-08-21 (docs — HAProxy vs DNS RR in INSTALL/FEATURES)
 
 ### Changed

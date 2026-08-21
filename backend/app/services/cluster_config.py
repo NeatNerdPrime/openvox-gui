@@ -33,12 +33,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "compilers": [],  # list of FQDNs (catalog compilers / deploy targets)
     "puppetdb_nodes": [],  # list of FQDNs (OpenVoxDB application hosts)
     "ca_nodes": [],  # list of CA member FQDNs (ovca1, ovca2 per site)
-    "ca_vips": [],  # optional CA VIP FQDNs (ovca.pdxc…, ovca.corp…)
-    # Compiler / PDB / other HAProxy or DNS VIP FQDNs (ovcompilers.pdxc…, etc.).
-    # Not real agents — excluded from live fleet (Nodes, Inventory, Dashboard, …).
+    "ca_vips": [],  # DNS RR for CA (ovca.corp) — hide from Nodes
+    # Health-probe only (HAProxy compiler frontends). Does NOT hide Nodes.
     "infra_vips": [],
-    # Extra certnames to hide from live fleet (in addition to ca_vips / infra_vips /
-    # console vip_hosts). Use for one-off LB names or mis-issued VIP certnames.
+    # DNS-only RR names with no OS (ovdb.corp). Hidden from Nodes.
+    "dns_rr_vips": [],
+    # Extra hide list. Never put ovcompilers.* here (code strips them).
     "fleet_exclude": [],
     "code_deploy_targets": [],  # FQDNs that receive r10k stage/activate (defaults to compilers)
     "consoles": [],  # GUI FQDNs (openvox.pdxc…, openvox.atlc…)
@@ -95,6 +95,7 @@ def _normalize(data: Dict[str, Any]) -> Dict[str, Any]:
         "ca_nodes",
         "ca_vips",
         "infra_vips",
+        "dns_rr_vips",
         "fleet_exclude",
         "code_deploy_targets",
         "consoles",
