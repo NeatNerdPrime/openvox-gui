@@ -380,7 +380,10 @@ Hide only via **Settings → Application → Cluster**:
 | **Extra fleet exclusions** (`fleet_exclude`) | Anything else that is not an agent |
 
 `infra_vips` is for health probes only — it does **not** hide Nodes.
-`ovcompilers.*` must not be listed in `ca_vips` / `dns_rr_vips` / `fleet_exclude`.
+First-label ``ovcompilers`` (any site) is **never** hidden, even if
+listed in `ca_vips` / `dns_rr_vips` / `fleet_exclude`. New DCs: name
+the HAProxy box `ovcompilers.<site>-it.…`, point agents at that
+certname, do **not** invent a second DNS-only name for the same role.
 
 Env: `OPENVOX_GUI_FLEET_EXCLUDE=ovdb.corp.int-x.ai,ovca.corp.int-x.ai`
 

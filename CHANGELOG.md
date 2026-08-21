@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.31] - 2026-08-21 (fix — never hide ovcompilers.* HAProxy agents)
+
+### Changed
+- **Fleet exclude:** first-label `ovcompilers` is never stripped from
+  Nodes, even if listed in `ca_vips` / `dns_rr_vips` / `fleet_exclude`.
+  Those hosts are HAProxy VMs with an agent. DNS RR names stay hideable.
+
 ## [3.12.0-rc.30] - 2026-08-21 (fix — Nodes = PuppetDB, not CA ∩)
 
 ### Changed

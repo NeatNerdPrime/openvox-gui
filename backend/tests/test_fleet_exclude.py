@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from app.services.cluster_config import fleet_excluded_certnames, is_fleet_excluded
+from app.services.cluster_config import (
+    fleet_excluded_certnames,
+    is_compiler_haproxy_agent,
+    is_fleet_excluded,
+)
 
 
 def test_fleet_excluded_merges_cluster_lists():
@@ -13,7 +17,7 @@ def test_fleet_excluded_merges_cluster_lists():
         "dns_rr_vips": ["ovdb.corp.example.com"],
         "infra_vips": ["ovcompilers.pdxc-it.corp.example.com"],
         "vip_hosts": ["openvox.corp.example.com"],
-        "fleet_exclude": ["extra-lb.example.com"],
+        "fleet_exclude": ["extra-lb.example.com", "ovcompilers.iad-it.corp.example.com"],
         "compilers": [],
         "puppetdb_nodes": [],
         "ca_nodes": [],
@@ -32,5 +36,8 @@ def test_fleet_excluded_merges_cluster_lists():
     assert "openvox.corp.example.com" in xs
     assert "extra-lb.example.com" in xs
     assert "env-only.example.com" in xs
+    assert "ovcompilers.iad-it.corp.example.com" not in xs
     assert not is_fleet_excluded("ovcompilers.pdxc-it.corp.example.com")
     assert not is_fleet_excluded("ovcompiler1.pdxc-it.corp.example.com")
+    assert is_compiler_haproxy_agent("ovcompilers.iad-it.corp.example.com")
+    assert not is_compiler_haproxy_agent("ovca.corp.example.com")

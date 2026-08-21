@@ -198,11 +198,23 @@ def deploy_targets() -> List[str]:
     return list(targets)
 
 
+def is_compiler_haproxy_agent(certname: Optional[str]) -> bool:
+    """True for HAProxy compiler-frontends: first label is ``ovcompilers``.
+
+    ``ovcompilers.atlc-it…`` / ``ovcompilers.pdxc-it…`` are real VMs with
+    an agent. ``ovcompiler1.*`` (the backends) are also agents but are
+    never hide-list candidates. DNS RR names (``ovca.corp``, ``ovdb.corp``)
+    do not match.
+    """
+    n = (certname or "").strip().lower()
+    return bool(n) and n.split(".", 1)[0] == "ovcompilers"
+
+
 def fleet_excluded_certnames() -> Set[str]:
     """DNS-only RR names that must not appear as live-fleet *nodes*.
 
-    Hide names that are not VMs (``ovca.corp``, ``ovdb.corp``). Do **not**
-    hide ``ovcompilers.*``: those are real HAProxy hosts with an agent.
+    Hide names that are not VMs (``ovca.corp``, ``ovdb.corp``). Never hide
+    ``ovcompilers.*`` even if someone lists them in a VIP field.
 
     Sources (union, case-insensitive):
       - cluster ``ca_vips``, ``dns_rr_vips``, ``vip_hosts``, ``fleet_exclude``
@@ -227,7 +239,7 @@ def fleet_excluded_certnames() -> Set[str]:
             n = part.strip().lower().split(":")[0]
             if n:
                 out.add(n)
-    return out
+    return {n for n in out if not is_compiler_haproxy_agent(n)}
 
 
 def is_fleet_excluded(certname: Optional[str]) -> bool:
