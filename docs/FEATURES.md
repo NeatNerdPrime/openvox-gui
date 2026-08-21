@@ -415,6 +415,11 @@ After PDB deactivate/expire, hosts drop from Dashboard, Nodes,
 Inventory, ENC unclassified, and Node Health. ENC rows still need
 purge-stale.
 
+A **Failed** latest report older than
+`OPENVOX_GUI_FAILED_ALERT_HOURS` (default **8**) is shown as
+**unreported** on Overview / Nodes so yesterday’s failure does not
+stay red. Set `0` to keep Failed until a newer report arrives.
+
 ### First-time clustered setup (Nodes membership)
 
 When you first turn on Settings → Cluster:

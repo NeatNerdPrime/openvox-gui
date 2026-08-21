@@ -242,6 +242,14 @@ class PuppetDBService:
                 "get_live_nodes: excluded %d DNS-RR name(s)",
                 len(excluded),
             )
+        try:
+            from ..config import settings
+            from .fleet_insights import downgrade_stale_failed
+
+            hours = float(getattr(settings, "failed_alert_hours", 8.0) or 0)
+            downgrade_stale_failed(live, hours=hours)
+        except Exception:
+            logger.debug("stale-failed downgrade skipped", exc_info=True)
         return live
 
     async def get_fleet_nodes(self) -> List[Dict]:

@@ -7,7 +7,44 @@ puppetdb_service, and metrics routers do not diverge.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+
+def _parse_report_ts(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    try:
+        s = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+    except Exception:
+        return None
+
+
+def downgrade_stale_failed(nodes: List[Dict], hours: float = 8.0) -> List[Dict]:
+    """Stop alerting Failed when the last report is older than *hours*.
+
+    A day-old failed report is history, not an incident. Display those
+    nodes as unreported so Overview does not stay red. Set hours<=0 to
+    disable. Original status is kept in node_index_status.
+    """
+    if hours <= 0 or not nodes:
+        return nodes
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    for node in nodes:
+        status = (node.get("latest_report_status") or "").lower()
+        if status != "failed":
+            continue
+        ts = _parse_report_ts(node.get("report_timestamp"))
+        if ts is not None and ts >= cutoff:
+            continue
+        node["node_index_status"] = node.get("node_index_status") or "failed"
+        node["latest_report_status"] = "unreported"
+        node["status_source"] = "stale_failed"
+    return nodes
 
 
 def compute_status_counts(nodes: List[Dict]) -> Dict[str, int]:

@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     # VIP poll floor (ms) advertised to the SPA — minimum auto-refresh interval
     # when access_mode=vip. Direct node FQDNs keep their page defaults.
     vip_poll_floor_ms: int = 45000
+    # Hours a Failed latest-report stays alerting on Overview / Nodes.
+    # After this, the badge becomes unreported (history, not an incident).
+    # 0 = never downgrade. Default 8.
+    failed_alert_hours: float = 8.0
     # Comma/space-separated certnames to hide from live fleet (HAProxy/DNS VIPs).
     # Merged with cluster_config ca_vips / infra_vips / vip_hosts / fleet_exclude.
     # Example: ovcompilers.pdxc-it.corp.int-x.ai,ovcompilers.atlc-it.corp.int-x.ai
