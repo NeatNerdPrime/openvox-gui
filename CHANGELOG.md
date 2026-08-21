@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.38] - 2026-08-21 (fix — Play button shows real Bolt stderr)
+
+### Fixed
+- **Nodes Play:** toast/API `error` is the per-target `stderr` / `_error.msg`
+  from Bolt JSON, not the truncated `{"items":[` envelope.
+
 ## [3.12.0-rc.37] - 2026-08-21 (fix — Overview and Monitoring share census)
 
 ### Changed

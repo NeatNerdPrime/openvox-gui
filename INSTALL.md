@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.0-rc.37**
+**OpenVox GUI Version 3.12.0-rc.38**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -332,7 +332,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.0-rc.37"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.0-rc.38"}` if everything is working.
 
 ---
 

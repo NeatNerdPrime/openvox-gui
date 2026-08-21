@@ -261,7 +261,7 @@ export function NodesPage() {
       const failDetail = (r.error || r.output || `Exit code ${r.returncode} on ${certname}`)
         .replace(/\x00/g, '')
         .replace(/CLI arguments[\s\S]*?\[ID: cli_overrides\]\s*/gi, '')
-        .slice(0, 280);
+        .slice(0, 800);
       notifications.show({
         title: ok ? 'OpenVox Run Complete' : 'OpenVox Run Failed',
         message: ok
