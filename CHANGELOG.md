@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.36] - 2026-08-21 (fix — Monitoring Failed is now)
+
+### Changed
+- **Insights | Monitoring / Fleet Compliance:** Failed / Compliant
+  counts are the live fleet after 8h/24h freshness. The trend's last
+  bucket matches that census so yesterday's failed reports do not
+  paint 14 red nodes when the fleet is green now.
+
 ## [3.12.0-rc.35] - 2026-08-21 (fix — stale Unchanged is Unreported)
 
 ### Changed

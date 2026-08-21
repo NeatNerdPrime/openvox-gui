@@ -85,7 +85,7 @@ async def get_compliance(
     hours_key = round(float(hours), 4)
     cn_list = [c.strip() for c in (certnames or "").split(",") if c.strip()]
     cache_key = (
-        f"compliance_{hours_key}_{scope or 'all'}_"
+        f"compliance_v3now_{hours_key}_{scope or 'all'}_"
         f"{location or ''}_{certname_re or ''}_{','.join(sorted(cn_list))}"
     )
     cached = _get_cached(cache_key)
@@ -102,11 +102,21 @@ async def get_compliance(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Prefer live fleet membership, then restrict to scope
+    # Prefer live fleet membership, then restrict to scope.
+    # Monitoring "Failed" is *now* (freshness rules), not reports in the
+    # lookback window.
+    from ..config import settings
+    from ..services.fleet_insights import apply_report_freshness
+
     try:
         all_nodes = await puppetdb_service.get_live_nodes()
     except Exception:
         all_nodes = await puppetdb_service.get_nodes()
+    apply_report_freshness(
+        all_nodes,
+        failed_hours=float(getattr(settings, "failed_alert_hours", 8.0) or 0),
+        fresh_hours=float(getattr(settings, "node_fresh_hours", 24.0) or 0),
+    )
     nodes = filter_nodes_by_scope(all_nodes, scope_result)
 
     compliant = []
@@ -170,6 +180,14 @@ async def get_compliance(
             ts = (row.get("timestamp") or "")[:13]
             if ts in hourly_drift:
                 row["drifted"] = hourly_drift[ts]
+        # Last bucket is *now*: do not leave replayed yesterday-failed
+        # as the wallboard's current Failed count.
+        if trend:
+            trend[-1]["failed"] = len(failed)
+            trend[-1]["compliant"] = len(compliant)
+            trend[-1]["unreported"] = len(unreported)
+            trend[-1]["noop"] = len(noop)
+            trend[-1]["drifted"] = len(drifted)
     except Exception as e:
         logger.warning("compliance trend failed: %s", e)
         trend = []

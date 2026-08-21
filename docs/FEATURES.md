@@ -422,6 +422,11 @@ A **Failed** latest report older than
 (default **24**) is also **unreported**. Set either to `0` to disable
 that cutoff.
 
+**Insights | Monitoring** Fleet Compliance **Failed** is that
+*current* census only (after freshness). The lookback window still
+draws history on the area chart; the last bucket and the red stat
+card are right now, not “any fail in the last 8/24/48 hours.”
+
 ### First-time clustered setup (Nodes membership)
 
 When you first turn on Settings → Cluster:
