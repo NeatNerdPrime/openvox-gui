@@ -980,7 +980,7 @@ async def get_node_health(_user: str = Depends(_AUTH)):
     """Node health overview focused on Puppet agent enabled/disabled status.
 
     Membership is the **same fleet as Overview | Nodes**, Insights |
-    Inventory, and ENC: **active PuppetDB ∩ signed CA** (`get_live_nodes`).
+    Inventory, and ENC: **active PuppetDB** (`get_live_nodes`).
     CA-cleaned or deactivated/expired hosts do not appear.
 
     Facts (agent disabled / message) are applied only for certnames on that fleet.

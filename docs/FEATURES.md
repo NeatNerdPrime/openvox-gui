@@ -83,7 +83,7 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 ### Dashboard (`/`)
 
 - Fleet summary: counts by latest run status (unchanged / changed / failed / unreported / …)
-- Live membership: **`get_live_nodes()` = active PuppetDB ∩ signed CA**
+- Live membership: **`get_live_nodes()` = active PuppetDB** (CMDB)
 - Trends (status over time), service/cluster health snippets where configured
 - Active GUI sessions
 - Optional auto-refresh; SWR / session cache so polls do not blank the page
@@ -358,28 +358,34 @@ Same RBAC as the web UI via session or service token.
 
 Unless a page is **CA-authoritative** (Certificates) or explicitly historical:
 
-**Shown nodes = active in OpenVoxDB ∩ currently signed on the CA − fleet exclusions.**
+**Shown nodes = active OpenVoxDB `certnames` − DNS RR names only.**
 
-### HAProxy / DNS VIPs (not agents)
+PuppetDB is the CMDB. The CA list is **not** intersected (a site-wrong
+`ovca.corp` lookup must not hide agents). Certificates page stays CA-centric.
 
-VIP names such as `ovcompilers.pdxc-it.corp.int-x.ai` often appear in OpenVoxDB
-(reports under the LB certname) but are **not** real nodes. Exclude them via
-**Settings → Application → Cluster**:
+### DNS RR vs real HAProxy boxes
+
+| Kind | Example | In Nodes? |
+|------|---------|-----------|
+| DNS round-robin (no VM) | `ovca.corp.int-x.ai`, `ovdb.corp.int-x.ai` | Hide |
+| HAProxy VM with an agent | `ovcompilers.atlc-it.corp.int-x.ai` | **Show** |
+
+Hide only via **Settings → Application → Cluster**:
 
 | Field | Purpose |
 |-------|---------|
-| **CA VIP FQDNs** (`ca_vips`) | CA load-balancer names |
-| **Infrastructure VIP FQDNs** (`infra_vips`) | Compiler/PDB HAProxy or DNS VIPs |
-| **Console VIP** (`vip_hosts`) | GUI LB hostnames |
-| **Extra fleet exclusions** (`fleet_exclude`) | Anything else |
+| **CA VIP FQDNs** (`ca_vips`) | DNS RR for the CA |
+| **DNS RR VIPs** (`dns_rr_vips`) | Other names with no OS (`ovdb.corp`) |
+| **Console VIP** (`vip_hosts`) | GUI RR hostname if it is not a box |
+| **Extra fleet exclusions** (`fleet_exclude`) | Anything else that is not an agent |
 
-Or env: `OPENVOX_GUI_FLEET_EXCLUDE=ovcompilers.pdxc-it.corp.int-x.ai,…`
+`infra_vips` is for health probes only — it does **not** hide Nodes.
+`ovcompilers.*` must not be listed in `ca_vips` / `dns_rr_vips` / `fleet_exclude`.
 
-These are stripped inside `get_live_nodes()` (Nodes, Inventory, Dashboard
-membership, ENC unclassified, Node Health). Certificates page still shows
-signed cert inventory if a VIP cert exists on the CA.
+Env: `OPENVOX_GUI_FLEET_EXCLUDE=ovdb.corp.int-x.ai,ovca.corp.int-x.ai`
 
-After `ca clean` or PDB deactivate/expire, hosts must disappear from Dashboard, Nodes, Inventory, ENC unclassified reconciliation, and Node Health. Open ENC once after mass clean so SQLite rows prune.
+After PDB deactivate/expire, hosts drop from Dashboard, Nodes, Inventory,
+ENC unclassified, and Node Health. ENC rows still need purge-stale.
 
 ---
 

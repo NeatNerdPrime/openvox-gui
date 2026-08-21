@@ -75,7 +75,7 @@ async def _build_dashboard_data() -> Dict[str, Any]:
         "%Y-%m-%dT%H:%M:%S.000Z"
     )
     raw_nodes, reports = await asyncio.gather(
-        puppetdb_service.get_live_nodes(),  # active PDB ∩ signed CA (SSoT w/ Inventory / ENC)
+        puppetdb_service.get_live_nodes(),  # active PDB (SSoT w/ Inventory / ENC)
         _fetch_trend_reports(cutoff),
     )
 

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.30] - 2026-08-21 (fix — Nodes = PuppetDB, not CA ∩)
+
+### Changed
+- **Live fleet (`get_live_nodes`):** OpenVoxDB `certnames` is the CMDB.
+  Nodes / Inventory / Dashboard / ENC unclassified no longer intersect
+  the CA signed list (a short or site-wrong `ovca.corp` lookup was
+  hiding real agents). DNS RR names (`ca_vips`, `dns_rr_vips`,
+  `vip_hosts`, `fleet_exclude`) are still hidden. **`ovcompilers.*`
+  stays visible** — those are HAProxy VMs with an agent. `infra_vips`
+  is health-probe only and no longer strips Nodes.
+
 ## [3.12.0-rc.29] - 2026-08-19 (docs — clustered LDAP + STATUS sync)
 
 ### Changed

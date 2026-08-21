@@ -45,7 +45,7 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 - Cluster fields: `vip_hosts`, `infra_vips`, `fleet_exclude`
 
 ### Fleet / Nodes
-- Live fleet = active PDB ∩ signed CA − fleet exclusions  
+- Live fleet = active PDB − DNS RR names (`ovcompilers.*` stay)  
 - VIP LB names (e.g. `ovcompilers.*`) excluded when listed in cluster config / env  
 - Status badge = newest OpenVoxDB **report** `status` (not CA)
 

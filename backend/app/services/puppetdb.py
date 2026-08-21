@@ -201,22 +201,17 @@ class PuppetDBService:
         return unique
 
     async def get_live_nodes(self) -> List[Dict]:
-        """Return nodes that exist in **both** active PuppetDB and the CA.
+        """Return the fleet as active OpenVoxDB nodes (PuppetDB is SSoT).
 
-        This is the shared membership source of truth for Overview | Nodes,
-        Insights | Inventory, ENC Unclassified / reconciliation, Dashboard,
-        and Node Health:
+        Overview | Nodes, Insights | Inventory, ENC Unclassified /
+        reconciliation, Dashboard, and Node Health all use this list.
 
-        - **Active PuppetDB** — not deactivated / not expired (ghost factsets
-          after expire/deactivate do not count).
-        - **Signed CA certificate** — ``puppetserver ca clean`` removes the
-          cert; those hosts must disappear everywhere even if PuppetDB has
-          not yet expired the node record.
-
-        If the CA list cannot be loaded, falls back to active PuppetDB only.
-        If PuppetDB returns no active nodes but CA has signed certs, falls
-        back to the signed CA list (useful on setups where PDB node listing
-        is empty or not populated).
+        - **Active PuppetDB** — ``certnames`` rows that are not deactivated
+          or expired (an agent that has reported). This is the CMDB.
+        - **No CA intersection** — a short or site-wrong CA HTTP list must
+          not hide names that OpenVoxDB already has.
+        - **DNS RR names only** are stripped (``ovca.corp``, ``ovdb.corp``).
+          Real HAProxy boxes such as ``ovcompilers.*`` stay visible.
 
         Result is cached ~15s (single-flight) and copied so callers can
         mutate status overlays without poisoning the cache.
@@ -230,57 +225,21 @@ class PuppetDBService:
     async def _compute_live_nodes(self) -> List[Dict]:
         active = await self.get_nodes(include_inactive=False)
         try:
-            from .certificates_service import list_certificates as list_ca_certificates
-
-            cert_data = await list_ca_certificates()
-            if cert_data.get("error"):
-                logger.warning(
-                    "get_live_nodes: CA list unavailable, using active PuppetDB only: %s",
-                    cert_data.get("error"),
-                )
-                return active
-
-            signed = {
-                str(c.get("name", "")).strip().lower()
-                for c in (cert_data.get("signed") or [])
-                if c.get("name")
-            }
-        except Exception as e:
-            logger.warning(
-                "get_live_nodes: CA list unavailable, using active PuppetDB only: %s",
-                e,
-                exc_info=True,
-            )
-            return active
-
-        # HAProxy / DNS VIPs are not agents — hide from Nodes / Inventory / etc.
-        try:
             from .cluster_config import fleet_excluded_certnames
 
             excluded = fleet_excluded_certnames()
         except Exception:
             excluded = set()
-        if excluded:
-            signed = {c for c in signed if c not in excluded}
 
-        if len(active) == 0 and len(signed) > 0:
-            logger.info(
-                "get_live_nodes: PuppetDB returned no active nodes; falling back to signed CA certs (%d) for live fleet.",
-                len(signed),
-            )
-            live = [{"certname": cn} for cn in sorted(signed) if cn not in excluded]
-            await self._overlay_latest_report_status(live)
-        else:
-            live = [
-                n
-                for n in active
-                if str(n.get("certname", "")).strip().lower() in signed
-                and str(n.get("certname", "")).strip().lower() not in excluded
-            ]
-            live.sort(key=lambda n: str(n.get("certname", "")).lower())
+        live = [
+            n
+            for n in active
+            if str(n.get("certname", "")).strip().lower() not in excluded
+        ]
+        live.sort(key=lambda n: str(n.get("certname", "")).lower())
         if excluded:
             logger.debug(
-                "get_live_nodes: excluded %d VIP/fleet_exclude name(s)",
+                "get_live_nodes: excluded %d DNS-RR name(s)",
                 len(excluded),
             )
         return live
@@ -289,9 +248,9 @@ class PuppetDBService:
         """Return signed CA certificates enriched with PuppetDB records.
 
         **Not** the membership SSoT for Overview | Nodes, Inventory, or ENC —
-        those use ``get_live_nodes()`` (active PuppetDB ∩ signed CA). This CA
-        union is for certificate-centric views and callers that need every
-        trusted cert (including signed certs that never reported to PuppetDB).
+        those use ``get_live_nodes()`` (active PuppetDB). This CA union is
+        for the Certificates page and callers that need every trusted cert
+        (including signed certs that never reported to PuppetDB).
 
         - Starts from `puppetserver ca list --all` (signed certs).
         - Enriches every certname with its full PuppetDB record (if present),
@@ -1070,7 +1029,7 @@ class PuppetDBService:
         structured facts). Missing facts are empty strings for UI robustness.
         Disks are pre-formatted as newline-separated "name: size" strings.
         """
-        # Live membership (SSoT) — active PuppetDB ∩ signed CA.
+        # Live membership (SSoT) — active PuppetDB.
         live_nodes = await self.get_live_nodes()
         active_keys = {
             str(n.get("certname", "")).strip().lower()

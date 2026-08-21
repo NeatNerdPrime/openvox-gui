@@ -14,7 +14,7 @@
 
 ### Stable baseline and history
 
-- **Current stable GitHub Release (AIO production default):** **3.10.6** (`v3.10.6`). Performance train: lean Dashboard PDB extract, multi-worker uvicorn, graph-page SWR — see `docs/PERFORMANCE.md`. Live fleet = **`get_live_nodes()`** (active PuppetDB ∩ signed CA).
+- **Current stable GitHub Release (AIO production default):** **3.10.6** (`v3.10.6`). Performance train: lean Dashboard PDB extract, multi-worker uvicorn, graph-page SWR — see `docs/PERFORMANCE.md`. Live fleet = **`get_live_nodes()`** (active PuppetDB; DNS RR hide only).
 - **3.11.x:** historical clustered-console foundations (alphas/betas). Prefer **3.12.0-rc+** for new clustered work.
 - **Prior stables:** **3.10.4**, **3.10.2**; local bugfix labels and old train markers (`3.10.a_r_alpha.*`, `3.10.01`–`3.10.04`, `3.10.3b*`, `3.10.5-dev.*`) are archaeology only.
 - **Estate strategy (clustered):** build/validate the **new** multi-server estate; migrate nodes; repurpose legacy singleton as lab/dev. Do not treat in-place “upgrade production singleton to clustered” as the default path.

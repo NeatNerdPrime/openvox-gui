@@ -199,21 +199,21 @@ def deploy_targets() -> List[str]:
 
 
 def fleet_excluded_certnames() -> Set[str]:
-    """Certnames that must never appear as live-fleet *nodes*.
+    """DNS-only RR names that must not appear as live-fleet *nodes*.
 
-    HAProxy / DNS VIPs (ovcompilers.pdxc…, ovca.corp…, console VIP) often
-    have OpenVoxDB reports or leftover signed certs but are not agents.
-    Overview | Nodes, Inventory, Dashboard membership, ENC unclassified,
-    and Node Health all use ``get_live_nodes()``, which filters these out.
+    Hide names that are not VMs (``ovca.corp``, ``ovdb.corp``). Do **not**
+    hide ``ovcompilers.*``: those are real HAProxy hosts with an agent.
 
     Sources (union, case-insensitive):
-      - cluster ``ca_vips``, ``infra_vips``, ``vip_hosts``, ``fleet_exclude``
+      - cluster ``ca_vips``, ``dns_rr_vips``, ``vip_hosts``, ``fleet_exclude``
       - env ``OPENVOX_GUI_FLEET_EXCLUDE`` (comma/space/newline separated)
+
+    ``infra_vips`` is **not** used here (compiler LB hostnames are agents).
     """
     out: Set[str] = set()
     try:
         cfg = load_cluster_config()
-        for key in ("ca_vips", "infra_vips", "vip_hosts", "fleet_exclude"):
+        for key in ("ca_vips", "dns_rr_vips", "vip_hosts", "fleet_exclude"):
             for h in cfg.get(key) or []:
                 n = str(h).strip().lower()
                 if n:
