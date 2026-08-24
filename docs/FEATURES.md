@@ -153,7 +153,9 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 
 ### Classification / ENC (`/enc`)
 
-- HTTP ENC for agents (`/api/enc/classify` — mTLS/proxy trust, not JWT)
+- HTTP ENC for agents (`/api/enc/classify` — mTLS/proxy trust, not JWT).
+  Compilers' `enc.py` verifies the GUI cert with the Puppet CA (hostname
+  check). Classify itself is still unauthenticated until layer B.
 - Layers: **Common → Environment → Group → Node** deep merge
 - Groups, node assignment, class/param editing, preview. Node Groups load independently of compiler environment discovery so a new group is not overwritten by a stale page-load refresh
 - Infrastructure groups for clustered estates

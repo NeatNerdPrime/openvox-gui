@@ -1206,6 +1206,8 @@ fi
 
 # ENC for compilers uses OPENVOX_GUI_API_BASE via EnvironmentFile (see
 # scripts/bootstrap-compiler-enc.sh). Do NOT sed-edit enc.py — it reads env.
+# enc.py verifies the GUI cert against the Puppet CA unless
+# OPENVOX_GUI_ENC_TLS_VERIFY=0. Use a URL whose name is on the GUI hostcert.
 # Local co-located / single-server: configure ENC when puppetserver is here.
 _do_enc="false"
 case "${CONFIGURE_ENC}" in

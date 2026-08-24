@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.44] - 2026-08-24 (sec — ENC TLS verify Puppet CA)
+
+### Changed
+- **enc.py:** HTTPS to the GUI verifies the console cert against the
+  Puppet CA (`localcacert` / `certs/ca.pem`) and checks the hostname.
+  Production `OPENVOX_GUI_API_BASE=https://openvox.corp.int-x.ai:4567`
+  matches both console SANs. `localhost` skips hostname only. Set
+  `OPENVOX_GUI_ENC_TLS_VERIFY=0` to restore CERT_NONE.
+
 ## [3.12.0-rc.43] - 2026-08-24 (fix — panel + security must-fixes)
 
 ### Fixed

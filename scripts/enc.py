@@ -26,13 +26,22 @@ Environment variables (must be set for the **puppetserver** process):
       Example (ATLC has ENC data, PDXC may be empty):
         https://openvox.atlc-it.corp.int-x.ai:4567,https://openvox.pdxc-it.corp.int-x.ai:4567
       Default if unset: https://localhost:4567
+    OPENVOX_GUI_ENC_CA - CA bundle (default: puppet localcacert, then
+      /etc/puppetlabs/puppet/ssl/certs/ca.pem). Used to verify the GUI.
+    OPENVOX_GUI_ENC_TLS_VERIFY - default on. Set 0/false/off to restore
+      CERT_NONE. localhost / 127.0.0.1 skip hostname check only (still
+      verify the chain when a CA file exists).
 """
 import os
-import sys
-import urllib.request
-import urllib.error
 import ssl
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
 import yaml
+
 
 def _api_bases() -> list:
     raw = os.environ.get("OPENVOX_GUI_API_BASE", "https://localhost:4567")
@@ -41,10 +50,55 @@ def _api_bases() -> list:
 
 API_BASES = _api_bases()
 
-# SSL context for self-signed certs (service uses Puppet certs)
-SSL_CONTEXT = ssl.create_default_context()
-SSL_CONTEXT.check_hostname = False
-SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+
+def _truthy_off(raw: str) -> bool:
+    return raw.strip().lower() in ("0", "false", "off", "no")
+
+
+def _puppet_localcacert() -> str:
+    env = os.environ.get("OPENVOX_GUI_ENC_CA", "").strip()
+    if env and os.path.isfile(env):
+        return env
+    try:
+        out = subprocess.check_output(
+            ["/opt/puppetlabs/bin/puppet", "config", "print", "localcacert"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        ).strip()
+        if out and os.path.isfile(out):
+            return out
+    except (OSError, subprocess.SubprocessError):
+        pass
+    fallback = "/etc/puppetlabs/puppet/ssl/certs/ca.pem"
+    return fallback if os.path.isfile(fallback) else ""
+
+
+def _ssl_context(url: str) -> ssl.SSLContext:
+    """Verify the GUI with the Puppet CA. Hostname check unless loopback."""
+    if _truthy_off(os.environ.get("OPENVOX_GUI_ENC_TLS_VERIFY", "1")):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    loopback = host in ("localhost", "127.0.0.1", "::1")
+    cafile = _puppet_localcacert()
+    if not cafile:
+        print(
+            "ENC TLS: no Puppet CA file; cannot verify GUI cert",
+            file=sys.stderr,
+        )
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    ctx = ssl.create_default_context(cafile=cafile)
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx.check_hostname = not loopback
+    return ctx
 
 
 def classify_node(certname: str) -> str:
@@ -59,7 +113,7 @@ def classify_node(certname: str) -> str:
         url = f"{base}/api/enc/classify/{certname}/yaml"
         try:
             req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=10, context=SSL_CONTEXT) as response:
+            with urllib.request.urlopen(req, timeout=10, context=_ssl_context(base)) as response:
                 return response.read().decode("utf-8")
         except urllib.error.HTTPError as e:
             if e.code == 404:
