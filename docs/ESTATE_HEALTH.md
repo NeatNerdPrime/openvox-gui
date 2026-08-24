@@ -20,8 +20,8 @@ Spock copies n1 → n2/n3/n4. Do not treat four-way DNS RR as a write fan-out.
 
 | VIP | Role | Hide on Nodes? |
 |-----|------|----------------|
-| `ovdb.corp.int-x.ai` | OpenVoxDB read/write RR (`.78` per site → `.76`/`.77` members) | Yes (DNS only) |
-| `ovca.corp.int-x.ai` | CA | Yes (DNS only) |
+| `ovdb.example.com` | OpenVoxDB read/write RR (`.78` per site → `.76`/`.77` members) | Yes (DNS only) |
+| `ovca.example.com` | CA | Yes (DNS only) |
 | `ovcompilers.<site>-it.…` | HAProxy VM + agent | **No** |
 
 GUI `OPENVOX_GUI_PUPPETDB_HOST=ovdb.corp` is the clustered **read**
@@ -65,7 +65,7 @@ Not Puppet. Not “write a different ovdb.”
 `INSERT` into `certnames`. Compiler `puppetdb.conf` should be:
 
 ```ini
-server_urls = https://ovdb1.pdxc-it.corp.int-x.ai:8081,https://ovdb2.pdxc-it.corp.int-x.ai:8081
+server_urls = https://ovdb1.site-a.example.com:8081,https://ovdb2.site-a.example.com:8081
 command_broadcast = false
 ```
 

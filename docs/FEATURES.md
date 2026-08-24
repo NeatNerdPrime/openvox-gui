@@ -373,7 +373,7 @@ CA-centric. Two things are both called “VIPs” — they are not the same.
 
 ### DNS round-robin (no computer)
 
-Examples: `ovca.corp.int-x.ai`, `ovdb.corp.int-x.ai`.
+Examples: `ovca.example.com`, `ovdb.example.com`.
 
 These names exist only in DNS (two or more A records). There is no VM,
 no SSH, no Puppet agent. **Hide them from Nodes** in
@@ -381,21 +381,21 @@ Settings → Cluster:
 
 | Field | Typical value |
 |-------|----------------|
-| **CA VIP FQDNs** (`ca_vips`) | `ovca.corp.int-x.ai` |
-| **DNS RR VIPs** (`dns_rr_vips`) | `ovdb.corp.int-x.ai` |
+| **CA VIP FQDNs** (`ca_vips`) | `ovca.example.com` |
+| **DNS RR VIPs** (`dns_rr_vips`) | `ovdb.example.com` |
 | **Console VIP** (`vip_hosts`) | GUI RR hostname if it is not a box |
 | **Extra fleet exclusions** (`fleet_exclude`) | anything else with no OS |
 
 ```bash
-OPENVOX_GUI_FLEET_EXCLUDE=ovdb.corp.int-x.ai,ovca.corp.int-x.ai
+OPENVOX_GUI_FLEET_EXCLUDE=ovdb.example.com,ovca.example.com
 ```
 
 `infra_vips` is **not** a hide list. It is only for health probes.
 
 ### HAProxy compiler frontend (real VM)
 
-Examples: `ovcompilers.atlc-it.corp.int-x.ai`,
-`ovcompilers.pdxc-it.corp.int-x.ai`.
+Examples: `ovcompilers.site-b.example.com`,
+`ovcompilers.site-a.example.com`.
 
 This **is** a computer: OS, HAProxy, and its own Puppet agent.
 Site agents set `server = ovcompilers.<site>-it.…`. HAProxy spreads
@@ -452,15 +452,15 @@ When you first turn on Settings → Cluster:
 
 ### Adding another site’s HAProxy frontend
 
-Same recipe every time (`iad`, `atlc`, …):
+Same recipe every time (each site label):
 
-1. **Name:** VM / `certname` = `ovcompilers.<site>-it.corp.int-x.ai`.
+1. **Name:** VM / `certname` = `ovcompilers.<site>-it.example.com`.
    First DNS label must be `ovcompilers`. A records point at **this
    VM**, not at `ovcompiler1` / `ovcompiler2`. Do not invent a second
    DNS-only name for the same role.
 2. **Software:** OpenVox agent on the box; HAProxy :8140 to
    `ovcompiler1.<site>-it.…`, `ovcompiler2.<site>-it.…`. Site agents
-   use `server = ovcompilers.<site>-it.corp.int-x.ai`.
+   use `server = ovcompilers.<site>-it.example.com`.
 3. **Cert:** sign that certname on the CA agents trust.
 4. **GUI:** do not add the name to hide lists. Optional: `infra_vips`
    for a health probe. Add backends to `compilers` /

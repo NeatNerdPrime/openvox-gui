@@ -100,13 +100,13 @@ Infra: local files + local systemd; `ovox infra *` works on-box.
 ### Clustered (multi-server)
 
 ```text
-[ Console openvox.pdxc / openvox.atlc ]
+[ Console openvox.site-a / openvox.site-b ]
   openvox-gui + ovox
   Postgres openvox_gui (shared) + same SECRET_KEY
   cluster_config.json (members + VIPs)
   Bolt SSH → estate (generated inventory)
 
-[ Compilers ]  CA-off; termini → ovdb.corp.int-x.ai:8081 (single A); full control-repo; not location-sharded
+[ Compilers ]  CA-off; termini → ovdb.example.com:8081 (single A); full control-repo; not location-sharded
 [ CA HA ]      Pacemaker+DRBD; pcs owns openvox-server or puppetserver (discover); auth.conf cert-status allow
 [ OpenVoxDB ]  Spock mesh / site HAProxy first+backup; not termini clients
 ```

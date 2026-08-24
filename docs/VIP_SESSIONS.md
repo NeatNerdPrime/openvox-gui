@@ -9,9 +9,9 @@ Direct node URLs keep the historic aggressive polling behaviour:
 
 | URL | Mode |
 |-----|------|
-| `https://openvox.pdxc-it…:4567` | **direct** |
-| `https://openvox.atlc-it…:4567` | **direct** |
-| `https://openvox.corp…` (VIP) | **vip** |
+| `https://openvox.site-a.example.com:4567` | **direct** |
+| `https://openvox.site-b.example.com:4567` | **direct** |
+| `https://openvox.example.com:4567` (VIP) | **vip** |
 
 ## Symptoms this fixes
 
@@ -50,13 +50,13 @@ Both consoles **must** share:
 
 **Option A — Settings → Application → Cluster**
 
-- **GUI console FQDNs** = node names (pdxc, atlc)
+- **GUI console FQDNs** = node names (site-a, site-b)
 - **Console VIP / public LB hostnames** = VIP users type in the browser
 
 **Option B — environment (both consoles)**
 
 ```bash
-OPENVOX_GUI_VIP_HOSTS=openvox.corp.int-x.ai
+OPENVOX_GUI_VIP_HOSTS=openvox.example.com
 # optional:
 OPENVOX_GUI_VIP_POLL_FLOOR_MS=45000
 OPENVOX_GUI_AUTH_TOKEN_HOURS=24
@@ -75,7 +75,7 @@ noise on failover.
 curl -sk https://VIP:4567/api/auth/status | jq .
 # expect: "access_mode": "vip", "vip_poll_floor_ms": 45000, ...
 
-curl -sk https://openvox.pdxc-it…:4567/api/auth/status | jq .access_mode
+curl -sk https://openvox.site-a.example.com:4567/api/auth/status | jq .access_mode
 # expect: "direct"
 ```
 
@@ -89,7 +89,7 @@ curl -sk https://openvox.pdxc-it…:4567/api/auth/status | jq .access_mode
   "session_ttl_seconds": 86400,
   "session_min_seconds": 14400,
   "vip_poll_floor_ms": 45000,
-  "request_host": "openvox.corp.int-x.ai",
-  "vip_hosts_configured": ["openvox.corp.int-x.ai"]
+  "request_host": "openvox.example.com",
+  "vip_hosts_configured": ["openvox.example.com"]
 }
 ```

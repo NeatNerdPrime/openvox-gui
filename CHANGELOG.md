@@ -9,12 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.45] - 2026-08-24 (docs — scrub estate FQDNs and 172.29 from docs)
+
+### Changed
+- Documentation uses `example.com` / TEST-NET addresses instead of
+  internal estate FQDNs and `172.29.32/160` space. Lab `questy.org`
+  left as-is. Application code and tests were **not** rewritten.
+
 ## [3.12.0-rc.44] - 2026-08-24 (sec — ENC TLS verify Puppet CA)
 
 ### Changed
 - **enc.py:** HTTPS to the GUI verifies the console cert against the
   Puppet CA (`localcacert` / `certs/ca.pem`) and checks the hostname.
-  Production `OPENVOX_GUI_API_BASE=https://openvox.corp.int-x.ai:4567`
+  Production `OPENVOX_GUI_API_BASE=https://openvox.example.com:4567`
   matches both console SANs. `localhost` skips hostname only. Set
   `OPENVOX_GUI_ENC_TLS_VERIFY=0` to restore CERT_NONE.
 
@@ -383,7 +390,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **`ovox` 407 Proxy Authentication Required:** HTTP client no longer
   sends requests for internal console URLs (localhost, private IPs,
-  `*.corp.int-x.ai`, `*.twitter.biz`, `*.questy.org`, plus `NO_PROXY`)
+  `*.example.com`, `*.example.com`, `*.questy.org`, plus `NO_PROXY`)
   through `HTTP(S)_PROXY`. Dedicated consoles with corp proxy env vars
   can run `ovox infra health` against the local GUI again.
 
@@ -408,7 +415,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Nav footer:** under active users, show this GUI console's FQDN and
   primary IP (`facter ipaddress` / `networking.ip` when available) so dual
-  consoles (openvox.pdxc… vs openvox.atlc…) are obvious behind a VIP.
+  consoles (openvox.site-a… vs openvox.site-b…) are obvious behind a VIP.
   Data from `GET /api/version` (`hostname`, `ipaddress`).
 
 ## [3.12.0-rc.6] - 2026-08-14 (fix — Log Viewer empty result is not 502)
@@ -435,7 +442,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `vip_hosts`). Names are stripped in `get_live_nodes()` so Overview |
   Nodes, Inventory, Dashboard membership, ENC unclassified, and Node
   Health no longer show LB hostnames that only have VIP reports in
-  OpenVoxDB (e.g. `ovcompilers.pdxc-it.corp.int-x.ai`).
+  OpenVoxDB (e.g. `ovcompilers.site-a.example.com`).
 - Env override: `OPENVOX_GUI_FLEET_EXCLUDE=host1,host2`.
 
 ## [3.12.0-rc.3] - 2026-08-14 (docs — full feature inventory & stale-doc refresh)
@@ -604,7 +611,7 @@ Minor bump from the 3.11.1 beta train.
 ## [3.11.1-beta.4] - 2026-08-13 (fix — ovca1 PDXC/ATLC status flap)
 
 ### Fixed
-- **Overview | Nodes Failed flap on ovca1.pdxc and ovca1.atlc:** both
+- **Overview | Nodes Failed flap on ovca1.site-a and ovca1.site-b:** both
   certnames share the short host `ovca1`. Status overlay treated that as
   one node, so each refresh could apply the *other site's* latest report
   (often `failed`). Exact certname wins; short-name fallback only when
@@ -1212,7 +1219,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.29] - 2026-08-11 (fix — apply singleton Bolt layout)
 
 ### Added
-- **`scripts/apply-singleton-bolt-layout.sh`**: overwrites project + inventory + `openvox_enc` to match `openvox.pdxc-it.twitter.biz`. Run as root from the git clone.
+- **`scripts/apply-singleton-bolt-layout.sh`**: overwrites project + inventory + `openvox_enc` to match `openvox.site-a.example.com`. Run as root from the git clone.
 
 ### Changed
 - GUI Bolt always uses a generated singleton inventory (`-i` under `/opt/openvox-gui/data/`), never the dirty `/etc` file.
@@ -1220,12 +1227,12 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.28] - 2026-08-11 (fix — openvox_enc task is the live singleton file)
 
 ### Changed
-- `openvox_enc` `resolve_reference.rb` replaced with the exact 124-line task from `openvox.pdxc-it.twitter.biz` (self-contained, no `lib/` require).
+- `openvox_enc` `resolve_reference.rb` replaced with the exact 124-line task from `openvox.site-a.example.com` (self-contained, no `lib/` require).
 
 ## [3.11.0-alpha.27] - 2026-08-11 (fix — Bolt inventory matches working singleton)
 
 ### Changed
-- Console Bolt layout copied from the working single-server host (`openvox.pdxc-it.twitter.biz`): `name: openvox`, `config.ssh` only, ENC plugin as a **hash** target (`openvox_enc`), self-contained `resolve_reference.rb` from 3.10.6 (no `require_relative`). OpenVoxDB feeds GUI `resolve_targets`, not Bolt's `puppetdb` inventory plugin.
+- Console Bolt layout copied from the working single-server host (`openvox.site-a.example.com`): `name: openvox`, `config.ssh` only, ENC plugin as a **hash** target (`openvox_enc`), self-contained `resolve_reference.rb` from 3.10.6 (no `require_relative`). OpenVoxDB feeds GUI `resolve_targets`, not Bolt's `puppetdb` inventory plugin.
 
 ## [3.11.0-alpha.26] - 2026-08-11 (fix — sanitized Bolt inventory the GUI can write)
 
@@ -1289,7 +1296,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.14] - 2026-08-11 (fix — stop labeling the console as "server")
 
 ### Fixed
-- **Certificates signed list:** `openvox.pdxc` (and other consoles) no longer get a red **server** badge. That list was the GUI host's own agent cert plus `puppet.conf` SANs, leftover from a co-located master. Protected rows are now labeled from Settings → Cluster: **console**, **compiler**, **CA**, **puppetdb**. VIPs and `dns_alt_names` are not treated as certnames.
+- **Certificates signed list:** `openvox.site-a` (and other consoles) no longer get a red **server** badge. That list was the GUI host's own agent cert plus `puppet.conf` SANs, leftover from a co-located master. Protected rows are now labeled from Settings → Cluster: **console**, **compiler**, **CA**, **puppetdb**. VIPs and `dns_alt_names` are not treated as certnames.
 
 ## [3.11.0-alpha.13] - 2026-08-11 (feat — compiler and PuppetDB HTTP-first)
 
@@ -1333,7 +1340,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.8] - 2026-08-10 (fix — remote CA HTTP API for dedicated consoles)
 
 ### Fixed
-- **Dedicated console / clustered CA:** Certificate list, sign/revoke/clean, and CA info no longer require a local `puppetserver` binary or `/etc/puppetlabs/puppet/ssl/ca/ca_crt.pem`. The GUI calls the remote CA HTTP API (`/puppet-ca/v1/certificate_statuses`, status, clean) with the console agent mTLS cert. Set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP (e.g. `ovca.corp.int-x.ai`) — not the compiler VIP. Co-located installs still fall back to `puppetserver ca` when that binary exists. A missing binary is an error (PDB fallback for live nodes), not an empty fleet.
+- **Dedicated console / clustered CA:** Certificate list, sign/revoke/clean, and CA info no longer require a local `puppetserver` binary or `/etc/puppetlabs/puppet/ssl/ca/ca_crt.pem`. The GUI calls the remote CA HTTP API (`/puppet-ca/v1/certificate_statuses`, status, clean) with the console agent mTLS cert. Set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP (e.g. `ovca.example.com`) — not the compiler VIP. Co-located installs still fall back to `puppetserver ca` when that binary exists. A missing binary is an error (PDB fallback for live nodes), not an empty fleet.
 - **Settings `extra = "ignore"`:** Unknown `OPENVOX_GUI_*` keys in `.env` no longer prevent startup (`extra_forbidden`). Putting `PUPPET_CA_HOST` in `.env` on 3.11.0-alpha.4 (or any older build) will still crash until this version is deployed — then the key is valid.
 
 ## [3.11.0-alpha.7] - 2026-08-07 (Insights — Host Health serving estate)
@@ -1367,7 +1374,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 - Backend: `cluster_config.json` under data dir; `GET/PUT /api/config/cluster`; enhanced `GET /api/config/services`; `POST /api/deploy/stage` and `/activate`
 
 ### Notes
-- **Production stay-put:** Keep **openvox.pdxc-it.twitter.biz** on **3.10.8-dev.3** (or current 3.10.x lab pin) until the multi-DC cluster is ready. This 3.11.0-alpha train is for multi-server development and lab validation (e.g. questy.org / new cluster), not a production cutover.
+- **Production stay-put:** Keep **openvox.site-a.example.com** on **3.10.8-dev.3** (or current 3.10.x lab pin) until the multi-DC cluster is ready. This 3.11.0-alpha train is for multi-server development and lab validation (e.g. questy.org / new cluster), not a production cutover.
 - Logging and Settings → OpenVox Configuration multi-host content deferred to a later 3.11 iteration.
 
 ## Unreleased
@@ -1401,7 +1408,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 - Services UI: HA primary/VIP badges, resource table, raw pcs/drbd expanders
 
 ### Notes
-- Production **openvox.pdxc-it.twitter.biz** remains on **3.10.8-dev.3** until cluster cutover.
+- Production **openvox.site-a.example.com** remains on **3.10.8-dev.3** until cluster cutover.
 
 
 
@@ -1746,10 +1753,10 @@ Beta cut for Monitoring wallboard quality + window controls. Promote to stable *
 
 ### Fixed
 - **Overview | Nodes: add boolean search operators.** The search box now supports simple boolean-style filtering:
-  - `-term` or `!term` to exclude nodes (e.g. `-atlc -pdxc` gives all nodes except those with "atlc" or "pdxc" in the certname or environment).
+  - `-term` or `!term` to exclude nodes (e.g. `-east -west` gives all nodes except those with those fragments in the certname or environment).
   - Multiple space-separated terms are OR-matched by default on certname or environment.
   - Works on the main All Nodes list, classified group lists, and Unclassified Nodes.
-  - Example: search `-atlc -pdxc` to quickly get a clean production fleet view without lab nodes.
+  - Example: search `-lab -dev` to quickly get a clean production fleet view without lab nodes.
 - **Insights | Monitoring | Fleet Node Status Trends has zero data.** The trend data (node status over time) was often empty in the 24h (or small) window because the reports query used for building `compute_trends` was limited to 5000 reports. For active fleets this truncated recent reports, so recent hourly buckets were missing, and after client window filtering the graph showed no points.
   - Raised report limit to 20000 in the three places that build time-series trends from recent reports (dashboard data, node status trends, report trends).
   - This ensures recent report activity is included so the status trends graph (and similar) have data in the selected window.
@@ -2750,7 +2757,7 @@ Assisted By: Grok AI
   - Detection now checks both uppercase and lowercase forms for compatibility with `sudo -E`, Docker, CI, `/etc/environment`, etc.
   - Removed "Proxy: none detected" and "No proxy configured for npm/pip" info spam that appeared on every normal install.
   - Added interactive "Network / Proxy (optional)" prompts during non-silent installs.
-  - Cleaned environment-specific Twitter/X domains (`*.twitter.com`, `*.corp`) out of the `no_proxy` default in `backend/app/config.py`.
+  - Cleaned environment-specific corporate proxy domains out of the `no_proxy` default in `backend/app/config.py`.
   - Updated `install.conf.example` and `INSTALL.md` to clearly document that no proxy is the default and exactly how to opt in when needed.
 - Resolves reports of the installer saying "proxy none detected even though I don't use one".
 
@@ -3083,7 +3090,7 @@ This change was developed and tested through the enhanced commit skill (Phases 1
 - Added proactive protections against internal corporate data points leaking into the public repository:
   - Committed `frontend/.npmrc` that forces the public npm registry (`registry=https://registry.npmjs.org/`).
   - Added `npm run check:internal-urls` script in `frontend/package.json`.
-  - New GitHub Action workflow `.github/workflows/leak-check.yml` that runs on every push/PR and fails the build if it detects Artifactory URLs, `*.pdxc-it.twitter.biz` hostnames, internal test IPs (`10.0.100.*`), etc. in committed source (intentionally skips historical CHANGELOG entries).
+  - New GitHub Action workflow `.github/workflows/leak-check.yml` that runs on every push/PR and fails the build if it detects Artifactory URLs, `*.site-a.example.com` hostnames, internal test IPs (`10.0.100.*`), etc. in committed source (intentionally skips historical CHANGELOG entries).
   - Updated internal example hostnames in source comments, README, and bolt-plugin examples to use `example.com` placeholders.
   - Added prominent note in README.md for internal developers.
 - These measures ensure that sensitive internal infrastructure details (registries, test hosts, etc.) cannot accidentally leak again via `package-lock.json` or source files when developers are inside the corporate network.
@@ -3362,7 +3369,7 @@ All changes follow the principle that the live system's sudoers configuration (n
 ## [3.7.20] - 2026-06-03
 
 ### Bug Fixes
-- **Reports "Canaries" subgroup node duplication**: In Logs | Reports, the Canaries group was showing the same node (ovagent1.pdxc-it.twitter.biz) listed multiple times in the expanded reports table (e.g. 3x due to duplicate report entries in the fetched list), while the "X nodes" count correctly showed "1 Node" thanks to hierarchy dedup. Added defensive deduplication of groupReports by hash (similar to existing node dedup logic) when building groups from reportList. This prevents duplicate report rows for the same run in the per-group tables.
+- **Reports "Canaries" subgroup node duplication**: In Logs | Reports, the Canaries group was showing the same node (ovagent1.site-a.example.com) listed multiple times in the expanded reports table (e.g. 3x due to duplicate report entries in the fetched list), while the "X nodes" count correctly showed "1 Node" thanks to hierarchy dedup. Added defensive deduplication of groupReports by hash (similar to existing node dedup logic) when building groups from reportList. This prevents duplicate report rows for the same run in the per-group tables.
 
 ## [3.7.19] - 2026-06-03
 
@@ -3534,7 +3541,7 @@ See the detailed sections below for the full history of changes that led to this
 
 - **Log Viewer Enhancements**: Major readability improvements in Logs | Log Viewer (all tabs).
   - Per-line client-side highlighting in a dark monospace container (consistent with other terminal-style output in the app).
-  - FQDNs/certnames (e.g., `ovagent1.pdxc-it.twitter.biz`) rendered in **bright blue bold** (`#4dabf7`).
+  - FQDNs/certnames (e.g., `ovagent1.site-a.example.com`) rendered in **bright blue bold** (`#4dabf7`).
   - Executed commands (from Orchestration "Run Command", `puppet agent -t`, `bolt ...`, `sudo ...`, etc.) and HTTP API calls/responses (e.g., `"GET /api/dashboard/data HTTP/1.1" 200 OK`) rendered in **bold red** (`#e03131`).
   - Robust regex-based `renderHighlightedLine` function with proper state management for journalctl and file-based logs.
   - Makes troubleshooting dramatically faster by highlighting hosts (targets) and actionable command/API activity.
@@ -3619,7 +3626,7 @@ See the detailed sections below for the full history of changes that led to this
   - New systemd timer+service: `openvox-gui-fleet-health.timer` / `.service`
   - Generator script now respects `FLEET_HEALTH_REPORT_ENABLED`, `FLEET_HEALTH_REPORT_EMAILS` (multi-recipient), and `FLEET_HEALTH_REPORT_OUTPUT_DIR`.
   - Consolidated snapshot endpoint `/api/reports/fleet-health-snapshot` with localhost bypass for on-server execution.
-  - Runs as `puppet` user, emails configurable PDF directly from the node (test or `openvox.pdxc-it.twitter.biz`).
+  - Runs as `puppet` user, emails configurable PDF directly from the node (test or `openvox.site-a.example.com`).
   - Install/update/deploy scripts automatically deploy the units and enable the timer.
 - Executive Summary Report recipients are now fully configurable inside the GUI.
   - New "Executive Summary Report" pane at the bottom of the Reports page.
@@ -3738,7 +3745,7 @@ configured.
 ### Improved — Log Viewer readability
 
 - In the **Logs | Log Viewer** page, log lines are now enhanced for better scannability across all tabs:
-  - All FQDNs / certnames (e.g. `ovagent1.pdxc-it.twitter.biz`, `openvox.pdxc-it.twitter.biz`) are rendered in **bold black**.
+  - All FQDNs / certnames (e.g. `ovagent1.site-a.example.com`, `openvox.site-a.example.com`) are rendered in **bold black**.
   - The command being run (especially those submitted via the Orchestration page, `puppet agent -t`, `bolt ...`, `sudo ...`, and similar) is rendered in **bold red**.
 - Highlighting is applied client-side per line using regex heuristics that work reliably on journalctl output and service log files.
 - The log container uses a dark monospace background (consistent with other terminal/code output in the app) for excellent contrast with the black and red highlights.
@@ -4850,7 +4857,7 @@ from a fresh clone of the v3.6.1 tag.
 
 ### Fixed
 
-- **`postcss` 8.5.12 lockfile entry now resolves from `https://registry.npmjs.org/`** instead of `https://artifactory.twitter.biz/...`. The 3.6.1 lockfile bump was performed on a workstation whose `~/.npmrc` pointed at an internal Artifactory mirror; npm faithfully recorded that resolved URL in the lockfile. On any host without access to that mirror -- including the test server -- `npm install` against the v3.6.1 lockfile failed with `403 Forbidden`. Re-pinned with `npm install postcss@^8.5.12 --save --registry=https://registry.npmjs.org/` so the lockfile is portable.
+- **`postcss` 8.5.12 lockfile entry now resolves from `https://registry.npmjs.org/`** instead of `https://artifactory.example.com/...`. The 3.6.1 lockfile bump was performed on a workstation whose `~/.npmrc` pointed at an internal Artifactory mirror; npm faithfully recorded that resolved URL in the lockfile. On any host without access to that mirror -- including the test server -- `npm install` against the v3.6.1 lockfile failed with `403 Forbidden`. Re-pinned with `npm install postcss@^8.5.12 --save --registry=https://registry.npmjs.org/` so the lockfile is portable.
 
 ### Operator notes
 
@@ -5157,9 +5164,9 @@ The 31 test-build iterations that produced this release are kept as historical e
   ```bash
   if [[ "$PUPPET_SERVER" == *"__OPENVOX_PUPPET_SERVER__"* ]]; then PUPPET_SERVER=""; fi
   ```
-  was meant to detect an UN-rendered placeholder and clear the var so the fallback paths could fire. But the server-side `sed` render replaces **every** literal `__OPENVOX_PUPPET_SERVER__` in the file -- including the literal in this check. After render, the check became `*"openvox.pdxc-it.twitter.biz"*` which always matches the substituted value, so PUPPET_SERVER was getting set to `openvox.pdxc-it.twitter.biz` and then immediately wiped to `""`. All four resolution paths then failed with the canonical "Could not determine the puppetserver FQDN" error -- on a host where the FQDN was *literally* the rendered value.
+  was meant to detect an UN-rendered placeholder and clear the var so the fallback paths could fire. But the server-side `sed` render replaces **every** literal `__OPENVOX_PUPPET_SERVER__` in the file -- including the literal in this check. After render, the check became `*"openvox.site-a.example.com"*` which always matches the substituted value, so PUPPET_SERVER was getting set to `openvox.site-a.example.com` and then immediately wiped to `""`. All four resolution paths then failed with the canonical "Could not determine the puppetserver FQDN" error -- on a host where the FQDN was *literally* the rendered value.
 - **Fix**: build the placeholder-marker string at runtime via bash concatenation (`'__OPENVOX''_PUPPET_SERVER__'`) so the literal sequence `__OPENVOX_PUPPET_SERVER__` never appears in the source as a single token. `sed` matches on text in the file; with the literal split, the render leaves it alone. Same fix applied to the literal in the "all paths failed" error message text.
-- **Caught by**: an actual install attempt on `eveng` against production where the error confessed itself ("openvox.pdxc-it.twitter.biz placeholder substituted by the openvox-gui server (not rendered)"). The mangled wording made the bug obvious in retrospect.
+- **Caught by**: an actual install attempt on `eveng` against production where the error confessed itself ("openvox.site-a.example.com placeholder substituted by the openvox-gui server (not rendered)"). The mangled wording made the bug obvious in retrospect.
 
 ## [3.3.5-13] - 2026-04-23
 
@@ -5344,7 +5351,7 @@ The 31 test-build iterations that produced this release are kept as historical e
 
 ### Fixed
 - **LDAP troubleshooting**: Added detailed logging of server URL, timeout, and Bind/User Base DN values. Improved error messages and hints for connection timeouts.
-- **Proxy handling**: Expanded default `no_proxy` to cover common internal/corporate networks (including `.local` domains and 172.29.* ranges) to prevent proxies from interfering with direct LDAP connections.
+- **Proxy handling**: Expanded default `no_proxy` to cover common internal/corporate networks (including `.local` domains and 192.0.2.0/24 ranges) to prevent proxies from interfering with direct LDAP connections.
 - **User Base DN**: Clarified in docs that the base must exactly match the directory structure (e.g. including intermediate `dc=ods,...` components). Mismatches were a common cause of "ldapsearch works but app times out".
 - **Version bump and docs**: Updated defaults, frontend, and troubleshooting documentation.
 

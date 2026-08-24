@@ -10,7 +10,7 @@
 - **Clustered optional:** dual console + VIP sessions, fleet exclude, ovox estate health (members + VIPs), Bolt estate inventory, shared Postgres `openvox_gui`. See [docs/STATUS.md](docs/STATUS.md).
 - **Pre-release labels:** PEP 440 only (`rc` / `a` / `b` / `dev`). Never put `gamma` in `VERSION` (pip rejects it).
 - **Monday backlog:** Puppet **roles** = `profile::base` + technology profiles (compiler / CA / PDB / console). Not profiles-only.
-- Pre-release counter on every meaningful push: `3.12.0-rc.N` via bump + CHANGELOG + tag + **push branch and tags** + **lab deploy of that tag** to `openvox.questy.org` (`10.0.100.225`) so the user can test before xAI. Never leave a new tag only on the laptop.
+- Pre-release counter on every meaningful push: `3.12.0-rc.N` via bump + CHANGELOG + tag + **push branch and tags** + **lab deploy of that tag** to `openvox.questy.org` (`10.0.100.225`) so the user can test before production. Never leave a new tag only on the laptop.
 
 ### Stable baseline and history
 
@@ -24,7 +24,7 @@
 - Primary validation deploys: lab **`openvox.questy.org`** (`10.0.100.225`) only unless the user names production bastion workflow.
 - Prefer: `OPENVOX_DEPLOY_HOST=10.0.100.225 OPENVOX_DEPLOY_USER=jsheets scripts/update_remote.sh --yes` (PATH `/usr/bin` first if Homebrew SSH breaks routing).
 - Maintenance wrapper on the server when using ovox: `ovox maintenance enable` → deploy → verify → `ovox maintenance disable`.
-- **Never** confuse lab claims with production (`openvox.pdxc-it.twitter.biz` via bastion). See Infrastructure section below.
+- **Never** confuse lab claims with production (`openvox.site-a.example.com` via bastion). See Infrastructure section below.
 
 ## Heredoc Safety (Important)
 
@@ -99,14 +99,14 @@ This rule was added after backticks in an unquoted sudoers heredoc caused instal
   ```
 - **WARNING**: This server is **not** production. Scale, certificate volume, performance characteristics, and any deployed state here must be clearly labeled "lab" or "test server" when discussing or reporting work.
 
-### Real Production Server (final / official deploys at xAI)
-- Hostname: `openvox.pdxc-it.twitter.biz` (user has also written it as `openvox.opdxc-it.twitter.biz`)
+### Real Production Server (final / official production deploys)
+- Hostname: `openvox.site-a.example.com`
 - Access model: **Not directly SSH-reachable** from the development laptop.
 - Must traverse a bastion/jump host first:
-  - `wormhole-1.atlc-it.twitter.biz` (Atlanta)
-  - `wormhole-2.pdxc-it.twitter.biz` (Portland)
-- Typical real-world workflow: `ssh wormhole-1...` (or wormhole-2), then from the bastion `ssh openvox.pdxc-it.twitter.biz`.
-- This is the server that runs the actual xAI / Twitter-internal OpenVox fleet. When the user talks about "production" or "final deploy," this (and its bastions) is what is meant.
+  - `bastion-east.example.com` (site B)
+  - `bastion-west.example.com` (site A)
+- Typical real-world workflow: `ssh bastion-east...` (or bastion-west), then from the bastion `ssh openvox.site-a.example.com`.
+- This is the server that runs the official production OpenVox fleet. When the user talks about "production" or "final deploy," this (and its bastions) is what is meant.
 
 **Rule for this project**: The deploy scripts in this repository (`update_remote.sh`, `deploy.sh`, `update_local.sh`, etc.) have historically been exercised almost exclusively against the test lab (10.0.100.225). Any claim that "we deployed X" in the context of openvox-gui work should default to "lab" unless the user explicitly states production bastion access was used.
 
