@@ -254,6 +254,26 @@ export function DashboardPage() {
     if (dashData) setLastRefresh(new Date());
   }, [dashData]);
 
+  const attentionAll = useMemo(() => {
+    const staleCutoff = Date.now() - 24 * 3600 * 1000;
+    return dedupedNodes.filter((n) => {
+      const st = (n.latest_report_status || '').toLowerCase();
+      if (st === 'failed' || st === 'unreported' || !st) return true;
+      const ts = n.report_timestamp ? new Date(n.report_timestamp).getTime() : 0;
+      return Boolean(ts) && ts < staleCutoff;
+    });
+  }, [dedupedNodes]);
+  const attentionExportRows = useMemo(
+    () =>
+      attentionAll.map((n) => ({
+        certname: n.certname,
+        status: n.latest_report_status || 'unreported',
+        last_report: nodeTimeAgo(n.report_timestamp),
+        report_timestamp: n.report_timestamp || '',
+      })),
+    [attentionAll],
+  );
+
   // Full-page spinner only on true cold start (no cache, no data yet)
   if (loading && !dashData) return <LoadingState label="Loading dashboard…" />;
   if (error && !dashData) {
@@ -271,26 +291,7 @@ export function DashboardPage() {
     { value: ns.total ? (ns.unreported / ns.total) * 100 : 0, color: STATUS_HEX.unreported, tooltip: `Unreported: ${ns.unreported}` },
   ].filter(d => d.value > 0);
 
-  const attentionAll = useMemo(() => {
-    const staleCutoff = Date.now() - 24 * 3600 * 1000;
-    return dedupedNodes.filter((n) => {
-      const st = (n.latest_report_status || '').toLowerCase();
-      if (st === 'failed' || st === 'unreported' || !st) return true;
-      const ts = n.report_timestamp ? new Date(n.report_timestamp).getTime() : 0;
-      return Boolean(ts) && ts < staleCutoff;
-    });
-  }, [dedupedNodes]);
   const attention = attentionAll.slice(0, 25);
-  const attentionExportRows = useMemo(
-    () =>
-      attentionAll.map((n) => ({
-        certname: n.certname,
-        status: n.latest_report_status || 'unreported',
-        last_report: nodeTimeAgo(n.report_timestamp),
-        report_timestamp: n.report_timestamp || '',
-      })),
-    [attentionAll],
-  );
 
   return (
     <Stack>

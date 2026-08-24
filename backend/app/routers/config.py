@@ -1153,6 +1153,16 @@ async def list_hiera_files():
         if not isinstance(envs, list):
             rc = bolt.get("returncode")
             err = (bolt.get("stderr") or bolt.get("stdout") or "")[:800]
+            err_l = err.lower()
+            if "must have a tty" in err_l or "requiretty" in err_l:
+                hint = (
+                    f"Could not list Hiera on {host}: bolt@ sudo needs a TTY "
+                    "(Defaults requiretty). Dedicated consoles Bolt to the "
+                    "first compiler with --no-tty. Add "
+                    "'Defaults:bolt !requiretty' to /etc/sudoers.d/bolt on "
+                    "that compiler (same as Stage). visudo -cf, then reload."
+                )
+                raise HTTPException(status_code=502, detail=hint)
             raise HTTPException(
                 status_code=502,
                 detail=(

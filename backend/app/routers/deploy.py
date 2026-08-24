@@ -1042,11 +1042,22 @@ async def _run_on_targets(
                     "the same time; see bootstrap-compiler-enc.sh)"
                 )
             else:
-                hint = (
-                    "OpenBolt cannot prepare the code-deploy targets as bolt@. "
-                    "Classify those hosts with profiles::base::bolt_user (same "
-                    "id_bolt.pub as this console) and retry Stage."
-                )
+                blob_l = blob.lower()
+                if "must have a tty" in blob_l or "requiretty" in blob_l:
+                    hint = (
+                        "bolt@ can SSH, but sudo on the compilers requires a TTY "
+                        "(Defaults requiretty). Stage uses --no-tty. "
+                        "profiles::base::sudo adds Defaults:bolt !requiretty "
+                        "when bolt_user is classified. Until Puppet applies: "
+                        "add 'Defaults:bolt !requiretty' to /etc/sudoers.d/bolt "
+                        "on each compiler (visudo -cf)."
+                    )
+                else:
+                    hint = (
+                        "OpenBolt cannot prepare the code-deploy targets as bolt@. "
+                        "Classify those hosts with profiles::base::bolt_user (same "
+                        "id_bolt.pub as this console) and retry Stage."
+                    )
             return _cluster_result(
                 mode, environment, targets, False, probe_rc or 1,
                 [hint, ""] + [ln for ln in probe_out if ln],

@@ -49,6 +49,7 @@ import re
 import shutil
 import socket
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -170,58 +171,77 @@ def _sync_lock_held() -> Optional[int]:
         return None
 
 
-def _directory_size_bytes(path: Path) -> int:
-    """Sum the sizes of all regular files under *path*.
+_PLATFORM_SECTIONS = (
+    ("yum",     "yum",     (".rpm",)),
+    ("apt",     "apt",     (".deb",)),
+    ("windows", "windows", (".msi",)),
+    ("mac",     "mac",     (".dmg", ".pkg")),
+)
 
-    Errors (e.g. permission denied on a single file) are silently
-    skipped so the dashboard never fails because one weird symlink is
-    inaccessible.
-    """
-    total = 0
-    if not path.exists():
-        return 0
-    for root, _dirs, files in os.walk(path, followlinks=False):
-        for name in files:
-            try:
-                total += os.path.getsize(os.path.join(root, name))
-            except OSError:
-                continue
-    return total
+# (monotonic_ts, total_bytes, platforms). Full os.walk of a multi-GB
+# mirror is too expensive to run on every /info hit.
+_platform_cache: tuple[float, int, list] | None = None
+_PLATFORM_CACHE_TTL = 120.0
 
 
-def _platform_summary() -> list[dict]:
-    """Inventory each top-level mirror directory.  Used by the
-    Installer page to show e.g. "yum: 245 RPMs / 1.2 GB" stats.
+def _invalidate_platform_cache() -> None:
+    global _platform_cache
+    _platform_cache = None
 
-    The 3.3.5-2 layout uses one tree per upstream source rather than
-    per logical OS family, so apt covers both Debian and Ubuntu.
-    """
-    # (label-on-page, on-disk subdir, file-extensions-to-count)
-    sections = (
-        ("yum",     "yum",     (".rpm",)),
-        ("apt",     "apt",     (".deb",)),
-        ("windows", "windows", (".msi",)),
-        ("mac",     "mac",     (".dmg", ".pkg")),
-    )
+
+def _platform_presence_only() -> list[dict]:
+    """Cheap exists() check — no tree walk. Enough for first paint."""
     summary = []
-    for label, subdir, exts in sections:
+    for label, subdir, _exts in _PLATFORM_SECTIONS:
         path = PKG_REPO_DIR / subdir
         present = path.exists() and path.is_dir()
-        size = _directory_size_bytes(path) if present else 0
+        summary.append({
+            "platform": label,
+            "present":  present,
+            "bytes":    0,
+            "packages": 0,
+        })
+    return summary
+
+
+def _compute_platform_inventory() -> tuple[int, list]:
+    """One os.walk per platform: package count + bytes together."""
+    summary = []
+    total = 0
+    for label, subdir, exts in _PLATFORM_SECTIONS:
+        path = PKG_REPO_DIR / subdir
+        present = path.exists() and path.is_dir()
+        size = 0
         file_count = 0
         if present:
-            for _root, _d, files in os.walk(path, followlinks=False):
+            for root, _d, files in os.walk(path, followlinks=False):
                 for fn in files:
+                    fpath = os.path.join(root, fn)
+                    try:
+                        size += os.path.getsize(fpath)
+                    except OSError:
+                        continue
                     lower = fn.lower()
                     if any(lower.endswith(ext) for ext in exts):
                         file_count += 1
+        total += size
         summary.append({
             "platform": label,
             "present":  present,
             "bytes":    size,
             "packages": file_count,
         })
-    return summary
+    return total, summary
+
+
+async def _cached_platform_inventory() -> tuple[int, list]:
+    global _platform_cache
+    now = time.monotonic()
+    if _platform_cache and (now - _platform_cache[0]) < _PLATFORM_CACHE_TTL:
+        return _platform_cache[1], _platform_cache[2]
+    total, platforms = await asyncio.to_thread(_compute_platform_inventory)
+    _platform_cache = (now, total, platforms)
+    return total, platforms
 
 
 def _render_template(text: str) -> str:
@@ -292,11 +312,13 @@ class InstallerInfo(BaseModel):
 
 
 @router.get("/info", response_model=InstallerInfo)
-async def get_installer_info() -> InstallerInfo:
-    """Return everything the Installer page needs to render itself.
+async def get_installer_info(full: bool = False) -> InstallerInfo:
+    """Return installer chrome (commands, last sync, server).
 
-    No auth gate beyond the global middleware -- every signed-in user
-    can see installer info; only operator/admin can trigger a sync.
+    Default is cheap (no mirror tree walk) so the Agent Install page
+    can paint the Linux one-liner immediately. Pass ``full=true`` when
+    the Mirror tab needs package counts and byte totals. Full inventory
+    is cached for two minutes and computed off the event loop.
     """
     repo_url      = _pkg_repo_url()
     console       = _local_fqdn()
@@ -347,6 +369,10 @@ async def get_installer_info() -> InstallerInfo:
     )
 
     status = _read_status_file()
+    if full:
+        total_bytes, platforms = await _cached_platform_inventory()
+    else:
+        total_bytes, platforms = 0, _platform_presence_only()
     return InstallerInfo(
         pkg_repo_url      = repo_url,
         puppet_server     = console,
@@ -360,8 +386,8 @@ async def get_installer_info() -> InstallerInfo:
         last_sync_utc     = status.get("last_sync_utc"),
         last_sync_result  = status.get("result"),
         sync_in_progress  = _sync_lock_held() is not None,
-        total_bytes       = _directory_size_bytes(PKG_REPO_DIR),
-        platforms         = _platform_summary(),
+        total_bytes       = total_bytes,
+        platforms         = platforms,
     )
 
 
@@ -587,6 +613,8 @@ async def trigger_sync(
     # flood the browser.
     if len(output_lines) > 200:
         output_lines = ["[... output truncated ...]"] + output_lines[-200:]
+
+    _invalidate_platform_cache()
 
     return SyncResult(
         success      = (rc == 0),
@@ -1447,6 +1475,7 @@ async def update_mirror_selections(
 
     # Save first so the config is updated even if sync takes a while
     _write_selections(new)
+    _invalidate_platform_cache()
     logger.info(
         "User %s updated mirror selections: +%s -%s (versions: %s)",
         user, added, removed, new.openvox_versions,

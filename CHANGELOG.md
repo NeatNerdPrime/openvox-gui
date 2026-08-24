@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.41] - 2026-08-24 (perf — Agent Install first paint)
+
+### Fixed
+- **Dashboard:** Needs-attention `useMemo` hooks no longer run after
+  early returns (cold login no longer crashes Overview).
+- **Agent Install:** page no longer blocks first paint on a full
+  `/opt/openvox-pkgs` walk, upstream scrape, and live log SSE. Linux
+  one-liner comes from cheap `/installer/info`; Mirror tab loads
+  `?full=true` (cached 2 min, walk off the event loop); Sync Log
+  EventSource mounts only when that tab is open.
+
 ## [3.12.0-rc.40] - 2026-08-24 (feat — Needs attention CSV)
 
 ### Added
