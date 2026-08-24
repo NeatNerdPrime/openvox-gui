@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.42] - 2026-08-24 (fix — ENC group list stale overwrite)
+
+### Fixed
+- **Classification Node Groups:** creating a group could succeed (unique
+  name in the DB) while the table stayed empty. A slow compiler
+  environment discovery started on page load finished after Create and
+  replaced the list with the pre-insert result. Groups now load first
+  and ignore stale refreshes. ENC-only environments (e.g. kea_cutover)
+  stay in the environment dropdown even if compilers do not advertise
+  them. Refresh button on the groups tab.
+
 ## [3.12.0-rc.41] - 2026-08-24 (perf — Agent Install first paint)
 
 ### Fixed

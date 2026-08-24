@@ -10,7 +10,7 @@
 - **Clustered optional:** dual console + VIP sessions, fleet exclude, ovox estate health (members + VIPs), Bolt estate inventory, shared Postgres `openvox_gui`. See [docs/STATUS.md](docs/STATUS.md).
 - **Pre-release labels:** PEP 440 only (`rc` / `a` / `b` / `dev`). Never put `gamma` in `VERSION` (pip rejects it).
 - **Monday backlog:** Puppet **roles** = `profile::base` + technology profiles (compiler / CA / PDB / console). Not profiles-only.
-- Pre-release counter on every meaningful push: `3.12.0-rc.N` via bump + CHANGELOG + tag + push + lab deploy.
+- Pre-release counter on every meaningful push: `3.12.0-rc.N` via bump + CHANGELOG + tag + **push branch and tags** + **lab deploy of that tag** to `openvox.questy.org` (`10.0.100.225`) so the user can test before xAI. Never leave a new tag only on the laptop.
 
 ### Stable baseline and history
 
