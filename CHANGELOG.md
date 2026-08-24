@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.40] - 2026-08-24 (feat — Needs attention CSV)
+
+### Added
+- **Dashboard Needs attention:** CSV / copy export (certname, status,
+  last report, ISO timestamp). Downloads the full attention set, not
+  only the 25 rows shown in the table.
+
 ## [3.12.0-rc.39] - 2026-08-21 (ops — estate health check, clustered Bolt)
 
 ### Added

@@ -87,6 +87,7 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 - Trends (status over time), service/cluster health snippets where configured
 - Active GUI sessions
 - Optional auto-refresh; SWR / session cache so polls do not blank the page
+- **Needs attention** table: failed, unreported, or last report older than 24h. CSV / copy export (certname, status, last report, ISO timestamp) via the same export control as Nodes — full list, not just the 25 rows on screen
 - Behind a **VIP**, poll floor is raised (see [VIP_SESSIONS.md](VIP_SESSIONS.md))
 
 ### Nodes (`/nodes`)
