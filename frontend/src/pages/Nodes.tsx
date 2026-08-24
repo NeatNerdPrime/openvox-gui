@@ -4,6 +4,7 @@
  * Component documentation to be expanded.
  */
 import { useState, useMemo } from 'react';
+import { useAuth } from '../hooks/AuthContext';
 import { useNavigate } from 'react-router';
 import {
   Title, Table, Card, TextInput, Stack, Group, Text, Alert,
@@ -190,8 +191,14 @@ export function NodesPage() {
     const fields = [cert, env].filter(Boolean);
 
     if (statusFilter) {
-      const st = (n.latest_report_status || '').toLowerCase();
-      if (st !== statusFilter.toLowerCase()) return false;
+      const raw = (n.latest_report_status || '').toLowerCase();
+      const st = raw || 'unreported';
+      const want = statusFilter.toLowerCase();
+      if (want === 'attention') {
+        if (st !== 'failed' && st !== 'unreported') return false;
+      } else if (st !== want) {
+        return false;
+      }
     }
 
     if (!search) return true;
@@ -238,6 +245,8 @@ export function NodesPage() {
     { cacheKey: 'openvox_nodes_v1', pollIntervalMs: 20000 },
   );
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canPlay = !!user && (user.role === 'admin' || user.role === 'operator');
   const { begin, end } = useActivity();
   const skipConfirm = useSkipAdhocConfirm();
 
@@ -390,6 +399,7 @@ export function NodesPage() {
 
   const actionCell = (node: NodeSummary) => (
     <Group gap={4} onClick={(e) => e.stopPropagation()}>
+      {canPlay && (
       <Tooltip label="Run OpenVox (puppet agent -t as root)">
         <ActionIcon
           variant="subtle"
@@ -400,6 +410,7 @@ export function NodesPage() {
           <IconPlayerPlay size={18} />
         </ActionIcon>
       </Tooltip>
+      )}
       <Tooltip label="View details">
         <ActionIcon variant="subtle" onClick={() => navigate(`/nodes/${node.certname}`)}>
           <IconEye size={18} />

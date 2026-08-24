@@ -438,8 +438,8 @@ export function DashboardPage() {
               variant="compact"
               showDownload
             />
-            <Button size="xs" variant="subtle" onClick={() => navigate('/nodes?status=failed')}>
-              All failed →
+            <Button size="xs" variant="subtle" onClick={() => navigate('/nodes?status=attention')}>
+              All attention →
             </Button>
           </Group>
         </Group>

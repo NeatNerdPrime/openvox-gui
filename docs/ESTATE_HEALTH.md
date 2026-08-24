@@ -14,7 +14,9 @@ On **each ovdb member** (not the VIP name):
 sudo /opt/openvox-gui/scripts/ensure-puppetdb-spock.sh
 ```
 
-The design is **load across VIPs**, not “write n1 only.”
+Reads use the OpenVoxDB DNS RR (`ovdb.corp`). **Compiler writes**
+use a single primary (n1 first, n2 failover, `command_broadcast = false`).
+Spock copies n1 → n2/n3/n4. Do not treat four-way DNS RR as a write fan-out.
 
 | VIP | Role | Hide on Nodes? |
 |-----|------|----------------|
@@ -22,8 +24,9 @@ The design is **load across VIPs**, not “write n1 only.”
 | `ovca.corp.int-x.ai` | CA | Yes (DNS only) |
 | `ovcompilers.<site>-it.…` | HAProxy VM + agent | **No** |
 
-GUI and compilers both use `ovdb.corp`. That is correct **only** when
-every A record’s `/pdb/query/v4/nodes` count matches (preflight).
+GUI `OPENVOX_GUI_PUPPETDB_HOST=ovdb.corp` is the clustered **read**
+end state, only when every A record’s `/pdb/query/v4/nodes` count
+matches (preflight). Compilers stay on `server_urls` n1, n2.
 
 Do **not** put `ovdb.corp` in `/etc/hosts`. Members may be in hosts;
 the VIP FQDN must come from DNS.
@@ -59,8 +62,12 @@ Not Puppet. Not “write a different ovdb.”
 ## OpenVoxDB consistency (stay on the VIP)
 
 `/nodes` (what the GUI shows) follows **catalogs**, not SQL
-`INSERT` into `certnames`. Compilers already use
-`server_urls = https://ovdb.corp.int-x.ai:8081`. Keep that.
+`INSERT` into `certnames`. Compiler `puppetdb.conf` should be:
+
+```ini
+server_urls = https://ovdb1.pdxc-it.corp.int-x.ai:8081,https://ovdb2.pdxc-it.corp.int-x.ai:8081
+command_broadcast = false
+```
 
 Spock must copy `catalogs` / `factsets` / `certnames` (`default`) and
 `edges` (`pdb_nopk`). `repl_user` needs

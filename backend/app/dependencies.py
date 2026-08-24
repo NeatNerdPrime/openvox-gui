@@ -23,6 +23,10 @@ Role hierarchy (GUI user roles):
 """
 from fastapi import Request, HTTPException
 from typing import FrozenSet, Tuple
+from sqlalchemy import select
+
+from .database import async_session
+from .models.user import User
 
 # ─── GUI user roles (local/LDAP accounts in User Manager) ───────────────
 # Service/API token scopes (bolt, service, …) are separate and live in
@@ -102,6 +106,25 @@ def require_role(*allowed_roles: str):
         if not user:
             raise HTTPException(status_code=401, detail="Not authenticated")
         role = user.get("role", "viewer")
+        uid = user.get("user_id")
+        if uid and uid not in ("anonymous", "service"):
+            try:
+                async with async_session() as session:
+                    result = await session.execute(
+                        select(User).where(User.username == uid)
+                    )
+                    row = result.scalar_one_or_none()
+                if row is None:
+                    raise HTTPException(
+                        status_code=401, detail="User no longer exists"
+                    )
+                role = row.role or "viewer"
+                user["role"] = role
+            except HTTPException:
+                raise
+            except Exception:
+                # Shared-DB blip: keep JWT role rather than fail-open to admin
+                pass
         if role not in allowed_roles:
             raise HTTPException(
                 status_code=403,

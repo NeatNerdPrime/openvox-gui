@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.43] - 2026-08-24 (fix — panel + security must-fixes)
+
+### Fixed
+- **Cluster Save:** omitted `dns_rr_vips` no longer wipes `ovdb.corp` off
+  the hide list. Form now edits DNS RR names. Infra VIP copy no longer
+  claims `ovcompilers.*` are hidden.
+- **Nodes:** `?status=unreported` includes empty status. Dashboard
+  **All attention →** opens failed+unreported (not failed-only).
+- **Viewers:** Play, Orchestration, Code Deployment, Agent Install,
+  Hiera files, and Settings hidden in the nav. Hiera file GET requires
+  admin or operator.
+- **Insights heatmap/environments:** `get_live_nodes()` (same fleet
+  as Dashboard).
+- **Install/update/deploy:** copy `estate-health-check.sh`,
+  `cluster-preflight.sh`, `ensure-puppetdb-spock.sh`,
+  `seed-bolt-known-hosts.sh`.
+- **Docs:** STATUS/README unfrozen from rc.28. ESTATE_HEALTH: GUI
+  reads `ovdb.corp`; compilers write n1 then n2,
+  `command_broadcast=false`.
+- **LDAP:** first login provisions `default_role` (viewer), never
+  operator. Empty password rejected. LDAP JWT uses denylist
+  (`verify_token_async`).
+- **RBAC:** `require_role` re-reads role from the user row so demotion
+  takes effect. Refuse start with placeholder `SECRET_KEY` unless debug.
+
 ## [3.12.0-rc.42] - 2026-08-24 (fix — ENC group list stale overwrite)
 
 ### Fixed

@@ -157,6 +157,8 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 - Layers: **Common → Environment → Group → Node** deep merge
 - Groups, node assignment, class/param editing, preview. Node Groups load independently of compiler environment discovery so a new group is not overwritten by a stale page-load refresh
 - Infrastructure groups for clustered estates
+- Node Groups list is not overwritten by a stale compiler env discovery
+- Cluster Save preserves DNS RR hide list (`dns_rr_vips`); `ovcompilers.*` stay on Nodes
 - Reconciliation against **live fleet** (prune ghosts after CA clean / PDB deactivate)
 - Compilers: `enc.py` + `OPENVOX_GUI_API_BASE` → console VIP(s)
 

@@ -894,7 +894,7 @@ async def get_puppetserver_performance(_user: str = Depends(_AUTH)):
 @router.get("/heatmap")
 async def get_node_heatmap(_user: str = Depends(_AUTH)):
     """Node status grid for heatmap visualization."""
-    nodes = await puppetdb_service.get_nodes()
+    nodes = await puppetdb_service.get_live_nodes()
     grid = []
     for node in nodes:
         grid.append({
@@ -913,7 +913,7 @@ async def get_node_heatmap(_user: str = Depends(_AUTH)):
 @router.get("/environments")
 async def get_environment_comparison(_user: str = Depends(_AUTH)):
     """Compare metrics across Puppet environments."""
-    nodes = await puppetdb_service.get_nodes()
+    nodes = await puppetdb_service.get_live_nodes()
     envs: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "total": 0, "changed": 0, "unchanged": 0, "failed": 0, "noop": 0, "unreported": 0,
     })

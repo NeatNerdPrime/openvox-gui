@@ -225,7 +225,11 @@ for script in \
     list-classes-remote.py \
     list-environments-remote.py \
     read-logs-remote.py \
-    generate_bolt_token.py
+    generate_bolt_token.py \
+    cluster-preflight.sh \
+    estate-health-check.sh \
+    ensure-puppetdb-spock.sh \
+    seed-bolt-known-hosts.sh
 do
     if [ -f "${REPO_DIR}/scripts/${script}" ]; then
         cp "${REPO_DIR}/scripts/${script}" "${INSTALL_DIR}/scripts/${script}"

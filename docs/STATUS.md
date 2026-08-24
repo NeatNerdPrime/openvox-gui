@@ -1,8 +1,8 @@
 # OpenVox GUI — Project status (release readiness)
 
-**As of:** 2026-08-19  
+**As of:** 2026-08-24  
 **Branch:** `main`  
-**VERSION file:** `3.12.0-rc.28`  
+**VERSION file:** `3.12.0-rc.42` (train continues; bump on each push)  
 **Last stable GitHub Release:** **3.10.6** (still recommended for production AIO unless you opt into 3.12-rc)
 
 This document freezes **where we are** after the 3.12 clustering/VIP/ovox week, so Monday’s **roles/profiles** work starts from a clean map. It covers **all-in-one (AIO)** and **clustered** installs.
@@ -169,7 +169,8 @@ Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,pu
 - [ ] Bolt estate inventory readable by user `bolt` (644)  
 - [ ] `ovox infra settings show` shows `source: bolt` + host or clear warnings  
 - [ ] VIP login stable ≥ session floor; direct FQDN still OK  
-- [ ] Fleet exclude hides `ovcompilers.*` etc.  
+- [x] Fleet exclude **never** hides first-label `ovcompilers.*` (HAProxy agents)  
+- [x] Compilers write n1 then n2 (`command_broadcast=false`); GUI reads `ovdb.corp` when preflight is green  
 - [ ] Log Viewer empty host → 200 not 502  
 
 ### Before GitHub Release 3.12.0

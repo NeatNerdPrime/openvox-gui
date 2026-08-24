@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth_base import AuthBackend
-from .auth_local import verify_token, create_token
+from .auth_local import verify_token_async, create_token
 from ..config import settings
 from ..database import async_session
 from ..models.user import User, LdapConfig, _utc_naive
@@ -331,9 +331,12 @@ async def ldap_login(username: str, password: str) -> Optional[Dict[str, Any]]:
         return None
 
     # Auto-provision or look up local user record.
-    # Roles are NOT derived from LDAP — new users get a default role
-    # that an admin can change later in User Manager.
-    AUTO_PROVISION_ROLE = "operator"
+    # New users get default_role (viewer unless admin configured otherwise).
+    # Never auto-grant operator/admin. Admins promote in User Manager.
+    _provision = (cfg.default_role or "viewer").strip().lower()
+    if _provision not in ("viewer", "certops"):
+        _provision = "viewer"
+    AUTO_PROVISION_ROLE = _provision
 
     uname = (username or "").strip()
     async with async_session() as session:
@@ -497,7 +500,7 @@ class LDAPAuthBackend(AuthBackend):
             token = request.query_params.get("token")
         if not token:
             return None
-        return verify_token(token)
+        return await verify_token_async(token)
 
     async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
         async with async_session() as session:

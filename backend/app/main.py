@@ -146,6 +146,19 @@ async def lifespan(app: FastAPI):
             import sys
             sys.exit(1)
 
+    from .config import _DEFAULT_SECRET_KEY
+    if (
+        settings.auth_backend != "none"
+        and not settings.debug
+        and (settings.secret_key or "") == _DEFAULT_SECRET_KEY
+    ):
+        logger.critical(
+            "SECURITY: Refusing to start with the placeholder SECRET_KEY. "
+            "Set OPENVOX_GUI_SECRET_KEY (installer generates one)."
+        )
+        import sys
+        sys.exit(1)
+
     # Migrate legacy htpasswd users to database (one-time)
     # This ensures backward compatibility with pre-database authentication
     if settings.auth_backend == "local":

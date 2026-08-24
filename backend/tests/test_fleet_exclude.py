@@ -10,6 +10,15 @@ from app.services.cluster_config import (
 )
 
 
+def test_cluster_update_omitted_dns_rr_vips_is_none():
+    """Save must not default dns_rr_vips to [] (that wiped ovdb.corp)."""
+    from app.routers.config import ClusterConfigUpdate
+
+    body = ClusterConfigUpdate(deployment_mode="single")
+    assert body.dns_rr_vips is None
+    assert body.ca_vips is None
+
+
 def test_fleet_excluded_merges_cluster_lists():
     cfg = {
         "deployment_mode": "clustered",
