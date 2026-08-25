@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.48] - 2026-08-25 (fix — Needs attention matches across consoles)
+
+### Fixed
+- **Overview Needs attention:** each console no longer lists a
+  different stale set because it only read its local `ovdb` VIP.
+  Newest report documents are merged from peer OpenVoxDBs (cluster
+  `puppetdb_nodes` / `dns_rr_vips`, `ovdb.<site>` from consoles, and
+  `OPENVOX_GUI_PUPPETDB_PEERS`). Nodes `?status=attention` uses the
+  same failed / unreported / older-than-24h rule as the Dashboard
+  table.
+
 ## [3.12.0-rc.47] - 2026-08-25 (fix — Overview badge matches Node Detail / PDB)
 
 ### Fixed

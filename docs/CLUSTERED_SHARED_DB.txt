@@ -96,6 +96,9 @@ Current console knobs that affect clustered reads (GUI .env)
   OPENVOX_GUI_DATABASE_URL          postgresql+asyncpg://openvox_gui:…@ovdb1…/openvox_gui
   OPENVOX_GUI_SECRET_KEY            identical on every console
   OPENVOX_GUI_PUPPETDB_HOST         ovdb.example.com   (RR; not ovdb1)
+  OPENVOX_GUI_PUPPETDB_PEERS        ovdb.site-b.example.com
+                                    (other site VIP; Overview merges newest
+                                    report so Needs attention matches)
   OPENVOX_GUI_PUPPET_CA_HOST        ovca.example.com
   OPENVOX_GUI_PUPPET_SERVER_HOST    compiler LB / a compiler, not the console
   OPENVOX_GUI_FAILED_ALERT_HOURS    8   (annotate stale Failed; does not rewrite badge)

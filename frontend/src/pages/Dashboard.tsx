@@ -22,6 +22,7 @@ import type { NodeSummary } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { ExportActions } from '../components/ExportActions';
 import { STATUS_HEX, statusMantine } from '../utils/statusTheme';
+import { isNeedsAttention } from '../utils/needsAttention';
 
 const ATTENTION_EXPORT_COLS = [
   'certname',
@@ -254,15 +255,10 @@ export function DashboardPage() {
     if (dashData) setLastRefresh(new Date());
   }, [dashData]);
 
-  const attentionAll = useMemo(() => {
-    const staleCutoff = Date.now() - 24 * 3600 * 1000;
-    return dedupedNodes.filter((n) => {
-      const st = (n.latest_report_status || '').toLowerCase();
-      if (st === 'failed' || st === 'unreported' || !st) return true;
-      const ts = n.report_timestamp ? new Date(n.report_timestamp).getTime() : 0;
-      return Boolean(ts) && ts < staleCutoff;
-    });
-  }, [dedupedNodes]);
+  const attentionAll = useMemo(
+    () => dedupedNodes.filter((n) => isNeedsAttention(n)),
+    [dedupedNodes],
+  );
   const attentionExportRows = useMemo(
     () =>
       attentionAll.map((n) => ({

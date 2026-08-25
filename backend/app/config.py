@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     puppetdb_host: str = "localhost"
     puppetdb_port: int = 8081
     puppetdb_ssl: bool = True
+    # Extra OpenVoxDB FQDNs to merge newest reports from (comma/space).
+    # Dual-VIP estates: the other site's ovdb VIP so Overview matches.
+    puppetdb_peers: Optional[str] = None
 
     # ── Database ──────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:////opt/openvox-gui/data/openvox_gui.db"

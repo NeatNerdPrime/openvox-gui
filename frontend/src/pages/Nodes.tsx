@@ -26,6 +26,7 @@ import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
 import { useAppTheme } from '../hooks/ThemeContext';
 import type { NodeSummary } from '../types';
 import { timeAgo } from '../utils/timeAgo';
+import { isNeedsAttention } from '../utils/needsAttention';
 import { PageHeader } from '../components/PageHeader';
 
 /** Columns for All Nodes export (CSV / JSON / text) — mirrors Inventory ExportActions. */
@@ -195,7 +196,7 @@ export function NodesPage() {
       const st = raw || 'unreported';
       const want = statusFilter.toLowerCase();
       if (want === 'attention') {
-        if (st !== 'failed' && st !== 'unreported') return false;
+        if (!isNeedsAttention(n)) return false;
       } else if (st !== want) {
         return false;
       }

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.47**
+**OpenVox GUI Version 3.12.0-rc.48**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.47"}
+   # Should return: {"status":"ok","version":"3.12.0-rc.48"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -655,6 +655,15 @@ status (after rc.47). A node is **Unreported** only when this GUI’s
 OpenVoxDB has no `latest_report_status` / no report document for that
 certname. A day-old Unchanged or Failed report keeps that status on
 every page. Needs attention still lists reports older than 24 hours.
+
+**Needs attention differs by console** (ATLC has six, PDXC has none):
+each console’s `ovdb.example.com` A record is one site VIP, and
+reports often do not replicate. After rc.48 the GUI merges the newest
+report from peer OpenVoxDBs (`puppetdb_nodes`, `dns_rr_vips`,
+`ovdb.<site>` derived from consoles, and
+`OPENVOX_GUI_PUPPETDB_PEERS`). Both consoles then show the same
+attention list. Until that build is on **both** GUIs, the list follows
+whichever `.78` stored the last report.
 
 It is **not** “puppet agent -tv printed Applied.” The report must exist
 on **this** PDB (often `ovdb.example.com` → one site). An ATLC compile stores
