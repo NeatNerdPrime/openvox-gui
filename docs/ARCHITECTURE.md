@@ -6,7 +6,7 @@ This document describes the high-level architecture of OpenVox GUI, with special
 
 OpenVox GUI is a full-stack application that provides both a **web interface** and a **command-line interface** (`ovox`) for managing an OpenVox (open-source Puppet) infrastructure.
 
-**Version line:** see root `VERSION` and [CHANGELOG.md](../CHANGELOG.md). **Last stable Release:** 3.10.6 (AIO production default). **Active pre-release:** 3.12.0-rc (AIO + clustered). Status snapshot: [STATUS.md](STATUS.md). Features: [FEATURES.md](FEATURES.md).
+**Version line:** see root `VERSION` and [CHANGELOG.md](../CHANGELOG.md). **Current stable Release:** 3.12.0 (AIO + clustered). Status snapshot: [STATUS.md](STATUS.md). Features: [FEATURES.md](FEATURES.md).
 
 The system has two primary user interfaces that are treated as equals:
 

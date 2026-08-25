@@ -1,22 +1,24 @@
-# OpenVox GUI — Project status (release readiness)
+# OpenVox GUI — Project status (3.12.0)
 
 **As of:** 2026-08-25  
 **Branch:** `main`  
-**VERSION file:** see repo `VERSION` (3.12.0-rc train; bump on each push)  
-**Last stable GitHub Release:** **3.10.6** (still recommended for production AIO unless you opt into 3.12-rc)
+**VERSION file:** `3.12.0`  
+**Current stable GitHub Release:** **3.12.0** (`v3.12.0`)
 
-This document freezes **where we are** after the 3.12 clustering/VIP/ovox week, so Monday’s **roles/profiles** work starts from a clean map. It covers **all-in-one (AIO)** and **clustered** installs.
+This file is the operator map after the 3.12 clustering / VIP / fleet-status
+train was promoted to stable.
 
 ---
 
-## 1. Product intent (do not lose this)
+## 1. Product intent
 
 | Audience | Path |
 |----------|------|
 | **Most users** | **All-in-one:** GUI on the OpenVox Server host (SQLite OK, local puppetserver/CA/PDB/Bolt) |
 | **Large / multi-DC** | **Clustered:** dedicated console(s), compilers, CA HA, OpenVoxDB mesh, shared Postgres `openvox_gui` |
 
-**AIO remains the primary install path** in INSTALL, Quick Start, and installer defaults. Clustering is documented and functional for early production **by intent**, not yet a “stable 3.12.0” GitHub Release.
+**AIO remains the primary install path** in INSTALL, Quick Start, and installer
+defaults. Clustering is documented and supported in 3.12.0.
 
 ---
 
@@ -24,17 +26,19 @@ This document freezes **where we are** after the 3.12 clustering/VIP/ovox week, 
 
 | Line | Status | Notes |
 |------|--------|--------|
-| **3.10.6** | Stable | Last published GitHub Release; fine for classic AIO |
-| **3.11.x** | Historical beta | Clustered console foundations |
-| **3.12.0-rc.N** | Active pre-release on `main` | VIP sessions, fleet exclude, ovox clustered infra, Bolt estate inventory, docs |
+| **3.12.0** | **Stable** | Current GitHub Release. AIO + clustered. |
+| **3.10.6** | Prior stable | Fine for classic AIO if you are not ready to upgrade |
+| **3.11.x** | Historical beta | Clustered console foundations; prefer 3.12.0 |
+| **3.12.0-rc.N** | Promoted | Audit trail stays in CHANGELOG |
 
-Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `gamma` in `VERSION` (pip rejects it).
+Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use
+`gamma` in `VERSION` (pip rejects it).
 
 **ovox** is version-locked to the GUI via root `VERSION` + `scripts/bump-version.sh`.
 
 ---
 
-## 3. What shipped in the 3.12.0-rc train (summary)
+## 3. What 3.12.0 ships
 
 ### Dual-console / VIP
 - Session gate (no hard reload on 401)
@@ -44,42 +48,33 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 - Console footer: hostname + IP (`/api/version`)
 - Cluster fields: `vip_hosts`, `infra_vips`, `fleet_exclude`
 
-### Fleet / Nodes
-- Live fleet = active PDB `/nodes` − DNS RR names only (`ovcompilers.*` stay)  
-- `cluster-preflight.sh` refuses `/etc/hosts` pins of the PDB VIP  
-- `ensure-puppetdb-spock.sh` grants `pg_replication_origin_*` to `repl_user` on database **puppetdb**  
-- `bootstrap-openvox-gui-db.sh` provisions database **openvox_gui** (separate mesh)  
-- Status badge = newest OpenVoxDB **report** `status` (not CA, not aged to Unreported)  
-- Overview, Nodes, Node Detail, and Monitoring share that census; Needs attention still flags reports older than 24h
+### Fleet / Nodes / Overview
+- Live fleet = active PDB `/nodes` − DNS RR names only (`ovcompilers.*` stay)
+- Status badge = newest OpenVoxDB **report** `status` (not CA, not aged to Unreported)
+- Overview, Nodes, Node Detail, Monitoring, Heatmap, and Environments share
+  that census (including Bolt live-run overlay)
+- Newest reports are **merged from peer OpenVoxDBs** so two consoles do not
+  disagree when each VIP stored a different last report
+- Needs attention = failed, unreported, or last report older than 24h
+  (same rule on Dashboard and Nodes `?status=attention`)
 
-### Log Viewer
-- Empty remote logs → **200** + message, not 502 “no log JSON”
-- Bolt + journalctl/tail fallback
+### Clustered data plane
+- `cluster-preflight.sh` refuses `/etc/hosts` pins of the PDB VIP
+- `ensure-puppetdb-spock.sh` grants `pg_replication_origin_*` on database **puppetdb**
+- `bootstrap-openvox-gui-db.sh` provisions database **openvox_gui** (separate mesh)
+- ENC HTTPS verifies the console cert against the Puppet CA
+- Compilers: `[server] reports = puppetdb` and site-local `server_urls`
 
-### PQL
-- Sortable OpsTable result columns
+### Log Viewer / PQL / ovox
+- Empty remote logs → **200** + message, not 502
+- Sortable PQL result columns
+- `ovox infra health` probes estate members **and** VIPs
+- Bolt estate inventory under `/opt/openvox-gui/data/` **644**
 
-### ovox / infra (clustered)
-- `ovox infra health` → full estate members **and** VIPs via HTTP probes  
-- Estate inventory from **cluster_config + OPENVOX_GUI_*** (not PuppetDB Bolt plugin inventory)  
-- Bolt inventory written under `/opt/openvox-gui/data/` **644**, readable by user `bolt`  
-- `ovox infra settings show` samples remote conf via Bolt when local conf missing  
-- Local tune **apply** refused on clustered console (would only mutate GUI host)  
-- Proxy bypass for internal GUI URLs (avoid 407)
-
-### Known gaps (not done)
-- **Remote tune apply** to every compiler/ovdb via Bolt  
-- Classify live compilers with **`roles::catalog_compiler`** (profile exists on itsys-control_repo `staging` / PR #46; production classify not confirmed)  
-- Dual-console **same** `OPENVOX_GUI_SECRET_KEY` + `openvox_gui` DSN (LDAP works ATLC, fails PDXC when keys differ)  
-- Promote **3.12.0** stable GitHub Release (deliberate later)
-
-### Also in 3.12.0-rc.19–rc.28
-- pip-audit + npm audit CI; cryptography 50  
-- ENC Classification: no triple-refresh / no “Environments loaded” toast  
-- Node Detail lean PDB + Host Health strip / CPU panes  
-- LDAP: 401 vs session-expired; bind password kept on blank save  
-- Clustered Deploy Now via Bolt r10k; Stage off CIS `noexec` `/tmp`  
-- **Run OpenVox:** Puppet exit **0 and 2** = success (`rc.28`)
+### Known gaps (not 3.12.0 blockers)
+- Remote tune apply to every compiler/ovdb via Bolt
+- Classify live compilers with `roles::catalog_compiler` (profile exists; production classify not confirmed)
+- Dual-console **same** `OPENVOX_GUI_SECRET_KEY` + `openvox_gui` DSN is an ops requirement, not a code fix
 
 ---
 
@@ -96,8 +91,7 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
   Bolt local + inventory
 ```
 
-Install: `sudo ./install.sh` on the server.  
-Infra: local files + local systemd; `ovox infra *` works on-box.
+Install: `sudo ./install.sh` on the server.
 
 ### Clustered (multi-server)
 
@@ -106,18 +100,18 @@ Infra: local files + local systemd; `ovox infra *` works on-box.
   openvox-gui + ovox
   Postgres openvox_gui (shared) + same SECRET_KEY
   cluster_config.json (members + VIPs)
-  Bolt SSH → estate (generated inventory)
+  Bolt SSH → estate
 
-[ Compilers ]  CA-off; termini → ovdb.example.com:8081 (single A); full control-repo; not location-sharded
-[ CA HA ]      Pacemaker+DRBD; pcs owns openvox-server or puppetserver (discover); auth.conf cert-status allow
-[ OpenVoxDB ]  Spock mesh / site HAProxy first+backup; not termini clients
+[ Compilers ]  CA-off; termini → site ovdb1,ovdb2; reports = puppetdb
+[ CA HA ]      Pacemaker+DRBD
+[ OpenVoxDB ]  Spock mesh / site HAProxy
 ```
 
-Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,puppetdb`, **no** facts→puppetdb terminus.
+See [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 
 ---
 
-## 5. Documentation map (post-tidy)
+## 5. Documentation map
 
 | Doc | Role |
 |-----|------|
@@ -125,98 +119,26 @@ Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,pu
 | [UPDATE.md](../UPDATE.md) | Clone-then-deploy |
 | [FEATURES.md](FEATURES.md) | Page/API inventory |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Single vs clustered |
-| [STATUS.md](STATUS.md) | **This file** — where we are |
+| [STATUS.md](STATUS.md) | **This file** |
 | [VIP_SESSIONS.md](VIP_SESSIONS.md) | Dual console sessions |
-| [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) | **Runbook:** two DBs, two Spock meshes, alembic, new-estate order |
-| [ESTATE_HEALTH.md](ESTATE_HEALTH.md) | Post-install console / Bolt / VIP checks |
+| [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) | Two DBs, two Spock meshes |
+| [ESTATE_HEALTH.md](ESTATE_HEALTH.md) | Post-install checks |
 | [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) | Ops failures |
-| [SECURITY.md](../SECURITY.md) | Support matrix + reporting |
-| [TUNING.md](TUNING.md) | ovox infra (AIO + clustered notes) |
+| [SECURITY.md](../SECURITY.md) | Support matrix |
+| [TUNING.md](TUNING.md) | ovox infra |
 
 ---
 
-## 6. Security scan (2026-08-14, rc.15 re-scan)
+## 6. Ops truth
 
-| Check | Result |
-|-------|--------|
-| **npm audit** (frontend, prod+dev) | **0 vulnerabilities**. Override `nanoid` ≥3.3.16 (GHSA-28wg-ghj8-5hjv); resolved **3.3.18** |
-| **pip-audit** (backend) | **CI gate:** `.github/workflows/security.yml` runs `scripts/ci-pip-audit.sh` on **ubuntu-latest** for Python **3.10** and **3.11**, installing with `--only-binary=psycopg2-binary` so the manylinux wheel is always audited (incl. transitive deps). Local macOS / Python 3.14 may still fail wheel build — use CI. |
-| **psycopg2-binary** | Pinned `==2.9.10`; covered by CI pip-audit on Linux wheels |
-| **npm audit** | CI job on lockfile (`npm ci` + `npm audit --audit-level=high`); local **0** as of rc.15 |
-| **Secret pattern scan** | No production secrets in tree. Dev placeholder `OVOX-DEV-PLACEHOLDER--NEVER-USE-IN-PRODUCTION` in config only. SSL wizard UI text mentions PEM headers (docs, not keys). |
-| **CVE badges (README)** | npm + backend audits both CI-gated |
-
-**Note:** `react-router@8` / Vite 7 want Node ≥20.19 or ≥22; lab/build still OK on Node 20. Track before forcing Node 22 in install docs.
-
-### Operator hygiene
-- Never commit `.env`, bolt tokens, or proxy passwords  
-- Dual console: identical `OPENVOX_GUI_SECRET_KEY` + shared `openvox_gui` DB  
-- CA `auth.conf`: compilers must **not** get certificate_statuses allow  
-- AIO: rotate default admin password after first login; set a real `SECRET_KEY` outside the installer default
+1. Node **Failed** = newest **OpenVoxDB report** status, not CA.
+2. Report processors = **compilers** `[server] reports = puppetdb`.
+3. CA-only: no termini, no PDB reports line.
+4. Dual-console Overview must merge peer reports (`OPENVOX_GUI_PUPPETDB_PEERS` or cluster consoles).
+5. **Two databases:** `puppetdb` vs `openvox_gui`. CREATE DATABASE does not follow the other mesh.
+6. `/nodes` follows **catalogs**. Never `INSERT` fleet stubs; never `sub_resync_table` on `certnames`.
+7. Same `SECRET_KEY` on every console or LDAP decrypts on one site only.
 
 ---
 
-## 7. Release checklist (AIO + clustered)
-
-### All-in-one smoke
-- [ ] Fresh `install.sh` on lab server  
-- [ ] Login, Dashboard, Nodes, one PQL, one cert list  
-- [ ] `ovox infra health` / `settings show` (local values present)  
-- [ ] Agent run → report appears in GUI  
-- [ ] Package mirror optional  
-
-### Clustered smoke
-- [ ] Same VERSION on all consoles  
-- [ ] `cluster_config` members **and** VIPs filled  
-- [ ] `ovox infra health` lists each compiler/ovdb/CA member + VIP  
-- [ ] Bolt estate inventory readable by user `bolt` (644)  
-- [ ] `ovox infra settings show` shows `source: bolt` + host or clear warnings  
-- [ ] VIP login stable ≥ session floor; direct FQDN still OK  
-- [x] Fleet exclude **never** hides first-label `ovcompilers.*` (HAProxy agents)  
-- [x] Compilers write n1 then n2 (`command_broadcast=false`); GUI reads `ovdb.example.com` when preflight is green  
-- [ ] `cluster-preflight.sh` PASS; `ensure-puppetdb-spock.sh` run on every ovdb member  
-- [ ] Both consoles: same `SECRET_KEY` + `OPENVOX_GUI_DATABASE_URL` (`openvox_gui`, not `puppetdb`)  
-- [ ] Log Viewer empty host → 200 not 502  
-
-### Before GitHub Release 3.12.0
-- [x] CI pip-audit + npm audit green (workflow `Security audits`)  
-- [ ] CHANGELOG stable section  
-- [ ] Press kit `docs/releases/press_3.12.0.md`  
-- [ ] Tag `v3.12.0` only (not auto-release from every rc)  
-
----
-
-## 8. Monday backlog (roles / profiles)
-
-Agreed approach: **roles** composed of **`profile::base` + technology profiles**.
-
-| Role (working names) | Profiles (illustrative) |
-|----------------------|-------------------------|
-| `role::openvox::compiler` | base, server, pdb_client (termini+reports), r10k, bolt_target |
-| `role::openvox::puppetdb` | base, openvoxdb, postgres client / spock join (plan) |
-| `role::openvox::ca` | base, ca packages, pcs/drbd (plan for join) |
-| `role::openvox::console` | base, openvox_gui, bolt, cluster_config from Hiera |
-
-**Day 0 bootstrap** (first CA / first PDB / VIPs) stays checklist + Bolt plans.  
-**Day N scale-out:** classify + agent run (+ optional join plan).
-
-Estate map in Hiera should feed **both** Puppet and GUI `cluster_config.json`.
-
----
-
-## 9. Ops truth (from this week — keep)
-
-1. Node **Failed** = newest **OpenVoxDB report** status, not CA.  
-2. Report processors = **compilers** `[server] reports = store,puppetdb`.  
-3. CA-only: no termini, no PDB reports line.  
-4. `NO_PROXY` suffixes for internal domains; **systemd** for puppetserver, not only profile.d.  
-5. Dual console badge disagreement with same PQL → check **live_run** overlay vs PDB.  
-6. pcs CA restart via **Pacemaker**, not bare systemctl on Promoted stack.  
-7. **Two databases:** `puppetdb` (compiler writes, existing Spock) vs `openvox_gui` (GUI ENC/users/secrets). CREATE DATABASE does not follow the other mesh.  
-8. `/nodes` follows **catalogs**. Never `INSERT` fleet stubs; never `sub_resync_table` on `certnames`.  
-9. PG17 Spock apply needs `pg_replication_origin_*` EXECUTE (`ensure-puppetdb-spock.sh`).  
-10. Same `SECRET_KEY` on every console or LDAP decrypts on one site only.  
-
----
-
-*Update this file whenever the pre-release train theme changes or 3.12.0 stable is cut.*
+*Update this file when the next train starts or a new stable is cut.*

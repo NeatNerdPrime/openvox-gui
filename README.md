@@ -245,25 +245,22 @@ sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py l
 
 ## Current train (3.12) and versioning
 
-**Pre-release on `main`:** **3.12.0-rc.\*** (see root `VERSION`).  
-**Last stable GitHub Release:** **3.10.6** — still the safe default for production **all-in-one**.  
+**Current stable GitHub Release:** **3.12.0** (`v3.12.0`).  
 Full map: [docs/STATUS.md](docs/STATUS.md) · features: [docs/FEATURES.md](docs/FEATURES.md) · history: [CHANGELOG.md](CHANGELOG.md).
 
-### 3.12-rc headlines (AIO + clustered)
-- **AIO unchanged as primary path** — install on the OpenVox Server; SQLite; local services  
-- **Clustered optional** — dedicated consoles, VIP sessions, fleet VIP exclude, remote CA/PDB, `ovox infra health` estate probes, Bolt-sampled settings  
-- **Ops polish** — PQL sortable results, Log Viewer empty≠502, console host/IP footer, proxy-safe ovox  
-
-### 3.10.6 stable (foundational — still current for many AIO sites)
-- Live fleet, Monitoring NOC, OpsTable, multi-worker uvicorn + SWR ([PERFORMANCE.md](docs/PERFORMANCE.md)), orchestration single Bolt run ([#38](https://github.com/cvquesty/openvox-gui/issues/38))
+### 3.12.0 headlines (AIO + clustered)
+- **AIO still first** — install on the OpenVox Server; SQLite; local services
+- **Clustered optional** — dedicated consoles, VIP sessions, fleet VIP exclude, remote CA/PDB, `ovox infra health`
+- **One fleet status** — newest OpenVoxDB report on Overview / Nodes / detail; peer merge so two consoles agree
+- **Ops polish** — PQL sortable results, Log Viewer empty≠502, console host/IP footer
 
 ### Earlier 3.x (still in the product)
-- **3.7** Insights / maintenance · **3.6** agent installer, SSL wizard, RBAC · **3.3/2.x** Bolt targets, native SSL, LDAP  
+- **3.10.6** performance / SWR · **3.7** Insights / maintenance · **3.6** agent installer, SSL wizard, RBAC
 
 ### How we version
-- **Stable:** `MAJOR.MINOR.PATCH` (e.g. **3.10.6**, future **3.12.0**)  
-- **Pre-release:** `3.12.0-rc.N` (PEP 440 only — not `gamma`) · ovox lockstep with GUI  
-- **Branch:** `main` only · GitHub Releases only for intentional stables  
+- **Stable:** `MAJOR.MINOR.PATCH` (e.g. **3.12.0**)
+- **Pre-release:** `3.12.1-dev.N` / `3.13.0-rc.N` (PEP 440 only — not `gamma`) · ovox lockstep with GUI
+- **Branch:** `main` only · GitHub Releases only for intentional stables
 
 > **Metrics:** [docs/METRICS.md](docs/METRICS.md) · Host Health: [docs/HOST_HEALTH.md](docs/HOST_HEALTH.md)
 

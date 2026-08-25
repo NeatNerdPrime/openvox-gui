@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.0-rc.48**
+**OpenVox GUI Version 3.12.0**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -23,7 +23,7 @@ This guide will walk you through installing OpenVox GUI on your server. Don't wo
 ### What You Need
 
 > **Default = all-in-one (most common):** install on your **OpenVox Server** host — local puppetserver, CA tools, agent, Bolt, and SQLite. That is what this guide optimizes for.  
-> **Optional = clustered (3.11+ / 3.12-rc):** dedicated **console** with agent cert, Bolt to compilers, `OPENVOX_GUI_PUPPET_CA_HOST` / PDB hosts, and Postgres **`openvox_gui`**. See § Advanced Installations, [docs/STATUS.md](docs/STATUS.md), and [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). A random laptop with no Puppet SSL is still **not** supported.
+> **Optional = clustered (3.12.0):** dedicated **console** with agent cert, Bolt to compilers, `OPENVOX_GUI_PUPPET_CA_HOST` / PDB hosts, and Postgres **`openvox_gui`**. See § Advanced Installations, [docs/STATUS.md](docs/STATUS.md), and [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). A random laptop with no Puppet SSL is still **not** supported.
 
 Think of these as the ingredients before you start cooking:
 
@@ -332,7 +332,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.0-rc.48"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.0"}` if everything is working.
 
 ---
 
@@ -840,7 +840,7 @@ A more detailed advanced installation example may be published in a later OpenVo
 
 Typical path for an existing singleton (or smaller) production estate:
 
-1. **Stand up** the new multi-server OpenVox + GUI (**3.12.0-rc+** clustered) environment separately.  
+1. **Stand up** the new multi-server OpenVox + GUI (**3.12.0** clustered) environment separately.  
 2. **Migrate agents and roles** onto that estate (compilers, OpenVoxDB, CA policy as designed).  
 3. **Do not** require a big-bang “upgrade the old production box to clustered 3.12 in place.”  
 4. After migration, **repurpose the former production OpenVox host(s)** as a **development / lab instance** (lower risk experiments, GUI rc trains, training).

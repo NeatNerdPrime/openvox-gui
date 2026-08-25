@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0] - 2026-08-25 (stable — clustered consoles, one fleet status)
+
+Stable promotion of the **3.12.0-rc.1–rc.48** train on `main`. Per-commit
+detail stays in the rc entries below. This section is the operator-facing
+summary for GitHub Release **v3.12.0**.
+
+### Highlights
+- **One fleet census.** Overview, Nodes, Node Detail, Monitoring,
+  Heatmap, and Environments all use `get_live_nodes()` plus the Bolt
+  live-run overlay. The badge is the newest OpenVoxDB report status.
+  Age no longer rewrites Unchanged to Unreported.
+- **Dual-console Overview agrees.** Newest reports are merged from
+  peer OpenVoxDBs so Needs attention is the same list on both site
+  consoles. Nodes `?status=attention` uses that same 24h rule.
+- **Clustered estate.** Dedicated consoles, VIP-safe sessions, fleet
+  VIP exclude, shared Postgres `openvox_gui`, ENC TLS to the Puppet
+  CA, ovox estate health, Bolt inventory, clustered Code Deploy.
+- **AIO still first.** Install on the OpenVox Server with SQLite.
+  Clustering is optional and documented.
+
+### Upgrade
+```bash
+sudo /opt/openvox-gui/scripts/update_local.sh
+```
+Hard-refresh browsers once. Dual-console: same `SECRET_KEY` and
+`OPENVOX_GUI_DATABASE_URL`; set `OPENVOX_GUI_PUPPETDB_PEERS` or
+cluster consoles so each GUI can read the other site's ovdb VIP.
+Compilers need `[server] reports = puppetdb`.
+
+See [UPDATE.md](UPDATE.md), [docs/STATUS.md](docs/STATUS.md),
+[docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt).
+
 ## [3.12.0-rc.48] - 2026-08-25 (fix — Needs attention matches across consoles)
 
 ### Fixed

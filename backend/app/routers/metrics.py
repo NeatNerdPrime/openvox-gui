@@ -668,7 +668,7 @@ async def get_puppetdb_health(_user: str = Depends(_AUTH)):
 
     # Active nodes count
     try:
-        nodes = await puppetdb_service.get_nodes()
+        nodes = await puppetdb_service.get_live_nodes()
         result["active_nodes"] = len(nodes)
     except Exception:
         result["active_nodes"] = None
@@ -885,12 +885,14 @@ async def get_puppetserver_performance(_user: str = Depends(_AUTH)):
 @router.get("/heatmap")
 async def get_node_heatmap(_user: str = Depends(_AUTH)):
     """Node status grid for heatmap visualization."""
+    from ..services.fleet_insights import display_status
+
     nodes = await puppetdb_service.get_live_nodes()
     grid = []
     for node in nodes:
         grid.append({
             "certname": node.get("certname"),
-            "status": node.get("latest_report_status", "unreported"),
+            "status": display_status(node),
             "environment": node.get("report_environment"),
             "report_timestamp": node.get("report_timestamp"),
             "corrective": node.get("latest_report_corrective_change", False),
@@ -904,6 +906,8 @@ async def get_node_heatmap(_user: str = Depends(_AUTH)):
 @router.get("/environments")
 async def get_environment_comparison(_user: str = Depends(_AUTH)):
     """Compare metrics across Puppet environments."""
+    from ..services.fleet_insights import display_status
+
     nodes = await puppetdb_service.get_live_nodes()
     envs: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "total": 0, "changed": 0, "unchanged": 0, "failed": 0, "noop": 0, "unreported": 0,
@@ -911,7 +915,7 @@ async def get_environment_comparison(_user: str = Depends(_AUTH)):
 
     for node in nodes:
         env = node.get("report_environment", "unknown") or "unknown"
-        status = node.get("latest_report_status", "unreported") or "unreported"
+        status = display_status(node)
         envs[env]["total"] += 1
         if status in envs[env]:
             envs[env][status] += 1

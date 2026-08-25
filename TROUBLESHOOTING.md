@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.48**
+**OpenVox GUI Version 3.12.0**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.48"}
+   # Should return: {"status":"ok","version":"3.12.0"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -211,7 +211,7 @@ To use a real certificate, see the Configuration documentation (SSL wizard under
 
 **Fix:**
 
-1. Upgrade **both** consoles to **3.12.0-rc.1+** (same version).
+1. Upgrade **both** consoles to **3.12.0** (same version).
 2. Identical `OPENVOX_GUI_SECRET_KEY` and shared Postgres `openvox_gui` DSN.
 3. Set console VIP hostnames: Settings → Cluster → **Console VIP / public LB hostnames**, or `OPENVOX_GUI_VIP_HOSTS=…` on both hosts.
 4. Prefer LB sticky sessions **and** keep app RR-safe.

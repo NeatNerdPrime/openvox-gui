@@ -253,6 +253,16 @@ class PuppetDBService:
             )
         except Exception:
             logger.debug("report freshness annotation skipped", exc_info=True)
+        # Same live-run overlay Dashboard / Nodes / Monitoring already apply
+        # so Heatmap, Environments, and Inventory cannot disagree.
+        try:
+            from ..database import async_session
+            from ..routers.nodes import apply_live_run_status
+
+            async with async_session() as db:
+                await apply_live_run_status(live, db)
+        except Exception:
+            logger.debug("live-run overlay skipped", exc_info=True)
         return live
 
     async def get_fleet_nodes(self) -> List[Dict]:

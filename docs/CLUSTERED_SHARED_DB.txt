@@ -2,7 +2,7 @@ OpenVox GUI — clustered database and Spock runbook
 ==================================================
 Audience: standing up a new two-console estate (or adding a second
           console to an existing mesh)
-Train:    openvox-gui 3.12.0-rc.45+ on `main`
+Train:    openvox-gui 3.12.0 on `main`
 Related:  INSTALL.md (AIO first; clustered is opt-in)
           docs/ESTATE_HEALTH.md (post-install checks)
           docs/FEATURES.md (live fleet / HAProxy vs DNS RR)
