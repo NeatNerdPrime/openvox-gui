@@ -25,11 +25,11 @@ def _parse_report_ts(value: Any) -> Optional[datetime]:
 
 
 def downgrade_stale_failed(nodes: List[Dict], hours: float = 8.0) -> List[Dict]:
-    """Stop alerting Failed when the last report is older than *hours*.
+    """Annotate Failed reports older than *hours*. Never rewrite the badge.
 
-    A day-old failed report is history, not an incident. Display those
-    nodes as unreported so Overview does not stay red. Set hours<=0 to
-    disable. Original status is kept in node_index_status.
+    Overview, Nodes, and Node Detail must show the newest OpenVoxDB
+    report status. Age is metadata (``report_stale``) for Needs
+    attention, not a different status. Set hours<=0 to skip.
     """
     return apply_report_freshness(nodes, failed_hours=hours, fresh_hours=0)
 
@@ -39,12 +39,12 @@ def apply_report_freshness(
     failed_hours: float = 8.0,
     fresh_hours: float = 24.0,
 ) -> List[Dict]:
-    """Normalize display status from report age.
+    """Annotate report age. Never rewrite ``latest_report_status``.
 
-    - ``failed`` older than *failed_hours* → unreported (stop alerting).
-    - any status older than *fresh_hours* → unreported (not current).
-    Hours <= 0 disables that cutoff. Original status stays in
-    node_index_status.
+    Dashboard, Nodes, and Node Detail all show the newest OpenVoxDB
+    report status. Rewriting a day-old Unchanged to Unreported made
+    Overview disagree with the node page and with PuppetDB. Hours <= 0
+    disables that annotation.
     """
     if not nodes:
         return nodes
@@ -62,11 +62,11 @@ def apply_report_freshness(
             if ts is None or ts < fresh_cut:
                 reason = "stale_report"
         if reason:
-            node["node_index_status"] = node.get("node_index_status") or (
-                status or "failed"
-            )
-            node["latest_report_status"] = "unreported"
-            node["status_source"] = reason
+            node["report_stale"] = True
+            node["freshness_reason"] = reason
+        else:
+            node["report_stale"] = False
+            node.pop("freshness_reason", None)
     return nodes
 
 

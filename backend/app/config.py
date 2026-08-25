@@ -103,13 +103,11 @@ class Settings(BaseSettings):
     # VIP poll floor (ms) advertised to the SPA — minimum auto-refresh interval
     # when access_mode=vip. Direct node FQDNs keep their page defaults.
     vip_poll_floor_ms: int = 45000
-    # Hours a Failed latest-report stays alerting on Overview / Nodes.
-    # After this, the badge becomes unreported (history, not an incident).
-    # 0 = never downgrade. Default 8.
+    # Hours after which a Failed latest-report is annotated stale
+    # (Needs attention). Does not rewrite the badge. 0 = skip. Default 8.
     failed_alert_hours: float = 8.0
-    # Hours after which any latest-report (unchanged/changed/failed/noop)
-    # is treated as unreported. 2–4 day "Unchanged" is not current.
-    # 0 = never age out success. Default 24.
+    # Hours after which any latest-report is annotated stale
+    # (Needs attention). Does not rewrite the badge. 0 = skip. Default 24.
     node_fresh_hours: float = 24.0
     # Comma/space-separated certnames to hide from live fleet (HAProxy/DNS VIPs).
     # Merged with cluster_config ca_vips / infra_vips / vip_hosts / fleet_exclude.

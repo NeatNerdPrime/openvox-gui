@@ -103,25 +103,16 @@ async def get_compliance(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Prefer live fleet membership, then restrict to scope.
-    # Monitoring "Failed" is *now* (freshness rules), not reports in the
-    # lookback window.
-    from ..config import settings
+    # Monitoring "Failed" is the newest OpenVoxDB report status (same
+    # as Overview / Node Detail), not "any fail in the lookback window."
     from ..database import async_session
     from ..routers.nodes import apply_live_run_status
-    from ..services.fleet_insights import (
-        apply_report_freshness,
-        partition_display_nodes,
-    )
+    from ..services.fleet_insights import partition_display_nodes
 
     try:
         all_nodes = await puppetdb_service.get_live_nodes()
     except Exception:
         all_nodes = await puppetdb_service.get_nodes()
-    apply_report_freshness(
-        all_nodes,
-        failed_hours=float(getattr(settings, "failed_alert_hours", 8.0) or 0),
-        fresh_hours=float(getattr(settings, "node_fresh_hours", 24.0) or 0),
-    )
     try:
         async with async_session() as db:
             await apply_live_run_status(all_nodes, db)

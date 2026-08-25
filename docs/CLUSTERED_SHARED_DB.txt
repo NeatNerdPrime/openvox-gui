@@ -98,8 +98,8 @@ Current console knobs that affect clustered reads (GUI .env)
   OPENVOX_GUI_PUPPETDB_HOST         ovdb.example.com   (RR; not ovdb1)
   OPENVOX_GUI_PUPPET_CA_HOST        ovca.example.com
   OPENVOX_GUI_PUPPET_SERVER_HOST    compiler LB / a compiler, not the console
-  OPENVOX_GUI_FAILED_ALERT_HOURS    8   (Failed older than this → Unreported)
-  OPENVOX_GUI_NODE_FRESH_HOURS      24  (any report older than this → Unreported)
+  OPENVOX_GUI_FAILED_ALERT_HOURS    8   (annotate stale Failed; does not rewrite badge)
+  OPENVOX_GUI_NODE_FRESH_HOURS      24  (annotate stale report; does not rewrite badge)
 
 Compiler-only (not the GUI .env)
 
@@ -370,11 +370,11 @@ Dashboard Failed after a good agent -t          New report is on the other
                                                 site's PDB. Compile against
                                                 that site, or put reports in
                                                 default.
-Overview says Unreported, Monitoring disagrees  Fixed in 3.12.0-rc.37 — both
-                                                use the same live census.
-                                                Unreported = no current report
-                                                on **this** PDB, or Failed >8h,
-                                                or any report >24h.
+Overview Unreported, node page Unchanged        Fixed in 3.12.0-rc.47 — badge
+                                                is the newest report status.
+                                                Age no longer rewrites it.
+                                                Unreported = no report on
+                                                **this** PDB.
 Nodes missing half the fleet                    Live fleet is PDB, not CA ∩.
                                                 A short/wrong ovca lookup used
                                                 to hide agents. Do not

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.47] - 2026-08-25 (fix — Overview badge matches Node Detail / PDB)
+
+### Fixed
+- **Overview / Nodes / Monitoring:** a day-old Unchanged (or Failed)
+  report no longer displays as **unreported**. The 8h/24h freshness
+  cutoffs only annotate `report_stale` for Needs attention. Dashboard,
+  the node list, and Node Detail all show the newest OpenVoxDB report
+  status, so clicking through no longer flips Unreported → Unchanged.
+
 ## [3.12.0-rc.46] - 2026-08-25 (docs — clustered DB / Spock runbook for a new estate)
 
 ### Changed

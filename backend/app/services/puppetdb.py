@@ -252,7 +252,7 @@ class PuppetDBService:
                 fresh_hours=float(getattr(settings, "node_fresh_hours", 24.0) or 0),
             )
         except Exception:
-            logger.debug("stale-failed downgrade skipped", exc_info=True)
+            logger.debug("report freshness annotation skipped", exc_info=True)
         return live
 
     async def get_fleet_nodes(self) -> List[Dict]:

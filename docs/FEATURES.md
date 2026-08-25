@@ -82,7 +82,7 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 
 ### Dashboard (`/`)
 
-- Fleet summary: counts by latest run status (unchanged / changed / failed / unreported / …)
+- Fleet summary: counts by newest OpenVoxDB report status (unchanged / changed / failed / unreported / …)
 - Live membership: **`get_live_nodes()` = active PuppetDB** (CMDB)
 - Trends (status over time), service/cluster health snippets where configured
 - Active GUI sessions
@@ -422,17 +422,15 @@ After PDB deactivate/expire, hosts drop from Dashboard, Nodes,
 Inventory, ENC unclassified, and Node Health. ENC rows still need
 purge-stale.
 
-A **Failed** latest report older than
-`OPENVOX_GUI_FAILED_ALERT_HOURS` (default **8**) is shown as
-**unreported** so yesterday’s failure does not stay red. Any status
-(including Unchanged) older than `OPENVOX_GUI_NODE_FRESH_HOURS`
-(default **24**) is also **unreported**. Set either to `0` to disable
-that cutoff.
+Overview, Nodes, and Node Detail all show the **newest OpenVoxDB
+report status** (Unchanged / Changed / Failed / Unreported). Age does
+**not** rewrite the badge. A day-old Unchanged stays Unchanged — the
+Needs attention table still lists reports older than 24 hours. Empty
+or missing `latest_report_status` is Unreported.
 
-**Insights | Monitoring** Fleet Compliance **Failed** is that
-*current* census only (after freshness). The lookback window still
-draws history on the area chart; the last bucket and the red stat
-card are right now, not “any fail in the last 8/24/48 hours.”
+**Insights | Monitoring** Fleet Compliance **Failed** is that same
+live census (newest report), not “any fail in the lookback window.”
+The area chart still draws history; the red stat card is right now.
 
 ### First-time clustered setup (Nodes membership)
 

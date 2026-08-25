@@ -63,13 +63,15 @@ def test_downgrade_stale_failed_after_eight_hours():
     ]
     downgrade_stale_failed(nodes, hours=8.0)
     by_cn = {n["certname"]: n for n in nodes}
-    assert by_cn["old.example"]["latest_report_status"] == "unreported"
-    assert by_cn["old.example"]["status_source"] == "stale_failed"
+    assert by_cn["old.example"]["latest_report_status"] == "failed"
+    assert by_cn["old.example"]["report_stale"] is True
+    assert by_cn["old.example"]["freshness_reason"] == "stale_failed"
     assert by_cn["fresh.example"]["latest_report_status"] == "failed"
+    assert by_cn["fresh.example"]["report_stale"] is False
     assert by_cn["ok.example"]["latest_report_status"] == "unchanged"
 
 
-def test_stale_unchanged_becomes_unreported_after_a_day():
+def test_stale_report_keeps_pdb_status():
     two_days = (datetime.utcnow() - timedelta(days=2)).isoformat() + "Z"
     six_hours = (datetime.utcnow() - timedelta(hours=6)).isoformat() + "Z"
     nodes = [
@@ -92,11 +94,34 @@ def test_stale_unchanged_becomes_unreported_after_a_day():
     ]
     apply_report_freshness(nodes, failed_hours=8.0, fresh_hours=24.0)
     by_cn = {n["certname"]: n for n in nodes}
-    assert by_cn["old-ok.example"]["latest_report_status"] == "unreported"
-    assert by_cn["old-ok.example"]["status_source"] == "stale_report"
+    assert by_cn["old-ok.example"]["latest_report_status"] == "unchanged"
+    assert by_cn["old-ok.example"]["report_stale"] is True
+    assert by_cn["old-ok.example"]["freshness_reason"] == "stale_report"
     assert by_cn["recent-ok.example"]["latest_report_status"] == "unchanged"
-    assert by_cn["day-old-failed.example"]["latest_report_status"] == "unreported"
-    assert by_cn["day-old-failed.example"]["status_source"] == "stale_failed"
+    assert by_cn["recent-ok.example"]["report_stale"] is False
+    assert by_cn["day-old-failed.example"]["latest_report_status"] == "failed"
+    assert by_cn["day-old-failed.example"]["freshness_reason"] == "stale_failed"
+
+
+@pytest.mark.asyncio
+async def test_compute_live_nodes_keeps_day_old_unchanged():
+    two_days = (datetime.utcnow() - timedelta(days=2)).isoformat() + "Z"
+    pdb = [
+        {
+            "certname": "agent.example.com",
+            "latest_report_status": "unchanged",
+            "report_timestamp": two_days,
+            "deactivated": None,
+        },
+    ]
+    with patch.object(PuppetDBService, "get_nodes", new=AsyncMock(return_value=pdb)):
+        with patch(
+            "app.services.cluster_config.fleet_excluded_certnames",
+            return_value=set(),
+        ):
+            live = await PuppetDBService()._compute_live_nodes()
+    assert live[0]["latest_report_status"] == "unchanged"
+    assert live[0]["report_stale"] is True
 
 
 def test_empty_status_is_unreported_not_unchanged():

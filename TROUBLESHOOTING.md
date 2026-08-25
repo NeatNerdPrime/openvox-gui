@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.46**
+**OpenVox GUI Version 3.12.0-rc.47**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.46"}
+   # Should return: {"status":"ok","version":"3.12.0-rc.47"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -648,17 +648,13 @@ Typical causes this script catches:
 
 Never `INSERT` into `certnames`/`factsets`/`catalogs` and expect `/nodes` to change. Never `sub_resync_table` on `certnames`. Grant origin functions with `scripts/ensure-puppetdb-spock.sh` on every ovdb.
 
-### Unreported on Overview vs Monitoring
+### Unreported on Overview vs Unchanged on Node Detail
 
-Both pages use the same live census (after rc.37). A node is
-**Unreported** when any of these is true:
-
-1. No `latest_report_status` / no report on the OpenVoxDB this GUI
-   queried.
-2. Last report is **Failed** and older than 8 hours
-   (`OPENVOX_GUI_FAILED_ALERT_HOURS`).
-3. Last report is Unchanged/Changed and older than 24 hours
-   (`OPENVOX_GUI_NODE_FRESH_HOURS`).
+Overview, Nodes, and Node Detail use the **same** newest-report
+status (after rc.47). A node is **Unreported** only when this GUI’s
+OpenVoxDB has no `latest_report_status` / no report document for that
+certname. A day-old Unchanged or Failed report keeps that status on
+every page. Needs attention still lists reports older than 24 hours.
 
 It is **not** “puppet agent -tv printed Applied.” The report must exist
 on **this** PDB (often `ovdb.example.com` → one site). An ATLC compile stores

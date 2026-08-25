@@ -49,8 +49,8 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 - `cluster-preflight.sh` refuses `/etc/hosts` pins of the PDB VIP  
 - `ensure-puppetdb-spock.sh` grants `pg_replication_origin_*` to `repl_user` on database **puppetdb**  
 - `bootstrap-openvox-gui-db.sh` provisions database **openvox_gui** (separate mesh)  
-- Status badge = newest OpenVoxDB **report** `status` (not CA)  
-- Failed ages out at 8h, any report older than 24h is Unreported; Overview and Monitoring share that census
+- Status badge = newest OpenVoxDB **report** `status` (not CA, not aged to Unreported)  
+- Overview, Nodes, Node Detail, and Monitoring share that census; Needs attention still flags reports older than 24h
 
 ### Log Viewer
 - Empty remote logs → **200** + message, not 502 “no log JSON”
