@@ -61,11 +61,13 @@ PY
 fi
 sort -u "$TMP" -o "$TMP"
 echo "keyscan $(wc -l < "$TMP") names → $KH"
-while read -r h; do
-  [ -n "$h" ] || continue
-  sudo -u bolt -H ssh-keyscan -T 5 -t rsa,ecdsa,ed25519 "$h" >>"$KH" 2>/dev/null || \
-    echo "WARN  ssh-keyscan failed $h"
-done <"$TMP"
+# Parallel: sequential -T 5 on a down host is 5s each and feels like minutes.
+xargs -a "$TMP" -P 8 -n 1 -r bash -c '
+  h="$1"
+  [ -n "$h" ] || exit 0
+  sudo -u bolt -H ssh-keyscan -T 3 -t rsa,ecdsa,ed25519 "$h" 2>/dev/null || \
+    echo "WARN  ssh-keyscan failed $h" >&2
+' _ >>"$KH"
 chown bolt:bolt "$KH"
 # drop duplicate lines
 sort -u "$KH" -o "$KH"

@@ -103,7 +103,8 @@ export function InventoryPage() {
 
   const { data, loading, error, refetch } = useApi(
     () => reports.inventory(),
-    []
+    [],
+    { cacheKey: 'openvox_inventory_v2', pollIntervalMs: 60000 },
   );
 
   const rows = data || [];

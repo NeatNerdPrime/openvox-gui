@@ -157,17 +157,19 @@ async def list_plans():
 
 
 @router.get("/inventory")
-async def get_inventory():
-    """Get Bolt inventory (targets)."""
-    result = await run_bolt_command(["inventory", "show", "--format", "json"])
-    if result["returncode"] != 0:
-        return {"targets": [], "error": result["stderr"]}
-    import json
+async def get_inventory(db: AsyncSession = Depends(get_db)):
+    """Bolt-compatible targets from the ENC — do not spawn ``bolt inventory show``.
+
+    OpenBolt + JRuby + the openvox_enc plugin can take a minute or more
+    (cold JVM, plugin HTTP back into this GUI). The ENC JSON is the same
+    data the plugin would return.
+    """
+    from .enc import get_bolt_inventory
+
     try:
-        data = json.loads(result["stdout"])
-        return data
-    except json.JSONDecodeError:
-        return {"targets": [], "raw": result["stdout"]}
+        return await get_bolt_inventory(db, _user="gui")
+    except Exception as e:
+        return {"targets": [], "groups": [], "error": str(e)}
 
 
 @router.post("/run/command", response_model=BoltRunResultModel)

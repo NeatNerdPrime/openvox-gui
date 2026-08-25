@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.3] - 2026-08-25 (perf — inventory no longer waits on peer reports)
+
+### Changed
+- **Insights | Inventory:** membership is a cheap `/nodes` list (no
+  report overlay, no peer OpenVoxDB merge). 20s server cache + session
+  SWR so a second look is instant. Facts still come from PuppetDB.
+- **GET /api/bolt/inventory:** returns ENC JSON instead of spawning
+  `bolt inventory show` (JRuby + openvox_enc plugin was the
+  multi-minute stall).
+- **Peer OpenVoxDB reads:** 4s / 2s connect (was 15s / 4s).
+- **seed-bolt-known-hosts.sh:** parallel `ssh-keyscan` (8 at a time,
+  3s each) instead of serial 5s timeouts.
+
 ## [3.12.1-dev.2] - 2026-08-25 (fix — sign certs via Bolt on ovca*)
 
 ### Fixed

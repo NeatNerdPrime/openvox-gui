@@ -166,7 +166,8 @@ class PuppetDBService:
     # ─── Nodes ──────────────────────────────────────────────
 
     async def get_nodes(self, query: Optional[str] = None,
-                        include_inactive: bool = False) -> List[Dict]:
+                        include_inactive: bool = False,
+                        overlay_reports: bool = True) -> List[Dict]:
         """Get nodes from PuppetDB.
 
         By default, only returns active nodes (not deactivated or expired)
@@ -177,6 +178,9 @@ class PuppetDBService:
 
         Filtering is done in Python after fetch to guarantee correctness
         regardless of PuppetDB version or PQL operator support.
+
+        Set overlay_reports=False when the caller only needs membership
+        (Insights | Inventory) and must not wait on peer report merges.
         """
         all_nodes = await self._query("nodes", query=query)
 
@@ -197,7 +201,8 @@ class PuppetDBService:
 
         # Node index latest_report_status can lag behind (or stick on failed)
         # after a later successful run. Overlay the actual latest report doc.
-        await self._overlay_latest_report_status(unique)
+        if overlay_reports:
+            await self._overlay_latest_report_status(unique)
         return unique
 
     async def get_live_nodes(self) -> List[Dict]:
@@ -758,7 +763,7 @@ class PuppetDBService:
         ctx = self._create_ssl_context()
         async with httpx.AsyncClient(
             verify=ctx,
-            timeout=httpx.Timeout(15.0, connect=4.0),
+            timeout=httpx.Timeout(4.0, connect=2.0),
             trust_env=False,
         ) as client:
             resp = await client.get(url, params=request_params)
@@ -1176,11 +1181,12 @@ class PuppetDBService:
         structured facts). Missing facts are empty strings for UI robustness.
         Disks are pre-formatted as newline-separated "name: size" strings.
         """
-        # Live membership (SSoT) — active PuppetDB.
-        live_nodes = await self.get_live_nodes()
+        # Membership only — skip report overlay / peer PDB merge (that is
+        # for Overview badges). Inventory is facts, not run status.
+        members = await self.get_nodes(overlay_reports=False)
         active_keys = {
             str(n.get("certname", "")).strip().lower()
-            for n in live_nodes
+            for n in members
             if n.get("certname")
         }
 

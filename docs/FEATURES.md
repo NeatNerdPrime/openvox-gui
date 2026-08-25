@@ -133,7 +133,7 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 - Single Bolt execution per confirm (result tabs share one run)
 - Confirm modals (optional skip-adhoc preference)
 - Execution history
-- Inventory sync / `openvox_enc` dynamic inventory patterns (see SUDOERS + ovox token docs)
+- Inventory sync / `openvox_enc` dynamic inventory patterns (see SUDOERS + ovox token docs). Insights | Inventory is a cached PuppetDB fact extract (not a Bolt `inventory show`).
 
 ### Agent Install (`/installer`)
 

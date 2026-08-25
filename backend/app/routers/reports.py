@@ -142,12 +142,17 @@ async def get_inventory_report():
       - Virtual/Physical classification
       - Total uptime
 
-    This is intentionally a "live" view — no caching, always current
-    fact data from the latest Puppet run on each node.
+    Cached briefly so a refresh or second tab is not another full
+    PuppetDB inventory dump. Facts still come from the last agent run.
     """
     try:
-        rows = await puppetdb_service.get_system_inventory()
-        return rows
+        from ..utils.ttl_cache import get_or_set as cache_get_or_set
+
+        return await cache_get_or_set(
+            "inventory:report:v1",
+            20.0,
+            puppetdb_service.get_system_inventory,
+        )
     except HTTPException:
         raise
     except Exception as e:
