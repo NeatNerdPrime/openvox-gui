@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.0-rc.29**
+**OpenVox GUI Version 3.12.1-dev.1**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -23,7 +23,7 @@ This guide will walk you through installing OpenVox GUI on your server. Don't wo
 ### What You Need
 
 > **Default = all-in-one (most common):** install on your **OpenVox Server** host — local puppetserver, CA tools, agent, Bolt, and SQLite. That is what this guide optimizes for.  
-> **Optional = clustered (3.11+ / 3.12-rc):** dedicated **console** with agent cert, Bolt to compilers, `OPENVOX_GUI_PUPPET_CA_HOST` / PDB hosts, and Postgres **`openvox_gui`**. See § Advanced Installations, [docs/STATUS.md](docs/STATUS.md), and [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). A random laptop with no Puppet SSL is still **not** supported.
+> **Optional = clustered (3.12.0):** dedicated **console** with agent cert, Bolt to compilers, `OPENVOX_GUI_PUPPET_CA_HOST` / PDB hosts, and Postgres **`openvox_gui`**. See § Advanced Installations, [docs/STATUS.md](docs/STATUS.md), and [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). A random laptop with no Puppet SSL is still **not** supported.
 
 Think of these as the ingredients before you start cooking:
 
@@ -47,6 +47,9 @@ cat /etc/os-release
 
 # Check Python is installed (need version 3.10 or newer)
 python3 --version
+# EL8/EL9: default python3 is 3.6/3.9. Use the AppStream package:
+#   sudo dnf install -y python3.12
+#   PYTHON_BIN=/usr/bin/python3.12 in install.conf
 
 # Check you have sudo access
 sudo echo "I have sudo access!"
@@ -244,10 +247,14 @@ sudo yum update -y        # For Red Hat/CentOS
 # OR
 sudo apt update && sudo apt upgrade -y   # For Ubuntu/Debian
 
-# Install required packages
-sudo yum install -y python3 python3-pip git   # For Red Hat/CentOS
-# OR
-sudo apt install -y python3 python3-pip git    # For Ubuntu/Debian
+# Install required packages (Python >= 3.10)
+# EL8/EL9: default python3 is too old — install python3.12 and set
+# PYTHON_BIN=/usr/bin/python3.12 in install.conf
+sudo dnf install -y python3.12 python3.12-pip git   # EL8/EL9
+# EL10 / Fedora: default python3 is already 3.12+
+# sudo dnf install -y python3 python3-pip git
+# Ubuntu/Debian 22.04+:
+sudo apt install -y python3 python3-venv python3-pip git
 ```
 
 ### Step 2: Create a Service User
@@ -332,7 +339,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.0-rc.29"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.1-dev.1"}` if everything is working.
 
 ---
 
@@ -452,16 +459,22 @@ sudo ./install.sh   # Correct
 ./install.sh        # Wrong - needs sudo
 ```
 
-#### Problem: "Python 3.8+ is required"
+#### Problem: "Python >= 3.10 is required"
 
-**Solution:** Install or update Python:
+The backend pins (FastAPI / pydantic / cryptography) need Python 3.10
+or newer. EL8 default `python3` is 3.6; EL9 is 3.9. The installer now
+fails in preflight instead of later inside pip.
+
+**Solution:** Install a parallel interpreter and point the installer at it:
+
 ```bash
-# Red Hat/CentOS 8:
-sudo yum install -y python38
+# EL8 / EL9 (Alma, Rocky, RHEL):
+sudo dnf install -y python3.12
+# in install.conf:
+# PYTHON_BIN="/usr/bin/python3.12"
 
-# Ubuntu 20.04 already has Python 3.8
-# For older Ubuntu:
-sudo apt install -y python3.8
+# Ubuntu 20.04 / 22.04: system python3 is already 3.8 / 3.10.
+# On 20.04 install 3.10+ from deadsnakes or use 22.04+.
 ```
 
 #### Problem: "Cannot connect to OpenVoxDB"
@@ -667,7 +680,7 @@ Now that you have OpenVox GUI installed:
 
 > **Most sites stop here.** The standard install places OpenVox GUI on a single OpenVox Server host. That model is intentional, well-supported, and sufficient for the large majority of environments (roughly **90%+** of deployments).
 >
-> This section is for **extra large** estates—many catalog compilers, multi-node OpenVoxDB, site-loss resilience, or multi–data-center designs—where OpenVox GUI’s **clustered** features become useful. It describes **capabilities, design philosophy, and workflow**, not a full multi-DC build runbook.
+> This section is for **extra large** estates—many catalog compilers, multi-node OpenVoxDB, site-loss resilience, or multi–data-center designs—where OpenVox GUI’s **clustered** features become useful. It describes **capabilities, design philosophy, and console workflow**. The GUI database, the two Spock meshes, and the mistakes that hide nodes live in [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). Pacemaker/DRBD and VIP/SAN design stay out of this product.
 
 ### Philosophy of operation
 
@@ -677,6 +690,7 @@ Now that you have OpenVox GUI installed:
 | **Opt-in clustered mode** | A explicit **Settings → Cluster** switch turns on multi-server awareness. Until then, the product behaves as a classic one-box console. |
 | **GUI is not the control plane fabric** | Compilers, OpenVoxDB mesh, and CA HA are **infrastructure** concerns. OpenVox GUI observes, configures, deploys, and classifies—it does not replace Pacemaker, Spock, or your load balancers. |
 | **FQDN over VIP for member health** | When checking individual machines, probe **each host’s FQDN** (compiler :8140, OpenVoxDB :8081, CA members :8140). VIPs answer “is the service reachable?”; FQDNs answer “is **this** member healthy?” |
+| **HAProxy frontends are nodes** | `ovcompilers.<site>-it.…` is a real VM (HAProxy + agent). DNS RR names (`ovca.example.com`, `ovdb.example.com`) are not. Details under **Compiler VIP names** below and in [docs/FEATURES.md](docs/FEATURES.md) (Live fleet). |
 | **Same moment, same code** | In multi-compiler estates, code must not go live on one compiler minutes before another. Clustered **stage → activate** is about aligning that cutover. |
 | **Classification segments roles** | Compilers and OpenVoxDB hosts are fleet members too. ENC groups such as **Puppet Compiler** and **PuppetDB** keep roles visible and manageable without inventing a second inventory system. |
 
@@ -751,7 +765,7 @@ When **Settings → Cluster** is set to **clustered**, OpenVox GUI can:
    Seeded ENC groups such as **Puppet Compiler** and **PuppetDB**, with configured FQDNs attached, so infrastructure roles are first-class in **Classification and Code → Classification**.
 
 5. **What stays out of scope for this document**  
-   Full multi-DC bootstrap, DRBD/Pacemaker recipes, Spock mesh procedures, and VIP/SAN design deep-dives are **not** reproduced here. Those are infrastructure projects; the GUI assumes that foundation exists or is being built under separate design work.
+   DRBD/Pacemaker recipes and VIP/SAN design are infrastructure projects. **GUI Postgres (`openvox_gui`) and both Spock meshes** (PuppetDB vs GUI) are the runbook: [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). The installer can provision the GUI database when `OPENVOX_GUI_DB_BACKEND=postgresql` (see `install.conf.example`).
 
 ### Basic operator workflow (clustered GUI)
 
@@ -770,6 +784,53 @@ This is the **console workflow**, not a green-field build checklist.
 7. Use **Classification** to manage group membership and classes for infrastructure roles.
 
 If Cluster mode is left at **Single server**, multi-host panels and stage/activate stay out of the way.
+
+### Compiler VIP names (HAProxy VM vs DNS RR)
+
+Two things get called “VIPs.” The GUI treats them differently.
+OpenVoxDB `certnames` is the Nodes list (the CMDB).
+
+**DNS round-robin** (`ovca.example.com`, `ovdb.example.com`) is
+not a computer — only A records. Put those names in **CA VIP FQDNs**,
+**DNS RR VIPs**, or **Extra fleet exclude**. They must not appear on
+Nodes.
+
+**HAProxy compiler frontend** (`ovcompilers.<site>-it.example.com`)
+**is** a VM: OS, HAProxy, and a Puppet agent. Agents in that site use
+it as `server`. Classify it as HAProxy / base, not as a catalog
+compiler. Do **not** put `ovcompilers.*` in the hide fields. The GUI
+will not hide a name whose first label is `ovcompilers`.
+
+`ovcompiler1.*` (one “r”) is a backend compiler — also a real node.
+
+When you add another site:
+
+1. Name the LB `ovcompilers.<site>-it.…` (plural, with an “s”).
+2. Point that name’s A record at **this** VM, not at compiler1/2.
+3. Sign its cert; run `puppet agent -t` on the box.
+4. Add compiler backends to **Compiler FQDNs** / code-deploy targets.
+5. Optional: `infra_vips` for a health probe only (does not hide Nodes).
+
+Rule: if you can SSH and run `puppet agent`, it is a node. If you
+cannot, hide the DNS name. Full tables live in
+[docs/FEATURES.md](docs/FEATURES.md#live-fleet-membership-cross-cutting-rule).
+
+After install, on **each console**:
+
+```bash
+sudo /opt/openvox-gui/scripts/estate-health-check.sh
+sudo /opt/openvox-gui/scripts/seed-bolt-known-hosts.sh
+```
+
+See [docs/ESTATE_HEALTH.md](docs/ESTATE_HEALTH.md).
+
+The installer runs `scripts/cluster-preflight.sh` after writing `.env`.
+On every ovdb **member**, run `scripts/ensure-puppetdb-spock.sh` once so
+Spock apply on database **puppetdb** does not crash-loop on PG17 origin
+functions. That script is not the GUI-database mesh — `openvox_gui` is
+a separate database (bootstrap `--spock` or WAN to n1). Re-run preflight
+any time the GUI node count disagrees with `/pdb/query/v4/nodes`. Full
+order of operations: [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt).
 
 ### When to call for design help
 
@@ -792,12 +853,12 @@ A more detailed advanced installation example may be published in a later OpenVo
 
 Typical path for an existing singleton (or smaller) production estate:
 
-1. **Stand up** the new multi-server OpenVox + GUI (3.11+ clustered) environment separately.  
+1. **Stand up** the new multi-server OpenVox + GUI (**3.12.0** clustered) environment separately.  
 2. **Migrate agents and roles** onto that estate (compilers, OpenVoxDB, CA policy as designed).  
-3. **Do not** require a big-bang “upgrade the old production box to clustered 3.11 in place.”  
-4. After migration, **repurpose the former production OpenVox host(s)** as a **development / lab instance** (lower risk experiments, GUI alpha trains, training).
+3. **Do not** require a big-bang “upgrade the old production box to clustered 3.12 in place.”  
+4. After migration, **repurpose the former production OpenVox host(s)** as a **development / lab instance** (lower risk experiments, GUI rc trains, training).
 
-That keeps production stable on a known 3.10.x line until agents are moved, then gives you a permanent internal machine for ongoing OpenVox GUI and platform development.
+That keeps production stable on a known 3.10.x line until agents are moved, then gives you a permanent internal machine for ongoing OpenVox GUI and platform development. Use [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) when the new estate’s consoles share ENC.
 
 ---
 

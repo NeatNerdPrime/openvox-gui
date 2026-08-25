@@ -33,12 +33,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "compilers": [],  # list of FQDNs (catalog compilers / deploy targets)
     "puppetdb_nodes": [],  # list of FQDNs (OpenVoxDB application hosts)
     "ca_nodes": [],  # list of CA member FQDNs (ovca1, ovca2 per site)
-    "ca_vips": [],  # optional CA VIP FQDNs (ovca.pdxc…, ovca.corp…)
-    # Compiler / PDB / other HAProxy or DNS VIP FQDNs (ovcompilers.pdxc…, etc.).
-    # Not real agents — excluded from live fleet (Nodes, Inventory, Dashboard, …).
+    "ca_vips": [],  # DNS RR for CA (ovca.corp) — hide from Nodes
+    # Health-probe only (HAProxy compiler frontends). Does NOT hide Nodes.
     "infra_vips": [],
-    # Extra certnames to hide from live fleet (in addition to ca_vips / infra_vips /
-    # console vip_hosts). Use for one-off LB names or mis-issued VIP certnames.
+    # DNS-only RR names with no OS (ovdb.corp). Hidden from Nodes.
+    "dns_rr_vips": [],
+    # Extra hide list. Never put ovcompilers.* here (code strips them).
     "fleet_exclude": [],
     "code_deploy_targets": [],  # FQDNs that receive r10k stage/activate (defaults to compilers)
     "consoles": [],  # GUI FQDNs (openvox.pdxc…, openvox.atlc…)
@@ -95,6 +95,7 @@ def _normalize(data: Dict[str, Any]) -> Dict[str, Any]:
         "ca_nodes",
         "ca_vips",
         "infra_vips",
+        "dns_rr_vips",
         "fleet_exclude",
         "code_deploy_targets",
         "consoles",
@@ -198,22 +199,34 @@ def deploy_targets() -> List[str]:
     return list(targets)
 
 
-def fleet_excluded_certnames() -> Set[str]:
-    """Certnames that must never appear as live-fleet *nodes*.
+def is_compiler_haproxy_agent(certname: Optional[str]) -> bool:
+    """True for HAProxy compiler-frontends: first label is ``ovcompilers``.
 
-    HAProxy / DNS VIPs (ovcompilers.pdxc…, ovca.corp…, console VIP) often
-    have OpenVoxDB reports or leftover signed certs but are not agents.
-    Overview | Nodes, Inventory, Dashboard membership, ENC unclassified,
-    and Node Health all use ``get_live_nodes()``, which filters these out.
+    ``ovcompilers.atlc-it…`` / ``ovcompilers.pdxc-it…`` are real VMs with
+    an agent. ``ovcompiler1.*`` (the backends) are also agents but are
+    never hide-list candidates. DNS RR names (``ovca.corp``, ``ovdb.corp``)
+    do not match.
+    """
+    n = (certname or "").strip().lower()
+    return bool(n) and n.split(".", 1)[0] == "ovcompilers"
+
+
+def fleet_excluded_certnames() -> Set[str]:
+    """DNS-only RR names that must not appear as live-fleet *nodes*.
+
+    Hide names that are not VMs (``ovca.corp``, ``ovdb.corp``). Never hide
+    ``ovcompilers.*`` even if someone lists them in a VIP field.
 
     Sources (union, case-insensitive):
-      - cluster ``ca_vips``, ``infra_vips``, ``vip_hosts``, ``fleet_exclude``
+      - cluster ``ca_vips``, ``dns_rr_vips``, ``vip_hosts``, ``fleet_exclude``
       - env ``OPENVOX_GUI_FLEET_EXCLUDE`` (comma/space/newline separated)
+
+    ``infra_vips`` is **not** used here (compiler LB hostnames are agents).
     """
     out: Set[str] = set()
     try:
         cfg = load_cluster_config()
-        for key in ("ca_vips", "infra_vips", "vip_hosts", "fleet_exclude"):
+        for key in ("ca_vips", "dns_rr_vips", "vip_hosts", "fleet_exclude"):
             for h in cfg.get(key) or []:
                 n = str(h).strip().lower()
                 if n:
@@ -227,7 +240,7 @@ def fleet_excluded_certnames() -> Set[str]:
             n = part.strip().lower().split(":")[0]
             if n:
                 out.add(n)
-    return out
+    return {n for n in out if not is_compiler_haproxy_agent(n)}
 
 
 def is_fleet_excluded(certname: Optional[str]) -> bool:

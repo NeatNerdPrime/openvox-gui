@@ -20,7 +20,16 @@ import { LoadingState, ErrorState } from '../components/StateComponents';
 import { useAppTheme } from '../hooks/ThemeContext';
 import type { NodeSummary } from '../types';
 import { PageHeader } from '../components/PageHeader';
+import { ExportActions } from '../components/ExportActions';
 import { STATUS_HEX, statusMantine } from '../utils/statusTheme';
+import { isNeedsAttention } from '../utils/needsAttention';
+
+const ATTENTION_EXPORT_COLS = [
+  'certname',
+  'status',
+  'last_report',
+  'report_timestamp',
+];
 
 
 
@@ -246,6 +255,21 @@ export function DashboardPage() {
     if (dashData) setLastRefresh(new Date());
   }, [dashData]);
 
+  const attentionAll = useMemo(
+    () => dedupedNodes.filter((n) => isNeedsAttention(n)),
+    [dedupedNodes],
+  );
+  const attentionExportRows = useMemo(
+    () =>
+      attentionAll.map((n) => ({
+        certname: n.certname,
+        status: n.latest_report_status || 'unreported',
+        last_report: nodeTimeAgo(n.report_timestamp),
+        report_timestamp: n.report_timestamp || '',
+      })),
+    [attentionAll],
+  );
+
   // Full-page spinner only on true cold start (no cache, no data yet)
   if (loading && !dashData) return <LoadingState label="Loading dashboard…" />;
   if (error && !dashData) {
@@ -263,13 +287,7 @@ export function DashboardPage() {
     { value: ns.total ? (ns.unreported / ns.total) * 100 : 0, color: STATUS_HEX.unreported, tooltip: `Unreported: ${ns.unreported}` },
   ].filter(d => d.value > 0);
 
-  const staleCutoff = Date.now() - 24 * 3600 * 1000;
-  const attention = dedupedNodes.filter((n) => {
-    const st = (n.latest_report_status || '').toLowerCase();
-    if (st === 'failed' || st === 'unreported' || !st) return true;
-    const ts = n.report_timestamp ? new Date(n.report_timestamp).getTime() : 0;
-    return Boolean(ts) && ts < staleCutoff;
-  }).slice(0, 25);
+  const attention = attentionAll.slice(0, 25);
 
   return (
     <Stack>
@@ -400,12 +418,24 @@ export function DashboardPage() {
         <Group justify="space-between" mb="md">
           <div>
             <Title order={4}>Needs attention</Title>
-            <Text size="xs" c="dimmed">Failed, unreported, or last report older than 24h</Text>
+            <Text size="xs" c="dimmed">
+              Failed, unreported, or last report older than 24h
+              {attentionAll.length > 25
+                ? ` — table shows 25 of ${attentionAll.length}; CSV is the full list`
+                : ''}
+            </Text>
           </div>
           <Group gap="sm">
-            <Badge variant="light" color="red" size="lg">{attention.length}</Badge>
-            <Button size="xs" variant="subtle" onClick={() => navigate('/nodes?status=failed')}>
-              All failed →
+            <Badge variant="light" color="red" size="lg">{attentionAll.length}</Badge>
+            <ExportActions
+              results={attentionExportRows}
+              columns={ATTENTION_EXPORT_COLS}
+              filenameBase="needs-attention"
+              variant="compact"
+              showDownload
+            />
+            <Button size="xs" variant="subtle" onClick={() => navigate('/nodes?status=attention')}>
+              All attention →
             </Button>
           </Group>
         </Group>

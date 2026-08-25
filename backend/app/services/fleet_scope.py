@@ -2,7 +2,7 @@
 Fleet metric scopes for Insights (location fact + certname REGEX packs).
 
 Resolves a scope id or explicit filters into a set of certnames drawn from
-the live fleet (active PuppetDB ∩ signed CA). Used by Compliance,
+the live fleet (active PuppetDB). Used by Compliance,
 Performance, and the Monitoring wallboard.
 """
 from __future__ import annotations

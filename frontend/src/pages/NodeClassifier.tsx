@@ -3,7 +3,7 @@
  * 
  * Component documentation to be expanded.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Title, Card, Table, Loader, Center, Alert, Stack, Group, Text, Tabs,
@@ -631,10 +631,15 @@ async function ensureEncEnvironments(opts?: {
   }
 
   const names = discovered.length > 0 ? discovered : ['production'];
-  const envs = names.map((name) => {
-    const row = byName.get(name);
-    return row || { name, classes: {}, parameters: {}, description: '' };
-  });
+  for (const name of names) {
+    if (!byName.has(name)) {
+      byName.set(name, { name, classes: {}, parameters: {}, description: '' });
+    }
+  }
+  // ENC rows that compilers did not advertise (e.g. kea_cutover) stay visible
+  const envs = Array.from(byName.values()).sort((a, b) =>
+    String(a.name).localeCompare(String(b.name)),
+  );
 
   if (opts?.notify) {
     const listed = envs.map((e) => e.name).join(', ');
@@ -663,34 +668,51 @@ async function ensureEncEnvironments(opts?: {
 function useEncCatalog() {
   const [catalog, setCatalog] = useState<EncCatalog>({ groups: [], envs: [] });
   const [ready, setReady] = useState(false);
+  const refreshGen = useRef(0);
 
   const refresh = useCallback(async (opts?: {
     notify?: boolean;
     ensureRows?: boolean;
     forceDiscover?: boolean;
   }): Promise<EncCatalog> => {
+    const gen = ++refreshGen.current;
+    let groups: any[] = [];
     try {
-      const [g, envResult] = await Promise.all([
-        enc.listGroups().catch(() => [] as any[]),
-        ensureEncEnvironments({
-          notify: opts?.notify ?? false,
-          ensureRows: opts?.ensureRows ?? false,
-          forceDiscover: opts?.forceDiscover ?? false,
-        }),
-      ]);
-      const next: EncCatalog = {
-        groups: Array.isArray(g) ? g : [],
-        envs: envResult.envs || [],
-      };
-      setCatalog(next);
-      return next;
+      // Groups first, and immediately — do not wait on compiler env
+      // discovery. A slow Promise.all used to finish *after* Create
+      // Group and overwrite the table with the pre-insert list.
+      const g = await enc.listGroups();
+      groups = Array.isArray(g) ? g : [];
+      if (gen === refreshGen.current) {
+        setCatalog((prev) => ({ ...prev, groups }));
+      }
+    } catch (e: any) {
+      if (gen === refreshGen.current) {
+        notifications.show({
+          title: 'Could not load ENC groups',
+          message: e?.message || String(e),
+          color: 'red',
+        });
+      }
+    }
+
+    let envs: any[] = [];
+    try {
+      const envResult = await ensureEncEnvironments({
+        notify: opts?.notify ?? false,
+        ensureRows: opts?.ensureRows ?? false,
+        forceDiscover: opts?.forceDiscover ?? false,
+      });
+      envs = envResult.envs || [];
     } catch {
-      const empty: EncCatalog = { groups: [], envs: [] };
-      setCatalog(empty);
-      return empty;
-    } finally {
+      envs = [];
+    }
+    const next: EncCatalog = { groups, envs };
+    if (gen === refreshGen.current) {
+      setCatalog(next);
       setReady(true);
     }
+    return next;
   }, []);
 
   useEffect(() => { void refresh({ ensureRows: false }); }, [refresh]);
@@ -1018,6 +1040,9 @@ function GroupsTab({
   return (
     <Stack>
       <Group justify="flex-end">
+        <Button variant="default" leftSection={<IconRefresh size={16} />} onClick={() => void load()} loading={loading}>
+          Refresh
+        </Button>
         <Button leftSection={<IconPlus size={16} />} onClick={openCreate} disabled={envs.length === 0}>Create Group</Button>
       </Group>
       {envs.length === 0 && <Alert color="yellow">Create at least one environment before adding groups.</Alert>}
@@ -1026,8 +1051,8 @@ function GroupsTab({
         Classes and parameters set here apply to every node in the group.
       </Alert>
       <Card withBorder shadow="sm">
-        <Box style={{ maxHeight: 500, minHeight: 0, overflow: 'hidden' }}>
-          <ScrollArea h="100%" type="auto" offsetScrollbars scrollbarSize={6}>
+        <Box style={{ maxHeight: 500, minHeight: 200, overflow: 'hidden' }}>
+          <ScrollArea h={500} type="auto" offsetScrollbars scrollbarSize={6}>
             <Table striped highlightOnHover>
               <Table.Thead><Table.Tr>
                 <Table.Th>Group</Table.Th><Table.Th>Environment</Table.Th><Table.Th>Description</Table.Th>

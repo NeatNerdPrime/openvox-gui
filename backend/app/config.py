@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     puppetdb_host: str = "localhost"
     puppetdb_port: int = 8081
     puppetdb_ssl: bool = True
+    # Extra OpenVoxDB FQDNs to merge newest reports from (comma/space).
+    # Dual-VIP estates: the other site's ovdb VIP so Overview matches.
+    puppetdb_peers: Optional[str] = None
 
     # ── Database ──────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:////opt/openvox-gui/data/openvox_gui.db"
@@ -103,6 +106,12 @@ class Settings(BaseSettings):
     # VIP poll floor (ms) advertised to the SPA — minimum auto-refresh interval
     # when access_mode=vip. Direct node FQDNs keep their page defaults.
     vip_poll_floor_ms: int = 45000
+    # Hours after which a Failed latest-report is annotated stale
+    # (Needs attention). Does not rewrite the badge. 0 = skip. Default 8.
+    failed_alert_hours: float = 8.0
+    # Hours after which any latest-report is annotated stale
+    # (Needs attention). Does not rewrite the badge. 0 = skip. Default 24.
+    node_fresh_hours: float = 24.0
     # Comma/space-separated certnames to hide from live fleet (HAProxy/DNS VIPs).
     # Merged with cluster_config ca_vips / infra_vips / vip_hosts / fleet_exclude.
     # Example: ovcompilers.pdxc-it.corp.int-x.ai,ovcompilers.atlc-it.corp.int-x.ai

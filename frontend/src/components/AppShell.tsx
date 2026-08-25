@@ -142,6 +142,21 @@ function navItemMatchesPath(pathname: string, itemPath: string): boolean {
   return pathname === itemPath || pathname.startsWith(`${itemPath}/`);
 }
 
+/** Viewers may read fleet/metrics; mutating Play/Deploy/Settings stay hidden. */
+const VIEWER_HIDDEN_PATHS = new Set([
+  '/orchestration',
+  '/deployment',
+  '/installer',
+  '/data/hiera',
+  '/config/puppet',
+  '/config/app',
+]);
+
+function filterNavForRole(items: NavItem[], role?: string): NavItem[] {
+  if (role !== 'viewer') return items;
+  return items.filter((item) => !VIEWER_HIDDEN_PATHS.has(item.path));
+}
+
 function pathBelongsToGroup(pathname: string, items: NavItem[]): boolean {
   return items.some((item) => navItemMatchesPath(pathname, item.path));
 }
@@ -481,12 +496,12 @@ export function AppShellLayout() {
       <MantineAppShell.Navbar p="sm" className="ov-app-nav">
         <MantineAppShell.Section grow component={ScrollArea}>
           {renderNavGroup('Overview', IconDashboard, overviewNav)}
-          {renderNavGroup('Infrastructure', IconCertificate, infrastructureNav)}
-          {renderNavGroup('Classification & Code', IconRocket, classificationCodeNav)}
-          {renderNavGroup('Data', IconPackage, dataNav)}
+          {renderNavGroup('Infrastructure', IconCertificate, filterNavForRole(infrastructureNav, user?.role))}
+          {renderNavGroup('Classification & Code', IconRocket, filterNavForRole(classificationCodeNav, user?.role))}
+          {renderNavGroup('Data', IconPackage, filterNavForRole(dataNav, user?.role))}
           {renderNavGroup('Explore', IconTool, exploreNav)}
           {renderNavGroup('Insights', IconChartBar, insightsNav)}
-          {renderNavGroup('Settings', IconSettings, configNav)}
+          {renderNavGroup('Settings', IconSettings, filterNavForRole(configNav, user?.role))}
         </MantineAppShell.Section>
 
         <MantineAppShell.Section>

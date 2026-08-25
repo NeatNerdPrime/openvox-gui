@@ -149,12 +149,22 @@ function SyncLogPanel({ syncLog }: { syncLog: string[] }) {
 
     es.onopen = () => setConnected(true);
 
-    es.onmessage = (event) => {
-      setLines(prev => {
-        const next = [...prev, event.data];
-        // Keep a reasonable buffer
+    const pending: string[] = [];
+    let flushTimer: number | null = null;
+    const flush = () => {
+      flushTimer = null;
+      if (!pending.length) return;
+      const batch = pending.splice(0, pending.length);
+      setLines((prev) => {
+        const next = prev.concat(batch);
         return next.length > 2000 ? next.slice(-1500) : next;
       });
+    };
+    es.onmessage = (event) => {
+      pending.push(event.data);
+      if (flushTimer == null) {
+        flushTimer = window.setTimeout(flush, 150);
+      }
     };
 
     es.onerror = () => {
@@ -162,7 +172,10 @@ function SyncLogPanel({ syncLog }: { syncLog: string[] }) {
       es.close();
     };
 
-    return () => { es.close(); };
+    return () => {
+      if (flushTimer != null) window.clearTimeout(flushTimer);
+      es.close();
+    };
   }, []);
 
   // Auto-scroll to bottom when new lines arrive
@@ -204,8 +217,8 @@ export function InstallerPage() {
   const [error, setError]         = useState<string | null>(null);
   const [syncing, setSyncing]     = useState(false);
   const [syncLog, setSyncLog]     = useState<string[]>([]);
-  const [tail, setTail]           = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>('linux');
+  const [mirrorReady, setMirrorReady] = useState(false);
 
   // Distribution selector state
   const [upstream, setUpstream]           = useState<UpstreamInfo | null>(null);
@@ -219,28 +232,14 @@ export function InstallerPage() {
   const canManage = user && (user.role === 'admin' || user.role === 'operator');
 
   /**
-   * Fetch installer info + disk info + log tail + pending certs in parallel.
-   * Called on mount and after each manual sync or cert action.
+   * Cheap /info only — commands + last-sync. Does not walk the package
+   * tree or scrape upstream. First paint of the Linux one-liner waits
+   * on this alone.
    */
   const refresh = useCallback(async () => {
     try {
-      const [i, d, l, u, s] = await Promise.all([
-        installer.getInfo(),
-        installer.getDiskInfo().catch(() => null),
-        installer.getLog(50).catch(() => ({ lines: [] as string[] })),
-        installer.getUpstream().catch(() => null),
-        installer.getSelections().catch(() => ({ openvox_versions: ['8'], distributions: [], transport: 'https' } as MirrorSelections)),
-      ]);
+      const i = await installer.getInfo(false);
       setInfo(i);
-      setDiskInfo(d);
-      setTail(l.lines || []);
-      if (u) setUpstream(u);
-      setSavedSelections(s);
-      const vers = (s.openvox_versions || ['8', '9']).filter((v) => v !== '7');
-      setDraftVersions(vers.length ? vers : ['8', '9']);
-      setDraftDists(s.distributions);
-      const t = s.transport === 'rsync' || s.transport === 'rsync_fallback' ? s.transport : 'https';
-      setDraftTransport(t);
       setError(null);
     } catch (e: any) {
       setError(e.message || String(e));
@@ -249,7 +248,35 @@ export function InstallerPage() {
     }
   }, []);
 
+  const loadMirrorExtras = useCallback(async () => {
+    const [full, d, u, s] = await Promise.all([
+      installer.getInfo(true).catch(() => null),
+      installer.getDiskInfo().catch(() => null),
+      installer.getUpstream().catch(() => null),
+      installer.getSelections().catch(() => ({
+        openvox_versions: ['8'],
+        distributions: [],
+        transport: 'https',
+      } as MirrorSelections)),
+    ]);
+    if (full) setInfo(full);
+    setDiskInfo(d);
+    if (u) setUpstream(u);
+    setSavedSelections(s);
+    const vers = (s.openvox_versions || ['8', '9']).filter((v) => v !== '7');
+    setDraftVersions(vers.length ? vers : ['8', '9']);
+    setDraftDists(s.distributions);
+    const t = s.transport === 'rsync' || s.transport === 'rsync_fallback' ? s.transport : 'https';
+    setDraftTransport(t);
+    setMirrorReady(true);
+  }, []);
+
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    if (activeTab !== 'mirror') return;
+    void loadMirrorExtras();
+  }, [activeTab, loadMirrorExtras]);
 
   /**
    * Trigger a manual repo sync. Disabled for viewer-role users.
@@ -273,6 +300,7 @@ export function InstallerPage() {
       // Switch to the Sync Log tab so the captured output is immediately
       // visible (most useful UX after a manual sync).
       setActiveTab('synclog');
+      setMirrorReady(false);
       await refresh();
     } catch (e: any) {
       notifications.show({
@@ -320,7 +348,7 @@ export function InstallerPage() {
         message: res.message,
         color: 'green',
       });
-      await refresh();
+      await loadMirrorExtras();
     } catch (e: any) {
       notifications.show({
         title: 'Failed to update selections',
@@ -425,7 +453,7 @@ export function InstallerPage() {
           </Group>
         </Group>
 
-        <Tabs value={activeTab} onChange={setActiveTab}>
+        <Tabs value={activeTab} onChange={setActiveTab} keepMounted={false}>
           <Tabs.List>
             <Tabs.Tab value="linux"   leftSection={<IconBrandUbuntu size={14} />}>Linux (RHEL / Debian / Ubuntu)</Tabs.Tab>
             <Tabs.Tab value="windows" leftSection={<IconBrandWindows size={14} />}>Windows</Tabs.Tab>

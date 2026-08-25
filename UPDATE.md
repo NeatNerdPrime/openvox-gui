@@ -1,6 +1,6 @@
 # Update Guide
 
-**OpenVox GUI Version 3.12.0-rc.29**
+**OpenVox GUI Version 3.12.1-dev.1**
 
 This guide explains how to update your existing OpenVox GUI installation to the latest version. Updates bring new features, bug fixes, and security improvements.
 
@@ -191,7 +191,7 @@ The script automatically:
 curl -k https://localhost:4567/health
 
 # Should show something like:
-# {"status":"ok","version":"3.12.0-rc.29"}
+# {"status":"ok","version":"3.12.1-dev.1"}
 ```
 
 Open your browser and refresh the page. You might need to clear your browser cache:
@@ -569,7 +569,7 @@ sudo systemctl restart openvox-gui
 
 #### Problem: Database errors after update
 
-**Solution:** Run database migrations:
+**Solution:** Run database migrations (`update_local.sh` already does this):
 
 ```bash
 cd /opt/openvox-gui/backend
@@ -578,6 +578,13 @@ python -m alembic upgrade head
 deactivate
 sudo systemctl restart openvox-gui
 ```
+
+Current head is `004_cluster_secrets`. A new Postgres `openvox_gui`
+from `bootstrap-openvox-gui-db.sh` is already stamped — do not treat
+an empty `CREATE DATABASE` as a schema. Two consoles share one
+`openvox_gui` database (never `puppetdb`). See
+[docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) and
+[backend/alembic/README.md](backend/alembic/README.md).
 
 ### Getting Update Help
 
@@ -614,8 +621,8 @@ If you're stuck:
 
 OpenVox GUI uses **Semantic Versioning (SemVer 2.0.0)** plus optional **pre-releases**:
 
-- **Stable:** `MAJOR.MINOR.PATCH` (example: **3.10.6** — latest GitHub stable Release)
-- **Pre-release trains on `main`:** e.g. `3.12.0-rc.N` (current), `3.11.1-beta.N`, `3.10.5-dev.N`
+- **Stable:** `MAJOR.MINOR.PATCH` (example: **3.12.0** — current GitHub Release)
+- **Pre-release trains on `main`:** e.g. `3.12.1-dev.N`, `3.13.0-rc.N`
 - **ovox CLI** version always matches the GUI (root `VERSION` file)
 - **Feature inventory:** [docs/FEATURES.md](docs/FEATURES.md)
 
@@ -627,19 +634,21 @@ Rules of thumb:
 - Prefer the latest **stable** GitHub Release for production; use `rc` / beta only on lab or agreed pilots
 
 Examples:
-- `3.10.6` → `3.12.0-rc.N`: clustered console, VIP sessions, Host Health, docs refresh
+- `3.10.6` → `3.12.0`: clustered consoles, one fleet status, VIP sessions
 - `3.10.4` → `3.10.6`: GUI performance (Dashboard lean PDB extract, multi-worker uvicorn, graph-page SWR)
 - `3.10.2` → `3.10.4`: Live fleet consistency + Log Viewer / ENC / Inventory polish
 - `3.9.7` → `3.10.2`: Insights NOC, ops UI, Orchestration single-run (#38)
 
 ### Recent Versions
 
-**Version 3.12.0-rc (current `main` pre-release)**
-- Dual-console **VIP** session safety, cluster `vip_hosts`, sliding JWT, denylist fail-open — [docs/VIP_SESSIONS.md](docs/VIP_SESSIONS.md)
-- Continues 3.11 clustered console work (remote CA API, stage/activate, Postgres `openvox_gui`)
-- Full page map: [docs/FEATURES.md](docs/FEATURES.md)
+**Version 3.12.0 (Current stable GitHub Release — August 2026)**
+- Promotes **3.12.0-rc.1–rc.48** on **`main`** ([GitHub Release](https://github.com/cvquesty/openvox-gui/releases/tag/v3.12.0))
+- One fleet census (newest OpenVoxDB report) on Overview / Nodes / detail / Monitoring
+- Dual-console peer report merge so Needs attention matches
+- Clustered consoles, VIP sessions, shared Postgres `openvox_gui`, ENC TLS
+- After upgrade: hard-refresh browsers; same `SECRET_KEY` + DSN on every console; compilers `reports = puppetdb`
 
-**Version 3.10.6 (Latest stable GitHub Release — July 2026)**
+**Version 3.10.6 (prior stable — July 2026)**
 - Promotes **3.10.5-dev.1–dev.5** on **`main`** ([GitHub Release](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6))
 - **Performance:** Dashboard lean PuppetDB trend extract; multi-worker uvicorn (`OPENVOX_GUI_UVICORN_WORKERS`); API TTL caches; GZip; graph-page session SWR — see [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
 - After upgrade: hard-refresh browsers once; confirm `systemctl cat openvox-gui` shows `--workers N`

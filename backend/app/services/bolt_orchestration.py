@@ -449,10 +449,34 @@ async def finish_execution_history(
             pass
 
 
+def summarize_bolt_item_failures(stdout: str) -> str:
+    """Pull target stderr / _error.msg out of Bolt --format json."""
+    bits: List[str] = []
+    for item in _iter_bolt_result_items(stdout or ""):
+        if (item.get("status") or "").lower() == "success":
+            continue
+        val = item.get("value") if isinstance(item.get("value"), dict) else {}
+        err = ""
+        if isinstance(val.get("_error"), dict):
+            err = str(val["_error"].get("msg") or "")
+        err = (err + "\n" + str(val.get("stderr") or "") + "\n" + str(val.get("stdout") or "")).strip()
+        if not err:
+            err = _target_merged_text(item).strip() or "no stderr"
+        bits.append(
+            f"{item.get('target') or '?'}: exit {val.get('exit_code', '?')}: {err}"
+        )
+    return "\n".join(bits)
+
+
 def sanitize_bolt_result(result: Dict[str, Any]) -> BoltRunResultModel:
     """Map run_bolt_command dict → API model with ANSI / Bolt noise stripped."""
+    stdout = strip_ansi(clean_bolt_console_text(result.get("stdout") or ""))
+    stderr = strip_ansi(clean_bolt_console_text(result.get("stderr") or ""))
+    item_err = summarize_bolt_item_failures(result.get("stdout") or "")
+    if item_err:
+        stderr = (item_err + ("\n" + stderr if stderr else "")).strip()
     return BoltRunResultModel(
         returncode=int(result.get("returncode") if result.get("returncode") is not None else -1),
-        output=strip_ansi(clean_bolt_console_text(result.get("stdout") or "")),
-        error=strip_ansi(clean_bolt_console_text(result.get("stderr") or "")),
+        output=stdout,
+        error=stderr,
     )

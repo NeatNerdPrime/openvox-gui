@@ -201,22 +201,17 @@ class PuppetDBService:
         return unique
 
     async def get_live_nodes(self) -> List[Dict]:
-        """Return nodes that exist in **both** active PuppetDB and the CA.
+        """Return the fleet as active OpenVoxDB nodes (PuppetDB is SSoT).
 
-        This is the shared membership source of truth for Overview | Nodes,
-        Insights | Inventory, ENC Unclassified / reconciliation, Dashboard,
-        and Node Health:
+        Overview | Nodes, Insights | Inventory, ENC Unclassified /
+        reconciliation, Dashboard, and Node Health all use this list.
 
-        - **Active PuppetDB** — not deactivated / not expired (ghost factsets
-          after expire/deactivate do not count).
-        - **Signed CA certificate** — ``puppetserver ca clean`` removes the
-          cert; those hosts must disappear everywhere even if PuppetDB has
-          not yet expired the node record.
-
-        If the CA list cannot be loaded, falls back to active PuppetDB only.
-        If PuppetDB returns no active nodes but CA has signed certs, falls
-        back to the signed CA list (useful on setups where PDB node listing
-        is empty or not populated).
+        - **Active PuppetDB** — ``certnames`` rows that are not deactivated
+          or expired (an agent that has reported). This is the CMDB.
+        - **No CA intersection** — a short or site-wrong CA HTTP list must
+          not hide names that OpenVoxDB already has.
+        - **DNS RR names only** are stripped (``ovca.corp``, ``ovdb.corp``).
+          Real HAProxy boxes such as ``ovcompilers.*`` stay visible.
 
         Result is cached ~15s (single-flight) and copied so callers can
         mutate status overlays without poisoning the cache.
@@ -230,68 +225,53 @@ class PuppetDBService:
     async def _compute_live_nodes(self) -> List[Dict]:
         active = await self.get_nodes(include_inactive=False)
         try:
-            from .certificates_service import list_certificates as list_ca_certificates
-
-            cert_data = await list_ca_certificates()
-            if cert_data.get("error"):
-                logger.warning(
-                    "get_live_nodes: CA list unavailable, using active PuppetDB only: %s",
-                    cert_data.get("error"),
-                )
-                return active
-
-            signed = {
-                str(c.get("name", "")).strip().lower()
-                for c in (cert_data.get("signed") or [])
-                if c.get("name")
-            }
-        except Exception as e:
-            logger.warning(
-                "get_live_nodes: CA list unavailable, using active PuppetDB only: %s",
-                e,
-                exc_info=True,
-            )
-            return active
-
-        # HAProxy / DNS VIPs are not agents — hide from Nodes / Inventory / etc.
-        try:
             from .cluster_config import fleet_excluded_certnames
 
             excluded = fleet_excluded_certnames()
         except Exception:
             excluded = set()
-        if excluded:
-            signed = {c for c in signed if c not in excluded}
 
-        if len(active) == 0 and len(signed) > 0:
-            logger.info(
-                "get_live_nodes: PuppetDB returned no active nodes; falling back to signed CA certs (%d) for live fleet.",
-                len(signed),
-            )
-            live = [{"certname": cn} for cn in sorted(signed) if cn not in excluded]
-            await self._overlay_latest_report_status(live)
-        else:
-            live = [
-                n
-                for n in active
-                if str(n.get("certname", "")).strip().lower() in signed
-                and str(n.get("certname", "")).strip().lower() not in excluded
-            ]
-            live.sort(key=lambda n: str(n.get("certname", "")).lower())
+        live = [
+            n
+            for n in active
+            if str(n.get("certname", "")).strip().lower() not in excluded
+        ]
+        live.sort(key=lambda n: str(n.get("certname", "")).lower())
         if excluded:
             logger.debug(
-                "get_live_nodes: excluded %d VIP/fleet_exclude name(s)",
+                "get_live_nodes: excluded %d DNS-RR name(s)",
                 len(excluded),
             )
+        try:
+            from ..config import settings
+            from .fleet_insights import apply_report_freshness
+
+            apply_report_freshness(
+                live,
+                failed_hours=float(getattr(settings, "failed_alert_hours", 8.0) or 0),
+                fresh_hours=float(getattr(settings, "node_fresh_hours", 24.0) or 0),
+            )
+        except Exception:
+            logger.debug("report freshness annotation skipped", exc_info=True)
+        # Same live-run overlay Dashboard / Nodes / Monitoring already apply
+        # so Heatmap, Environments, and Inventory cannot disagree.
+        try:
+            from ..database import async_session
+            from ..routers.nodes import apply_live_run_status
+
+            async with async_session() as db:
+                await apply_live_run_status(live, db)
+        except Exception:
+            logger.debug("live-run overlay skipped", exc_info=True)
         return live
 
     async def get_fleet_nodes(self) -> List[Dict]:
         """Return signed CA certificates enriched with PuppetDB records.
 
         **Not** the membership SSoT for Overview | Nodes, Inventory, or ENC —
-        those use ``get_live_nodes()`` (active PuppetDB ∩ signed CA). This CA
-        union is for certificate-centric views and callers that need every
-        trusted cert (including signed certs that never reported to PuppetDB).
+        those use ``get_live_nodes()`` (active PuppetDB). This CA union is
+        for the Certificates page and callers that need every trusted cert
+        (including signed certs that never reported to PuppetDB).
 
         - Starts from `puppetserver ca list --all` (signed certs).
         - Enriches every certname with its full PuppetDB record (if present),
@@ -574,6 +554,33 @@ class PuppetDBService:
         except Exception as e:
             logger.warning("recent reports window failed: %s", e)
 
+        # Dual-VIP: this console's ovdb.example.com A record is one site.
+        # Merge newest receive_time from configured peer OpenVoxDBs so
+        # Overview / Needs attention match the other console.
+        try:
+            peers = self._peer_puppetdb_hosts()
+        except Exception:
+            peers = []
+        if peers:
+            peer_maps = await asyncio.gather(
+                *[self._latest_reports_from_host(h) for h in peers],
+                return_exceptions=True,
+            )
+            for host, result in zip(peers, peer_maps):
+                if isinstance(result, Exception):
+                    logger.warning(
+                        "peer OpenVoxDB %s latest reports failed: %s",
+                        host,
+                        result,
+                    )
+                    continue
+                for row in (result or {}).values():
+                    if not isinstance(row, dict):
+                        continue
+                    copied = dict(row)
+                    copied["_openvoxdb_source"] = host
+                    _fold_newest_report(out, copied)
+
         return out
 
     async def get_newest_report_for_certname(self, certname: str) -> Optional[Dict]:
@@ -593,13 +600,42 @@ class PuppetDBService:
             ) or []
         except Exception as e:
             logger.warning("newest report query failed certname=%s: %s", cn, e)
-            return None
+            rows = []
         best: Optional[Dict] = None
         for row in rows:
             if not isinstance(row, dict):
                 continue
             if best is None or _report_ts(row) >= _report_ts(best):
                 best = row
+        try:
+            peers = self._peer_puppetdb_hosts()
+        except Exception:
+            peers = []
+        for host in peers:
+            try:
+                remote = await self._query_host(
+                    host,
+                    "reports",
+                    query=f'["=", "certname", "{safe}"]',
+                    params={
+                        "limit": "50",
+                        "order_by": '[{"field": "receive_time", "order": "desc"}]',
+                    },
+                ) or []
+            except Exception as e:
+                logger.warning(
+                    "peer OpenVoxDB %s newest report failed certname=%s: %s",
+                    host,
+                    cn,
+                    e,
+                )
+                continue
+            for row in remote:
+                if not isinstance(row, dict):
+                    continue
+                if best is None or _report_ts(row) >= _report_ts(best):
+                    best = dict(row)
+                    best["_openvoxdb_source"] = host
         return best
 
     async def _overlay_latest_report_status(self, nodes: List[Dict]) -> None:
@@ -680,13 +716,83 @@ class PuppetDBService:
             from .cluster_config import load_cluster_config
             cfg = load_cluster_config()
         except Exception:
-            return []
+            cfg = {}
         primary = (settings.puppetdb_host or "").strip().lower()
         out: List[str] = []
-        for host in cfg.get("puppetdb_nodes") or []:
-            h = str(host).strip().lower()
+
+        def _add(host: str) -> None:
+            h = (host or "").strip().lower()
             if h and h != primary and h not in out:
                 out.append(h)
+
+        extra = getattr(settings, "puppetdb_peers", None) or ""
+        for part in str(extra).replace(",", " ").split():
+            _add(part)
+        for host in cfg.get("puppetdb_nodes") or []:
+            _add(str(host))
+        for host in cfg.get("dns_rr_vips") or []:
+            _add(str(host))
+        # openvox.<site>… console → ovdb.<site>… VIP (same estate pattern)
+        for console in cfg.get("consoles") or []:
+            name = str(console).strip().lower()
+            if name.startswith("openvox."):
+                _add("ovdb." + name.split(".", 1)[1])
+        return out
+
+    async def _query_host(
+        self,
+        host: str,
+        endpoint: str,
+        query: Optional[str] = None,
+        params: Optional[Dict] = None,
+    ) -> Any:
+        """PuppetDB v4 query against an explicit peer FQDN."""
+        port = settings.puppetdb_port
+        if endpoint:
+            url = f"https://{host}:{port}/pdb/query/v4/{endpoint}".rstrip("/")
+        else:
+            url = f"https://{host}:{port}/pdb/query/v4"
+        request_params = dict(params or {})
+        if query:
+            request_params["query"] = query
+        ctx = self._create_ssl_context()
+        async with httpx.AsyncClient(
+            verify=ctx,
+            timeout=httpx.Timeout(15.0, connect=4.0),
+            trust_env=False,
+        ) as client:
+            resp = await client.get(url, params=request_params)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def _latest_reports_from_host(self, host: str) -> Dict[str, Dict]:
+        """Newest report per certname on one peer OpenVoxDB."""
+        out: Dict[str, Dict] = {}
+        pql = (
+            "reports[certname, status, receive_time, start_time, end_time, "
+            "hash, producer, cached_catalog_status, noop] { latest_report? = true }"
+        )
+        try:
+            flagged = await self._query_host(
+                host, "", query=pql, params={"limit": "5000"}
+            ) or []
+            for row in flagged:
+                _fold_newest_report(out, row)
+        except Exception as e:
+            logger.warning("peer %s latest_report? failed: %s", host, e)
+        try:
+            recent = await self._query_host(
+                host,
+                "reports",
+                params={
+                    "limit": "2000",
+                    "order_by": '[{"field": "receive_time", "order": "desc"}]',
+                },
+            ) or []
+            for row in recent:
+                _fold_newest_report(out, row)
+        except Exception as e:
+            logger.warning("peer %s recent reports failed: %s", host, e)
         return out
 
     async def _lookup_report(self, h: str) -> Dict:
@@ -1070,7 +1176,7 @@ class PuppetDBService:
         structured facts). Missing facts are empty strings for UI robustness.
         Disks are pre-formatted as newline-separated "name: size" strings.
         """
-        # Live membership (SSoT) — active PuppetDB ∩ signed CA.
+        # Live membership (SSoT) — active PuppetDB.
         live_nodes = await self.get_live_nodes()
         active_keys = {
             str(n.get("certname", "")).strip().lower()

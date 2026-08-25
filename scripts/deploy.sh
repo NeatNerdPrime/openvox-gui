@@ -192,7 +192,11 @@ for script in \
     list-classes-remote.py \
     list-environments-remote.py \
     read-logs-remote.py \
-    generate_bolt_token.py
+    generate_bolt_token.py \
+    cluster-preflight.sh \
+    estate-health-check.sh \
+    ensure-puppetdb-spock.sh \
+    seed-bolt-known-hosts.sh
 do
     if [ -f "${REPO_DIR}/scripts/${script}" ]; then
         cp "${REPO_DIR}/scripts/${script}" "${INSTALL_DIR}/scripts/${script}"
@@ -279,8 +283,14 @@ if [ -d "${INSTALL_DIR}/ovox" ]; then
     # even if the version baked into pyproject.toml during pip install was older.
     if [ -f "${INSTALL_DIR}/ovox/VERSION" ]; then
         VER=$(cat "${INSTALL_DIR}/ovox/VERSION")
-        SITE_PKG="${INSTALL_DIR}/venv/lib/python3.11/site-packages/ovox/__init__.py"
-        if [ -f "$SITE_PKG" ]; then
+        SITE_PKG=""
+        for f in "${INSTALL_DIR}"/venv/lib/python3.*/site-packages/ovox/__init__.py; do
+            if [ -f "$f" ]; then
+                SITE_PKG="$f"
+                break
+            fi
+        done
+        if [ -n "$SITE_PKG" ]; then
             sed -i "s/^__version__ = .*/__version__ = \"${VER}\"/" "$SITE_PKG" 2>/dev/null || true
             echo "  + Synced installed ovox __version__ to ${VER}"
         fi

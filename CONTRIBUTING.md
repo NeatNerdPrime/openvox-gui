@@ -19,7 +19,7 @@ The best thing about Open Source software is you can fix it yourself and contrib
 
 We will review the PR and merge it as soon as possible. It's that simple!
 
-**Current stable** for production all-in-one: **3.10.6** ([Releases](https://github.com/cvquesty/openvox-gui/releases)). Active pre-release on `main`: **3.12.0-rc.\*** (AIO + clustered) — see [docs/STATUS.md](docs/STATUS.md) and the version badge on the [README](README.md). Report bugs with the version from the GUI footer or `curl -k https://your-server:4567/api/health`.
+**Current stable:** **3.12.0** ([Releases](https://github.com/cvquesty/openvox-gui/releases)). See [docs/STATUS.md](docs/STATUS.md) and the version badge on the [README](README.md). Report bugs with the version from the GUI footer or `curl -k https://your-server:4567/api/health`.
 
 > If you like our project but don't have the time to contribute, that's just fine. There are other easy ways to support us and show your appreciation.
 > - Star the project on GitHub

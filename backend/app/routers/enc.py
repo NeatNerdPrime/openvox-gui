@@ -417,8 +417,8 @@ async def list_nodes(db: AsyncSession = Depends(get_db)):
 async def _validate_certname_in_fleet(certname: str):
     """Reject certnames that are not on the live fleet.
 
-    Live = active PuppetDB ∩ signed CA (``get_live_nodes``). Enc only stores
-    classification on real members — not CA-cleaned hosts or PDB ghosts.
+    Live = active PuppetDB (``get_live_nodes``). Enc only stores
+    classification on agents that have reported.
     """
     try:
         live = await puppetdb_service.get_live_nodes()
@@ -433,8 +433,8 @@ async def _validate_certname_in_fleet(certname: str):
                 status_code=400,
                 detail=(
                     f"Node '{certname}' is not on the live fleet "
-                    "(requires an active PuppetDB record and a signed CA certificate). "
-                    "Cleaned or expired hosts cannot be classified."
+                    "(requires an active PuppetDB certname). "
+                    "Deactivated or expired hosts cannot be classified."
                 ),
             )
     except HTTPException:
@@ -496,7 +496,7 @@ async def list_stale_enc(db: AsyncSession = Depends(get_db)):
     """List stale ENC nodes (the purge queue) for human review.
 
     These are nodes still classified locally but no longer on the live fleet
-    (active PDB + signed CA). Review here, then use POST /purge-stale
+    (active PDB). Review here, then use POST /purge-stale
     (force=true required if >5 nodes).
     """
     stale = await enc_service.get_stale_nodes(db)
@@ -527,7 +527,7 @@ async def purge_stale_enc(
 async def reseed_enc(db: AsyncSession = Depends(get_db)):
     """Re-seed ENC nodes from the live fleet (safe, additive only).
 
-    Adds missing live-fleet members (active PuppetDB ∩ signed CA) to the
+    Adds missing live-fleet members (active PuppetDB) to the
     local ENC classification store. Existing rows are left untouched.
     Useful after classification loss (bad prune, wiped data dir, etc.).
     """

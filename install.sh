@@ -46,11 +46,9 @@ APP_HOST="::"
 UVICORN_WORKERS="2"
 APP_DEBUG="false"
 
-# Python interpreter used to create the virtualenv. The backend requires
-# Python >= 3.10; on distros whose default python3 is older (EL9: 3.9,
-# EL8: 3.6), point this at a parallel-installed interpreter, e.g.
-# PYTHON_BIN=/usr/bin/python3.12 (both EL8 and EL9 ship python3.12 as a
-# regular package). Settable from the environment or install.conf.
+# Interpreter used to create the venv. Backend pins need Python >= 3.10.
+# EL8/EL9 default python3 is older; set PYTHON_BIN=/usr/bin/python3.12
+# (environment or install.conf). Both families ship python3.12 in AppStream.
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 PUPPET_SERVER_HOST="$(hostname -f)"
@@ -509,6 +507,7 @@ Options:
 Answer File:
   Copy install.conf.example to install.conf and edit it.
   All variables are optional; defaults are used for any not specified.
+  On EL8/EL9 set PYTHON_BIN=/usr/bin/python3.12 (default python3 is too old).
 
 EOF
     exit 0
@@ -783,7 +782,11 @@ for script in \
     list-classes-remote.py \
     list-environments-remote.py \
     read-logs-remote.py \
-    generate_bolt_token.py
+    generate_bolt_token.py \
+    cluster-preflight.sh \
+    estate-health-check.sh \
+    ensure-puppetdb-spock.sh \
+    seed-bolt-known-hosts.sh
 do
     if [ -f "${SCRIPT_DIR}/scripts/${script}" ]; then
         cp "${SCRIPT_DIR}/scripts/${script}" "${INSTALL_DIR}/scripts/${script}"
@@ -947,13 +950,11 @@ fi
 log_step 4 "Python Virtual Environment"
 
 if ! command -v "$PYTHON_BIN" &>/dev/null; then
-    log_err "Python interpreter '${PYTHON_BIN}' not found. Install it (plus its venv support), or set PYTHON_BIN to another interpreter (e.g. PYTHON_BIN=/usr/bin/python3.12 in install.conf)."
+    log_err "Python interpreter '${PYTHON_BIN}' not found. Install it (plus its venv module), or set PYTHON_BIN (e.g. PYTHON_BIN=/usr/bin/python3.12 in install.conf)."
     exit 1
 fi
 
-# The backend's dependencies (FastAPI/pydantic/cryptography pins) require
-# Python >= 3.10. Fail here with a clear message instead of at pip
-# resolution deep inside the install.
+# Fail here, not inside pip's Requires-Python wall (EL8/EL9 default python3).
 if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
     PY_VER=$("$PYTHON_BIN" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "unknown")
     log_err "Python >= 3.10 is required; '${PYTHON_BIN}' is ${PY_VER}. Set PYTHON_BIN to a newer interpreter (e.g. PYTHON_BIN=/usr/bin/python3.12 in install.conf)."
@@ -987,10 +988,14 @@ if [ -d "${INSTALL_DIR}/ovox" ]; then
     # Make sure the running version matches the deployed ovox/VERSION file
     if [ -f "${INSTALL_DIR}/ovox/VERSION" ]; then
         VER=$(cat "${INSTALL_DIR}/ovox/VERSION")
-        # The venv's lib directory is named after the interpreter version
-        # (python3.10, python3.12, ...), so it cannot be hardcoded.
-        SITE_PKG=$(echo "${INSTALL_DIR}"/venv/lib/python3.*/site-packages/ovox/__init__.py)
-        if [ -f "$SITE_PKG" ]; then
+        SITE_PKG=""
+        for f in "${INSTALL_DIR}"/venv/lib/python3.*/site-packages/ovox/__init__.py; do
+            if [ -f "$f" ]; then
+                SITE_PKG="$f"
+                break
+            fi
+        done
+        if [ -n "$SITE_PKG" ]; then
             sed -i "s/^__version__ = .*/__version__ = \"${VER}\"/" "$SITE_PKG" 2>/dev/null || true
         fi
     fi
@@ -1174,6 +1179,17 @@ OPENVOX_GUI_FLEET_HEALTH_REPORT_OUTPUT_DIR=${INSTALL_DIR}/data/reports
 ENVEOF
 log_ok "Generated ${INSTALL_DIR}/config/.env"
 
+# Clustered: never pin the PDB VIP in /etc/hosts (files beats DNS).
+if [ -n "${PUPPETDB_HOST}" ] && grep -E "^[^#]*[[:space:]]${PUPPETDB_HOST}([[:space:]]|\$)" /etc/hosts >/dev/null 2>&1; then
+    log_warn "/etc/hosts contains ${PUPPETDB_HOST} — that replaces a DNS RR with one IP."
+    log_warn "Remove that line. Members (ovdb1/ovdb2) may stay in hosts; VIP FQDNs must not."
+fi
+if [ -x "${INSTALL_DIR}/scripts/cluster-preflight.sh" ]; then
+    log_info "Running cluster-preflight (warnings only)…"
+    bash "${INSTALL_DIR}/scripts/cluster-preflight.sh" --env "${INSTALL_DIR}/config/.env" \
+        || log_warn "cluster-preflight reported problems — see scripts/cluster-preflight.sh"
+fi
+
 # ─── PostgreSQL application DB (optional; preferred for production DR) ──
 # Provisions role, database, full schema, alembic stamp, optional Spock mesh.
 # Operator only supplies install.conf credentials — no hand SQL.
@@ -1209,6 +1225,8 @@ fi
 
 # ENC for compilers uses OPENVOX_GUI_API_BASE via EnvironmentFile (see
 # scripts/bootstrap-compiler-enc.sh). Do NOT sed-edit enc.py — it reads env.
+# enc.py verifies the GUI cert against the Puppet CA unless
+# OPENVOX_GUI_ENC_TLS_VERIFY=0. Use a URL whose name is on the GUI hostcert.
 # Local co-located / single-server: configure ENC when puppetserver is here.
 _do_enc="false"
 case "${CONFIGURE_ENC}" in

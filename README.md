@@ -4,7 +4,7 @@
 
 **A web-based management interface for OpenVox/Puppet infrastructure**
 
-[![Version](https://img.shields.io/badge/version-3.12.0--rc.28-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases)
+[![Version](https://img.shields.io/badge/version-3.12.0--rc.42-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![React](https://img.shields.io/badge/react-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
@@ -88,7 +88,7 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 | [UPDATE.md](UPDATE.md) | Clone-then-deploy updates, maintenance windows |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, single vs clustered console |
 | [docs/VIP_SESSIONS.md](docs/VIP_SESSIONS.md) | Dual-console VIP session / poll behaviour (3.12+) |
-| [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) | Shared `openvox_gui` Postgres / multi-console data |
+| [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) | Clustered DB + Spock runbook (two databases, two meshes) |
 | [docs/LDAP.md](docs/LDAP.md) | LDAP / Active Directory |
 | [docs/SUDOERS.md](docs/SUDOERS.md) | Service-user sudo rules |
 | [docs/METRICS.md](docs/METRICS.md) | Jolokia / auth.conf for Insights JMX charts |
@@ -107,7 +107,7 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 > Full detail: **[docs/FEATURES.md](docs/FEATURES.md)**. Nav groups: **Overview** → **Infrastructure** → **Classification & Code** → **Data** → **Explore** → **Insights** → **Settings**.
 
 ### Overview — Dashboard, Nodes, Reports
-- **Live fleet** = active OpenVoxDB ∩ signed CA (ghosts after `ca clean` / deactivate drop out)
+- **Live fleet** = active OpenVoxDB `/nodes` (catalogs). DNS RR names hidden; `ovcompilers.*` HAProxy VMs stay visible.
 - Dashboard trends, sessions, optional auto-refresh (SWR — no blank flash)
 - Nodes OpsTable / filters / export; node detail **Run OpenVox**, purge, classify
 - Reports list + detail (hash prefix / peer-aware); exit code **2** = successful apply with changes
@@ -245,25 +245,22 @@ sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py l
 
 ## Current train (3.12) and versioning
 
-**Pre-release on `main`:** **3.12.0-rc.\*** (see root `VERSION`).  
-**Last stable GitHub Release:** **3.10.6** — still the safe default for production **all-in-one**.  
+**Current stable GitHub Release:** **3.12.0** (`v3.12.0`).  
 Full map: [docs/STATUS.md](docs/STATUS.md) · features: [docs/FEATURES.md](docs/FEATURES.md) · history: [CHANGELOG.md](CHANGELOG.md).
 
-### 3.12-rc headlines (AIO + clustered)
-- **AIO unchanged as primary path** — install on the OpenVox Server; SQLite; local services  
-- **Clustered optional** — dedicated consoles, VIP sessions, fleet VIP exclude, remote CA/PDB, `ovox infra health` estate probes, Bolt-sampled settings  
-- **Ops polish** — PQL sortable results, Log Viewer empty≠502, console host/IP footer, proxy-safe ovox  
-
-### 3.10.6 stable (foundational — still current for many AIO sites)
-- Live fleet, Monitoring NOC, OpsTable, multi-worker uvicorn + SWR ([PERFORMANCE.md](docs/PERFORMANCE.md)), orchestration single Bolt run ([#38](https://github.com/cvquesty/openvox-gui/issues/38))
+### 3.12.0 headlines (AIO + clustered)
+- **AIO still first** — install on the OpenVox Server; SQLite; local services
+- **Clustered optional** — dedicated consoles, VIP sessions, fleet VIP exclude, remote CA/PDB, `ovox infra health`
+- **One fleet status** — newest OpenVoxDB report on Overview / Nodes / detail; peer merge so two consoles agree
+- **Ops polish** — PQL sortable results, Log Viewer empty≠502, console host/IP footer
 
 ### Earlier 3.x (still in the product)
-- **3.7** Insights / maintenance · **3.6** agent installer, SSL wizard, RBAC · **3.3/2.x** Bolt targets, native SSL, LDAP  
+- **3.10.6** performance / SWR · **3.7** Insights / maintenance · **3.6** agent installer, SSL wizard, RBAC
 
 ### How we version
-- **Stable:** `MAJOR.MINOR.PATCH` (e.g. **3.10.6**, future **3.12.0**)  
-- **Pre-release:** `3.12.0-rc.N` (PEP 440 only — not `gamma`) · ovox lockstep with GUI  
-- **Branch:** `main` only · GitHub Releases only for intentional stables  
+- **Stable:** `MAJOR.MINOR.PATCH` (e.g. **3.12.0**)
+- **Pre-release:** `3.12.1-dev.N` / `3.13.0-rc.N` (PEP 440 only — not `gamma`) · ovox lockstep with GUI
+- **Branch:** `main` only · GitHub Releases only for intentional stables
 
 > **Metrics:** [docs/METRICS.md](docs/METRICS.md) · Host Health: [docs/HOST_HEALTH.md](docs/HOST_HEALTH.md)
 

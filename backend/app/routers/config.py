@@ -20,6 +20,7 @@ from ..middleware.security import rate_limit_heavy, concurrency_heavy
 # These edit puppet.conf, hiera, ssl, .env, restart the puppet stack,
 # and run `puppet lookup` as root -- not operator-level work.
 _ADMIN_ONLY = require_role("admin")
+_HIERA_READ = require_role("admin", "operator")
 
 router = APIRouter(prefix="/api/config", tags=["configuration"])
 logger = logging.getLogger(__name__)
@@ -156,7 +157,10 @@ async def update_hiera_config(
 # ─── Hiera Data Files ─────────────────────────────────────
 
 @router.get("/hiera/data/{environment}")
-async def list_hiera_data_files(environment: str = "production"):
+async def list_hiera_data_files(
+    environment: str = "production",
+    _user: str = Depends(_HIERA_READ),
+):
     """List all Hiera data files in an environment."""
     try:
         files = puppetserver_service.list_hiera_data_files(environment)
@@ -171,7 +175,11 @@ async def list_hiera_data_files(environment: str = "production"):
 
 
 @router.get("/hiera/data/{environment}/file")
-async def get_hiera_data_file(environment: str, path: str):
+async def get_hiera_data_file(
+    environment: str,
+    path: str,
+    _user: str = Depends(_HIERA_READ),
+):
     """Read a specific Hiera data file. Pass the full_path as a query param ?path=..."""
     try:
         content = puppetserver_service.read_hiera_data_file(path)
@@ -411,15 +419,17 @@ class ClusterConfigUpdate(BaseModel):
     compilers: List[str] = []
     puppetdb_nodes: List[str] = []
     ca_nodes: List[str] = []
-    ca_vips: List[str] = []
-    # Compiler/PDB HAProxy or DNS VIP FQDNs — excluded from live fleet
-    infra_vips: List[str] = []
-    # Extra certnames to hide from Nodes / Inventory / Dashboard membership
-    fleet_exclude: List[str] = []
+    ca_vips: Optional[List[str]] = None
+    # Health probes only — ovcompilers.* stay on Nodes
+    infra_vips: Optional[List[str]] = None
+    # DNS RR names with no VM (ovdb.corp) — hidden from Nodes
+    dns_rr_vips: Optional[List[str]] = None
+    # Extra hide list (never ovcompilers.*)
+    fleet_exclude: Optional[List[str]] = None
     code_deploy_targets: List[str] = []
     consoles: List[str] = []
     # Public VIP / LB hostnames (SPA access_mode=vip when Host matches)
-    vip_hosts: List[str] = []
+    vip_hosts: Optional[List[str]] = None
     database_backend: str = "sqlite"
     enc_api_urls: List[str] = []
     staging_codedir: Optional[str] = None
@@ -447,6 +457,22 @@ async def update_cluster_config(
 
     data = body.model_dump()
     current = load_cluster_config()
+    # Omitted list fields must not wipe disk (Save used to send no dns_rr_vips).
+    for key in (
+        "ca_vips",
+        "infra_vips",
+        "dns_rr_vips",
+        "fleet_exclude",
+        "vip_hosts",
+        "compilers",
+        "puppetdb_nodes",
+        "ca_nodes",
+        "code_deploy_targets",
+        "consoles",
+        "enc_api_urls",
+    ):
+        if data.get(key) is None:
+            data[key] = current.get(key) or []
     previous_mode = (current.get("deployment_mode") or "single").strip()
     if not data.get("staging_codedir"):
         data["staging_codedir"] = current.get("staging_codedir")
@@ -1151,6 +1177,16 @@ async def list_hiera_files():
         if not isinstance(envs, list):
             rc = bolt.get("returncode")
             err = (bolt.get("stderr") or bolt.get("stdout") or "")[:800]
+            err_l = err.lower()
+            if "must have a tty" in err_l or "requiretty" in err_l:
+                hint = (
+                    f"Could not list Hiera on {host}: bolt@ sudo needs a TTY "
+                    "(Defaults requiretty). Dedicated consoles Bolt to the "
+                    "first compiler with --no-tty. Add "
+                    "'Defaults:bolt !requiretty' to /etc/sudoers.d/bolt on "
+                    "that compiler (same as Stage). visudo -cf, then reload."
+                )
+                raise HTTPException(status_code=502, detail=hint)
             raise HTTPException(
                 status_code=502,
                 detail=(

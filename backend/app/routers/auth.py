@@ -168,6 +168,8 @@ async def login(request: Request, login_request: LoginRequest):
 
     login_username = login_request.username.strip()
     login_password = login_request.password
+    if not login_password or not str(login_password).strip():
+        raise HTTPException(status_code=401, detail="Password required")
 
     # ── Per-user auth source routing ──
     # get_user_auth_source returns None when the username is unknown.

@@ -7,11 +7,84 @@ puppetdb_service, and metrics routers do not diverge.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+
+def _parse_report_ts(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    try:
+        s = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+    except Exception:
+        return None
+
+
+def downgrade_stale_failed(nodes: List[Dict], hours: float = 8.0) -> List[Dict]:
+    """Annotate Failed reports older than *hours*. Never rewrite the badge.
+
+    Overview, Nodes, and Node Detail must show the newest OpenVoxDB
+    report status. Age is metadata (``report_stale``) for Needs
+    attention, not a different status. Set hours<=0 to skip.
+    """
+    return apply_report_freshness(nodes, failed_hours=hours, fresh_hours=0)
+
+
+def apply_report_freshness(
+    nodes: List[Dict],
+    failed_hours: float = 8.0,
+    fresh_hours: float = 24.0,
+) -> List[Dict]:
+    """Annotate report age. Never rewrite ``latest_report_status``.
+
+    Dashboard, Nodes, and Node Detail all show the newest OpenVoxDB
+    report status. Rewriting a day-old Unchanged to Unreported made
+    Overview disagree with the node page and with PuppetDB. Hours <= 0
+    disables that annotation.
+    """
+    if not nodes:
+        return nodes
+    now = datetime.utcnow()
+    fail_cut = now - timedelta(hours=failed_hours) if failed_hours > 0 else None
+    fresh_cut = now - timedelta(hours=fresh_hours) if fresh_hours > 0 else None
+    for node in nodes:
+        status = (node.get("latest_report_status") or "").lower()
+        ts = _parse_report_ts(node.get("report_timestamp"))
+        reason = None
+        if status == "failed" and fail_cut is not None:
+            if ts is None or ts < fail_cut:
+                reason = "stale_failed"
+        if reason is None and fresh_cut is not None and status and status != "unreported":
+            if ts is None or ts < fresh_cut:
+                reason = "stale_report"
+        if reason:
+            node["report_stale"] = True
+            node["freshness_reason"] = reason
+        else:
+            node["report_stale"] = False
+            node.pop("freshness_reason", None)
+    return nodes
+
+
+def display_status(node: Dict) -> str:
+    """Single display bucket for Overview, Nodes, and Monitoring.
+
+    Empty / unknown latest_report_status is unreported (not unchanged).
+    """
+    if node.get("latest_report_noop"):
+        return "noop"
+    status = (node.get("latest_report_status") or "").strip().lower()
+    if status in ("failed", "unchanged", "changed", "unreported", "noop"):
+        return status
+    return "unreported"
 
 
 def compute_status_counts(nodes: List[Dict]) -> Dict[str, int]:
-    """Categorise nodes by latest_report_status / noop (dashboard + PDB parity)."""
+    """Categorise nodes by display_status (dashboard + Monitoring parity)."""
     counts = {
         "changed": 0,
         "unchanged": 0,
@@ -21,16 +94,39 @@ def compute_status_counts(nodes: List[Dict]) -> Dict[str, int]:
         "total": len(nodes),
     }
     for node in nodes:
-        status = node.get("latest_report_status")
-        if node.get("latest_report_noop"):
-            counts["noop"] += 1
-        elif status in counts:
-            counts[status] += 1
-        elif status is None:
-            counts["unreported"] += 1
-        else:
-            counts["unchanged"] += 1
+        status = display_status(node)
+        counts[status] = counts.get(status, 0) + 1
     return counts
+
+
+def partition_display_nodes(nodes: List[Dict]) -> Dict[str, List[Dict]]:
+    """Same buckets as compute_status_counts, with node rows."""
+    out: Dict[str, List[Dict]] = {
+        "changed": [],
+        "unchanged": [],
+        "failed": [],
+        "unreported": [],
+        "noop": [],
+        "compliant": [],
+        "drifted": [],
+    }
+    for node in nodes:
+        entry = {
+            "certname": node.get("certname"),
+            "status": display_status(node),
+            "corrective": node.get("latest_report_corrective_change", False),
+            "environment": node.get("report_environment"),
+            "report_timestamp": node.get("report_timestamp"),
+            "status_source": node.get("status_source"),
+        }
+        st = entry["status"]
+        if st in out:
+            out[st].append(entry)
+        if entry["corrective"] and st != "failed":
+            out["drifted"].append(entry)
+        elif st in ("unchanged", "changed"):
+            out["compliant"].append(entry)
+    return out
 
 
 def compute_trends(nodes: List[Dict], reports: List[Any]) -> List[Dict]:
@@ -40,12 +136,7 @@ def compute_trends(nodes: List[Dict], reports: List[Any]) -> List[Dict]:
         cn = n.get("certname", "")
         if not cn:
             continue
-        if n.get("latest_report_noop"):
-            node_state[cn] = "noop"
-        elif n.get("latest_report_status"):
-            node_state[cn] = n["latest_report_status"]
-        else:
-            node_state[cn] = "unreported"
+        node_state[cn] = display_status(n)
 
     bucket_reports: Dict[str, list] = defaultdict(list)
     for report in reports:

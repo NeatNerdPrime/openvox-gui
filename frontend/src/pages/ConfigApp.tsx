@@ -559,6 +559,7 @@ function ClusterTab() {
   const [caNodes, setCaNodes] = useState('');
   const [caVips, setCaVips] = useState('');
   const [infraVips, setInfraVips] = useState('');
+  const [dnsRrVips, setDnsRrVips] = useState('');
   const [fleetExclude, setFleetExclude] = useState('');
   const [deployTargets, setDeployTargets] = useState('');
   const [consoles, setConsoles] = useState('');
@@ -581,6 +582,7 @@ function ClusterTab() {
     setCaNodes((data.ca_nodes || []).join('\n'));
     setCaVips((data.ca_vips || []).join('\n'));
     setInfraVips((data.infra_vips || []).join('\n'));
+    setDnsRrVips((data.dns_rr_vips || []).join('\n'));
     setFleetExclude((data.fleet_exclude || []).join('\n'));
     setDeployTargets((data.code_deploy_targets || []).join('\n'));
     setConsoles((data.consoles || []).join('\n'));
@@ -606,6 +608,7 @@ function ClusterTab() {
         ca_nodes: lines(caNodes),
         ca_vips: lines(caVips),
         infra_vips: lines(infraVips),
+        dns_rr_vips: lines(dnsRrVips),
         fleet_exclude: lines(fleetExclude),
         code_deploy_targets: lines(deployTargets),
         consoles: lines(consoles),
@@ -723,15 +726,23 @@ function ClusterTab() {
               />
               <Textarea
                 label="Infrastructure VIP FQDNs (compiler / PDB LBs)"
-                description="HAProxy or DNS VIP names such as ovcompilers.pdxc-it…. These are not agents — excluded from live fleet (Nodes, Inventory, Dashboard membership) even if OpenVoxDB has reports under that certname."
+                description="Health probes only (HAProxy frontends such as ovcompilers.<site>). These are real agents and stay on Nodes. First-label ovcompilers is never hidden."
                 minRows={2}
                 value={infraVips}
                 onChange={(e) => setInfraVips(e.currentTarget.value)}
-                placeholder={"ovcompilers.pdxc-it.corp.int-x.ai\novcompilers.atlc-it.corp.int-x.ai\novcompilers.corp.int-x.ai"}
+                placeholder={"ovcompilers.pdxc-it.corp.int-x.ai\novcompilers.atlc-it.corp.int-x.ai"}
+              />
+              <Textarea
+                label="DNS RR names (no VM — hide from Nodes)"
+                description="Names that exist only in DNS, e.g. ovdb.corp.int-x.ai. Hidden from live fleet. Not ovcompilers.*."
+                minRows={2}
+                value={dnsRrVips}
+                onChange={(e) => setDnsRrVips(e.currentTarget.value)}
+                placeholder="ovdb.corp.int-x.ai"
               />
               <Textarea
                 label="Extra fleet exclusions (optional)"
-                description="Any other certnames to hide from Nodes / Inventory. Merged with CA VIPs, infra VIPs, and console VIP hosts. Env alternative: OPENVOX_GUI_FLEET_EXCLUDE."
+                description="Any other certnames to hide from Nodes / Inventory. Merged with CA VIPs, DNS RR names, and console VIP hosts. Never put ovcompilers.* here."
                 minRows={2}
                 value={fleetExclude}
                 onChange={(e) => setFleetExclude(e.currentTarget.value)}

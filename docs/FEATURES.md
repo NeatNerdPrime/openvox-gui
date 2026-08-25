@@ -1,11 +1,11 @@
 # OpenVox GUI — Feature Reference
 
-**Document version:** matches root `VERSION` (see repo `VERSION` file; 3.12.0-rc train)  
+**Document version:** matches root `VERSION` (see repo `VERSION` file; 3.12.0 stable)  
 **Audience:** operators, reviewers, and release prep  
 **Scope:** every primary **page**, **capability**, and **supporting subsystem** in the product as shipped on `main`.
 
 **Where we are:** [STATUS.md](STATUS.md) (AIO vs clustered readiness).  
-This is the canonical “what does the product do?” inventory. Installation and ops runbooks live in [INSTALL.md](../INSTALL.md), [UPDATE.md](../UPDATE.md), and [TROUBLESHOOTING.md](../TROUBLESHOOTING.md). Architecture and multi-console design: [ARCHITECTURE.md](ARCHITECTURE.md), [VIP_SESSIONS.md](VIP_SESSIONS.md), [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
+This is the canonical “what does the product do?” inventory. Installation and ops runbooks live in [INSTALL.md](../INSTALL.md), [UPDATE.md](../UPDATE.md), [TROUBLESHOOTING.md](../TROUBLESHOOTING.md), and the clustered DB/Spock runbook [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt). Architecture and multi-console design: [ARCHITECTURE.md](ARCHITECTURE.md), [VIP_SESSIONS.md](VIP_SESSIONS.md), [ESTATE_HEALTH.md](ESTATE_HEALTH.md).
 
 ---
 
@@ -82,11 +82,12 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 
 ### Dashboard (`/`)
 
-- Fleet summary: counts by latest run status (unchanged / changed / failed / unreported / …)
-- Live membership: **`get_live_nodes()` = active PuppetDB ∩ signed CA**
+- Fleet summary: counts by newest OpenVoxDB report status (unchanged / changed / failed / unreported / …)
+- Live membership: **`get_live_nodes()` = active PuppetDB** (CMDB)
 - Trends (status over time), service/cluster health snippets where configured
 - Active GUI sessions
 - Optional auto-refresh; SWR / session cache so polls do not blank the page
+- **Needs attention** table: failed, unreported, or last report older than 24h (same rule as Nodes `?status=attention`). On a dual-VIP estate the newest report is merged from peer OpenVoxDBs so both consoles list the same hosts. CSV / copy export (certname, status, last report, ISO timestamp) — full list, not just the 25 rows on screen
 - Behind a **VIP**, poll floor is raised (see [VIP_SESSIONS.md](VIP_SESSIONS.md))
 
 ### Nodes (`/nodes`)
@@ -137,6 +138,7 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 - Local mirror of VoxPupuli agent packages (yum/apt/windows/mac trees under `/opt/openvox-pkgs` or configured path)
 - One-line bootstrap scripts on **8140** (`/packages/…`) and GUI-assisted copy
 - On-demand and timer-based sync
+- First paint loads only the one-liner (`GET /installer/info`). Mirror package counts, disk usage, and upstream scrape wait until the Mirror tab is opened (`?full=true`, 2-minute cache). Sync Log SSE mounts only on that tab
 - Details: [INSTALLER.md](INSTALLER.md)
 
 ### Certificate Audit (`/cert-audit`)
@@ -151,10 +153,14 @@ Groups match `frontend/src/components/AppShell.tsx`. Expand/collapse is remember
 
 ### Classification / ENC (`/enc`)
 
-- HTTP ENC for agents (`/api/enc/classify` — mTLS/proxy trust, not JWT)
+- HTTP ENC for agents (`/api/enc/classify` — mTLS/proxy trust, not JWT).
+  Compilers' `enc.py` verifies the GUI cert with the Puppet CA (hostname
+  check). Classify itself is still unauthenticated until layer B.
 - Layers: **Common → Environment → Group → Node** deep merge
-- Groups, node assignment, class/param editing, preview
+- Groups, node assignment, class/param editing, preview. Node Groups load independently of compiler environment discovery so a new group is not overwritten by a stale page-load refresh
 - Infrastructure groups for clustered estates
+- Node Groups list is not overwritten by a stale compiler env discovery
+- Cluster Save preserves DNS RR hide list (`dns_rr_vips`); `ovcompilers.*` stay on Nodes
 - Reconciliation against **live fleet** (prune ghosts after CA clean / PDB deactivate)
 - Compilers: `enc.py` + `OPENVOX_GUI_API_BASE` → console VIP(s)
 
@@ -349,7 +355,8 @@ Same RBAC as the web UI via session or service token.
 | JVM / server tuning via ovox | [TUNING.md](TUNING.md) |
 | Maintenance pages + flag | UPDATE.md + `ovox maintenance` |
 | Dual-console VIP sessions | [VIP_SESSIONS.md](VIP_SESSIONS.md) |
-| Shared DB / Spock notes | [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) |
+| Shared DB / two Spock meshes (runbook) | [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) |
+| Estate health (clustered) | [ESTATE_HEALTH.md](ESTATE_HEALTH.md) |
 | Agent disabled fact | [puppet-agent-disabled-fact.md](puppet-agent-disabled-fact.md) |
 
 ---
@@ -358,28 +365,116 @@ Same RBAC as the web UI via session or service token.
 
 Unless a page is **CA-authoritative** (Certificates) or explicitly historical:
 
-**Shown nodes = active in OpenVoxDB ∩ currently signed on the CA − fleet exclusions.**
+**Shown nodes = active OpenVoxDB `/nodes` (catalogs) − DNS RR names only.**
 
-### HAProxy / DNS VIPs (not agents)
+PuppetDB is the CMDB. The CA list is **not** intersected (a site-wrong
+`ovca.example.com` lookup must not hide agents). Certificates page stays
+CA-centric. Two things are both called “VIPs” — they are not the same.
 
-VIP names such as `ovcompilers.pdxc-it.corp.int-x.ai` often appear in OpenVoxDB
-(reports under the LB certname) but are **not** real nodes. Exclude them via
-**Settings → Application → Cluster**:
+### DNS round-robin (no computer)
 
-| Field | Purpose |
-|-------|---------|
-| **CA VIP FQDNs** (`ca_vips`) | CA load-balancer names |
-| **Infrastructure VIP FQDNs** (`infra_vips`) | Compiler/PDB HAProxy or DNS VIPs |
-| **Console VIP** (`vip_hosts`) | GUI LB hostnames |
-| **Extra fleet exclusions** (`fleet_exclude`) | Anything else |
+Examples: `ovca.example.com`, `ovdb.example.com`.
 
-Or env: `OPENVOX_GUI_FLEET_EXCLUDE=ovcompilers.pdxc-it.corp.int-x.ai,…`
+These names exist only in DNS (two or more A records). There is no VM,
+no SSH, no Puppet agent. **Hide them from Nodes** in
+Settings → Cluster:
 
-These are stripped inside `get_live_nodes()` (Nodes, Inventory, Dashboard
-membership, ENC unclassified, Node Health). Certificates page still shows
-signed cert inventory if a VIP cert exists on the CA.
+| Field | Typical value |
+|-------|----------------|
+| **CA VIP FQDNs** (`ca_vips`) | `ovca.example.com` |
+| **DNS RR VIPs** (`dns_rr_vips`) | `ovdb.example.com` |
+| **Console VIP** (`vip_hosts`) | GUI RR hostname if it is not a box |
+| **Extra fleet exclusions** (`fleet_exclude`) | anything else with no OS |
 
-After `ca clean` or PDB deactivate/expire, hosts must disappear from Dashboard, Nodes, Inventory, ENC unclassified reconciliation, and Node Health. Open ENC once after mass clean so SQLite rows prune.
+```bash
+OPENVOX_GUI_FLEET_EXCLUDE=ovdb.example.com,ovca.example.com
+```
+
+`infra_vips` is **not** a hide list. It is only for health probes.
+
+### HAProxy compiler frontend (real VM)
+
+Examples: `ovcompilers.site-b.example.com`,
+`ovcompilers.site-a.example.com`.
+
+This **is** a computer: OS, HAProxy, and its own Puppet agent.
+Site agents set `server = ovcompilers.<site>-it.…`. HAProxy spreads
+:8140 to `ovcompiler1`, `ovcompiler2`, … on that site.
+
+**Always show these on Nodes.** Classify as HAProxy / base, **not**
+as a catalog compiler. The GUI never hides a certname whose first
+label is `ovcompilers`, even if someone pastes it into a hide field.
+
+`ovcompiler1.*` (one “r”) is a **backend compiler** — also a real
+agent, also visible.
+
+| You are looking at… | Hide? | Classify as |
+|---------------------|-------|-------------|
+| `ovca.example.com` / `ovdb.example.com` | Yes (DNS RR) | Never — not a host |
+| `ovcompilers.<site>-it…` | **No** | HAProxy / base agent |
+| `ovcompiler1.<site>-it…` | No | Catalog compiler |
+| `ovdb1.<site>-it…` | No | OpenVoxDB member |
+
+Rule of thumb: if you can SSH to it and run `puppet agent`, it is a
+node. If you cannot, it is a DNS name and belongs on the hide list.
+
+After PDB deactivate/expire, hosts drop from Dashboard, Nodes,
+Inventory, ENC unclassified, and Node Health. ENC rows still need
+purge-stale.
+
+Overview, Nodes, and Node Detail all show the **newest OpenVoxDB
+report status** (Unchanged / Changed / Failed / Unreported). Age does
+**not** rewrite the badge. A day-old Unchanged stays Unchanged — the
+Needs attention table still lists reports older than 24 hours. Empty
+or missing `latest_report_status` is Unreported.
+
+**Insights | Monitoring** Fleet Compliance **Failed** is that same
+live census (newest report), not “any fail in the lookback window.”
+The area chart still draws history; the red stat card is right now.
+
+### First-time clustered setup (Nodes membership)
+
+When you first turn on Settings → Cluster:
+
+1. List hostnames that are **only** DNS (no `hostname -f` on a box
+   matches). Those go in `ca_vips` / `dns_rr_vips` / `fleet_exclude`.
+2. List HAProxy frontends. Name them `ovcompilers.<site>-it.…`.
+   Do **not** put those names in the hide fields.
+3. Point `OPENVOX_GUI_PUPPETDB_HOST` at `ovdb.example.com` when
+   `cluster-preflight.sh` shows every A record agreeing on `/nodes`.
+   Use a single `ovdb1.*` only as a temporary read while you repair
+   Spock. `/nodes` follows catalogs, not SQL `certnames`. See
+   [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
+4. Point `OPENVOX_GUI_PUPPET_CA_HOST` at the CA you sign on
+   (Certificates page only). Nodes do not use the CA for membership.
+5. After the HAProxy box’s first successful `puppet agent` run, it
+   appears on Nodes. Classify it.
+
+### Adding another site’s HAProxy frontend
+
+Same recipe every time (each site label):
+
+1. **Name:** VM / `certname` = `ovcompilers.<site>-it.example.com`.
+   First DNS label must be `ovcompilers`. A records point at **this
+   VM**, not at `ovcompiler1` / `ovcompiler2`. Do not invent a second
+   DNS-only name for the same role.
+2. **Software:** OpenVox agent on the box; HAProxy :8140 to
+   `ovcompiler1.<site>-it.…`, `ovcompiler2.<site>-it.…`. Site agents
+   use `server = ovcompilers.<site>-it.example.com`.
+3. **Cert:** sign that certname on the CA agents trust.
+4. **GUI:** do not add the name to hide lists. Optional: `infra_vips`
+   for a health probe. Add backends to `compilers` /
+   `code_deploy_targets`.
+5. **Classify** as HAProxy / base after the first report. Never
+   `roles::catalog_compiler`.
+
+```bash
+ovox nodes list --limit 500 | grep ovcompilers
+```
+
+If it is missing, the agent has not reported to the OpenVoxDB **this**
+console queries. Check `OPENVOX_GUI_PUPPETDB_HOST` and
+`SELECT certname FROM certnames WHERE certname LIKE 'ovcompilers%';`.
 
 ---
 
@@ -403,4 +498,4 @@ When cutting a stable release, verify this file still matches:
 4. `backend/app/routers/` prefixes  
 5. Root `VERSION` and [CHANGELOG.md](../CHANGELOG.md) headline features  
 
-*Last full inventory pass: 3.12.0-rc.17 release-tidy (2026-08-14).*
+*Last full inventory pass: 3.12.0 stable (2026-08-25).*

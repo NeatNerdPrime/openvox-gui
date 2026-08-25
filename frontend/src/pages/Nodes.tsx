@@ -4,6 +4,7 @@
  * Component documentation to be expanded.
  */
 import { useState, useMemo } from 'react';
+import { useAuth } from '../hooks/AuthContext';
 import { useNavigate } from 'react-router';
 import {
   Title, Table, Card, TextInput, Stack, Group, Text, Alert,
@@ -25,6 +26,7 @@ import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
 import { useAppTheme } from '../hooks/ThemeContext';
 import type { NodeSummary } from '../types';
 import { timeAgo } from '../utils/timeAgo';
+import { isNeedsAttention } from '../utils/needsAttention';
 import { PageHeader } from '../components/PageHeader';
 
 /** Columns for All Nodes export (CSV / JSON / text) — mirrors Inventory ExportActions. */
@@ -190,8 +192,14 @@ export function NodesPage() {
     const fields = [cert, env].filter(Boolean);
 
     if (statusFilter) {
-      const st = (n.latest_report_status || '').toLowerCase();
-      if (st !== statusFilter.toLowerCase()) return false;
+      const raw = (n.latest_report_status || '').toLowerCase();
+      const st = raw || 'unreported';
+      const want = statusFilter.toLowerCase();
+      if (want === 'attention') {
+        if (!isNeedsAttention(n)) return false;
+      } else if (st !== want) {
+        return false;
+      }
     }
 
     if (!search) return true;
@@ -238,6 +246,8 @@ export function NodesPage() {
     { cacheKey: 'openvox_nodes_v1', pollIntervalMs: 20000 },
   );
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canPlay = !!user && (user.role === 'admin' || user.role === 'operator');
   const { begin, end } = useActivity();
   const skipConfirm = useSkipAdhocConfirm();
 
@@ -261,7 +271,7 @@ export function NodesPage() {
       const failDetail = (r.error || r.output || `Exit code ${r.returncode} on ${certname}`)
         .replace(/\x00/g, '')
         .replace(/CLI arguments[\s\S]*?\[ID: cli_overrides\]\s*/gi, '')
-        .slice(0, 280);
+        .slice(0, 800);
       notifications.show({
         title: ok ? 'OpenVox Run Complete' : 'OpenVox Run Failed',
         message: ok
@@ -390,6 +400,7 @@ export function NodesPage() {
 
   const actionCell = (node: NodeSummary) => (
     <Group gap={4} onClick={(e) => e.stopPropagation()}>
+      {canPlay && (
       <Tooltip label="Run OpenVox (puppet agent -t as root)">
         <ActionIcon
           variant="subtle"
@@ -400,6 +411,7 @@ export function NodesPage() {
           <IconPlayerPlay size={18} />
         </ActionIcon>
       </Tooltip>
+      )}
       <Tooltip label="View details">
         <ActionIcon variant="subtle" onClick={() => navigate(`/nodes/${node.certname}`)}>
           <IconEye size={18} />

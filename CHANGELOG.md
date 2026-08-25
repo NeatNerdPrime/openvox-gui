@@ -9,6 +9,243 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.1] - 2026-08-25 (fix — install.sh Python 3.10+ on EL8/EL9)
+
+### Fixed
+- **`install.sh`:** no longer assumes default `python3` is new enough.
+  Backend pins need **Python >= 3.10**. EL8 (`3.6`) and EL9 (`3.9`)
+  now fail in preflight with `PYTHON_BIN=/usr/bin/python3.12` instead
+  of a pip `Requires-Python` wall. `PYTHON_BIN` is overridable from
+  the environment or `install.conf` (Closes #42, credit @miharp / PR
+  #43).
+- **ovox version stamp:** `venv/lib/python3.11/site-packages` was
+  hardcoded in `install.sh`, `update_local.sh`, and `deploy.sh`, so
+  the stamp was a no-op on 3.10/3.12 venvs (including EL10). Now
+  globs `python3.*`.
+
+## [3.12.0] - 2026-08-25 (stable — clustered consoles, one fleet status)
+
+Stable promotion of the **3.12.0-rc.1–rc.48** train on `main`. Per-commit
+detail stays in the rc entries below. This section is the operator-facing
+summary for GitHub Release **v3.12.0**.
+
+### Highlights
+- **One fleet census.** Overview, Nodes, Node Detail, Monitoring,
+  Heatmap, and Environments all use `get_live_nodes()` plus the Bolt
+  live-run overlay. The badge is the newest OpenVoxDB report status.
+  Age no longer rewrites Unchanged to Unreported.
+- **Dual-console Overview agrees.** Newest reports are merged from
+  peer OpenVoxDBs so Needs attention is the same list on both site
+  consoles. Nodes `?status=attention` uses that same 24h rule.
+- **Clustered estate.** Dedicated consoles, VIP-safe sessions, fleet
+  VIP exclude, shared Postgres `openvox_gui`, ENC TLS to the Puppet
+  CA, ovox estate health, Bolt inventory, clustered Code Deploy.
+- **AIO still first.** Install on the OpenVox Server with SQLite.
+  Clustering is optional and documented.
+
+### Upgrade
+```bash
+sudo /opt/openvox-gui/scripts/update_local.sh
+```
+Hard-refresh browsers once. Dual-console: same `SECRET_KEY` and
+`OPENVOX_GUI_DATABASE_URL`; set `OPENVOX_GUI_PUPPETDB_PEERS` or
+cluster consoles so each GUI can read the other site's ovdb VIP.
+Compilers need `[server] reports = puppetdb`.
+
+See [UPDATE.md](UPDATE.md), [docs/STATUS.md](docs/STATUS.md),
+[docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt).
+
+## [3.12.0-rc.48] - 2026-08-25 (fix — Needs attention matches across consoles)
+
+### Fixed
+- **Overview Needs attention:** each console no longer lists a
+  different stale set because it only read its local `ovdb` VIP.
+  Newest report documents are merged from peer OpenVoxDBs (cluster
+  `puppetdb_nodes` / `dns_rr_vips`, `ovdb.<site>` from consoles, and
+  `OPENVOX_GUI_PUPPETDB_PEERS`). Nodes `?status=attention` uses the
+  same failed / unreported / older-than-24h rule as the Dashboard
+  table.
+
+## [3.12.0-rc.47] - 2026-08-25 (fix — Overview badge matches Node Detail / PDB)
+
+### Fixed
+- **Overview / Nodes / Monitoring:** a day-old Unchanged (or Failed)
+  report no longer displays as **unreported**. The 8h/24h freshness
+  cutoffs only annotate `report_stale` for Needs attention. Dashboard,
+  the node list, and Node Detail all show the newest OpenVoxDB report
+  status, so clicking through no longer flips Unreported → Unchanged.
+
+## [3.12.0-rc.46] - 2026-08-25 (docs — clustered DB / Spock runbook for a new estate)
+
+### Changed
+- **docs/CLUSTERED_SHARED_DB.txt:** rewritten as the current new-estate
+  runbook. Two databases (`puppetdb` vs `openvox_gui`), two Spock
+  meshes, Alembic `001`–`004`, `bootstrap-openvox-gui-db.sh` as the
+  provision path, and the field failures from this week (empty DB ≠
+  schema, origin grants, `/nodes` = catalogs, SECRET_KEY/LDAP, DNS RR
+  vs writes, `sub_resync_table` on `certnames`). Removed the stale
+  `v3.11.0-alpha.9` checkout.
+- **INSTALL / STATUS / ESTATE_HEALTH / FEATURES / ARCHITECTURE /
+  VIP_SESSIONS / TROUBLESHOOTING / UPDATE / alembic README /
+  .env.example:** point at that runbook; document 8h/24h freshness
+  and ENC TLS verify; leftover `ovdb.corp` examples → `example.com`.
+
+## [3.12.0-rc.45] - 2026-08-24 (docs — scrub estate FQDNs and 172.29 from docs)
+
+### Changed
+- Documentation uses `example.com` / TEST-NET addresses instead of
+  internal estate FQDNs and `172.29.32/160` space. Lab `questy.org`
+  left as-is. Application code and tests were **not** rewritten.
+
+## [3.12.0-rc.44] - 2026-08-24 (sec — ENC TLS verify Puppet CA)
+
+### Changed
+- **enc.py:** HTTPS to the GUI verifies the console cert against the
+  Puppet CA (`localcacert` / `certs/ca.pem`) and checks the hostname.
+  Production `OPENVOX_GUI_API_BASE=https://openvox.example.com:4567`
+  matches both console SANs. `localhost` skips hostname only. Set
+  `OPENVOX_GUI_ENC_TLS_VERIFY=0` to restore CERT_NONE.
+
+## [3.12.0-rc.43] - 2026-08-24 (fix — panel + security must-fixes)
+
+### Fixed
+- **Cluster Save:** omitted `dns_rr_vips` no longer wipes `ovdb.corp` off
+  the hide list. Form now edits DNS RR names. Infra VIP copy no longer
+  claims `ovcompilers.*` are hidden.
+- **Nodes:** `?status=unreported` includes empty status. Dashboard
+  **All attention →** opens failed+unreported (not failed-only).
+- **Viewers:** Play, Orchestration, Code Deployment, Agent Install,
+  Hiera files, and Settings hidden in the nav. Hiera file GET requires
+  admin or operator.
+- **Insights heatmap/environments:** `get_live_nodes()` (same fleet
+  as Dashboard).
+- **Install/update/deploy:** copy `estate-health-check.sh`,
+  `cluster-preflight.sh`, `ensure-puppetdb-spock.sh`,
+  `seed-bolt-known-hosts.sh`.
+- **Docs:** STATUS/README unfrozen from rc.28. ESTATE_HEALTH: GUI
+  reads `ovdb.corp`; compilers write n1 then n2,
+  `command_broadcast=false`.
+- **LDAP:** first login provisions `default_role` (viewer), never
+  operator. Empty password rejected. LDAP JWT uses denylist
+  (`verify_token_async`).
+- **RBAC:** `require_role` re-reads role from the user row so demotion
+  takes effect. Refuse start with placeholder `SECRET_KEY` unless debug.
+
+## [3.12.0-rc.42] - 2026-08-24 (fix — ENC group list stale overwrite)
+
+### Fixed
+- **Classification Node Groups:** creating a group could succeed (unique
+  name in the DB) while the table stayed empty. A slow compiler
+  environment discovery started on page load finished after Create and
+  replaced the list with the pre-insert result. Groups now load first
+  and ignore stale refreshes. ENC-only environments (e.g. kea_cutover)
+  stay in the environment dropdown even if compilers do not advertise
+  them. Refresh button on the groups tab.
+
+## [3.12.0-rc.41] - 2026-08-24 (perf — Agent Install first paint)
+
+### Fixed
+- **Dashboard:** Needs-attention `useMemo` hooks no longer run after
+  early returns (cold login no longer crashes Overview).
+- **Agent Install:** page no longer blocks first paint on a full
+  `/opt/openvox-pkgs` walk, upstream scrape, and live log SSE. Linux
+  one-liner comes from cheap `/installer/info`; Mirror tab loads
+  `?full=true` (cached 2 min, walk off the event loop); Sync Log
+  EventSource mounts only when that tab is open.
+
+## [3.12.0-rc.40] - 2026-08-24 (feat — Needs attention CSV)
+
+### Added
+- **Dashboard Needs attention:** CSV / copy export (certname, status,
+  last report, ISO timestamp). Downloads the full attention set, not
+  only the 25 rows shown in the table.
+
+## [3.12.0-rc.39] - 2026-08-21 (ops — estate health check, clustered Bolt)
+
+### Added
+- **scripts/estate-health-check.sh:** top-to-bottom console check
+  (VIP preflight, bolt user/key, inventory host-key-check, ENC
+  plugin, sample Bolt SSH). Assumes VIPs — does not pin ovdb1.
+- **scripts/seed-bolt-known-hosts.sh:** ssh-keyscan live /nodes +
+  cluster members into bolt known_hosts.
+- **docs/ESTATE_HEALTH.md:** clustered remediations (keep ovdb.corp).
+
+## [3.12.0-rc.38] - 2026-08-21 (fix — Play button shows real Bolt stderr)
+
+### Fixed
+- **Nodes Play:** toast/API `error` is the per-target `stderr` / `_error.msg`
+  from Bolt JSON, not the truncated `{"items":[` envelope.
+
+## [3.12.0-rc.37] - 2026-08-21 (fix — Overview and Monitoring share census)
+
+### Changed
+- **Status buckets:** Overview, Nodes, and Insights | Monitoring use
+  `display_status()` — empty PDB status is Unreported (not Unchanged).
+  Monitoring applies the same freshness + live-run overlay as Dashboard.
+- **TROUBLESHOOTING:** Unreported means no current report on the PDB
+  this GUI read; how to compare `.32.76` vs `.160.76` and clear it.
+
+## [3.12.0-rc.36] - 2026-08-21 (fix — Monitoring Failed is now)
+
+### Changed
+- **Insights | Monitoring / Fleet Compliance:** Failed / Compliant
+  counts are the live fleet after 8h/24h freshness. The trend's last
+  bucket matches that census so yesterday's failed reports do not
+  paint 14 red nodes when the fleet is green now.
+
+## [3.12.0-rc.35] - 2026-08-21 (fix — stale Unchanged is Unreported)
+
+### Changed
+- **Overview / Nodes:** any latest-report older than 24 hours
+  (`OPENVOX_GUI_NODE_FRESH_HOURS`) displays as **unreported**. Failed
+  still ages out at 8 hours. 2–4 day "Unchanged" is no longer a
+  green badge.
+
+## [3.12.0-rc.34] - 2026-08-21 (fix — Failed alerts expire after 8h)
+
+### Changed
+- **Overview / Nodes:** a `failed` latest report older than 8 hours
+  (`OPENVOX_GUI_FAILED_ALERT_HOURS`, `0` to disable) displays as
+  **unreported**. Yesterday’s failure is history, not an incident.
+
+## [3.12.0-rc.33] - 2026-08-21 (ops — cluster preflight + Spock grants)
+
+### Changed
+- **scripts/cluster-preflight.sh:** refuse `/etc/hosts` pins of the PDB
+  VIP; compare `/nodes` on every A record; check compiler disk vs :8140.
+  install.sh runs it after writing `.env`.
+- **scripts/ensure-puppetdb-spock.sh:** grant `pg_replication_origin_*`
+  to `repl_user` on database `puppetdb`. Same grants in
+  bootstrap-openvox-gui-db.sh for the GUI mesh.
+- **TROUBLESHOOTING / STATUS / README / INSTALL:** GUI count ≠ PDB
+  playbook; `/nodes` follows catalogs; never SQL-insert fleet rows.
+
+## [3.12.0-rc.32] - 2026-08-21 (docs — HAProxy vs DNS RR in INSTALL/FEATURES)
+
+### Changed
+- **FEATURES.md / INSTALL.md / ARCHITECTURE.md:** first-time clustered
+  Nodes membership, DNS RR hide list vs `ovcompilers.<site>` HAProxy
+  VMs, and the checklist for adding another site’s frontend. No extra
+  doc file.
+
+## [3.12.0-rc.31] - 2026-08-21 (fix — never hide ovcompilers.* HAProxy agents)
+
+### Changed
+- **Fleet exclude:** first-label `ovcompilers` is never stripped from
+  Nodes, even if listed in `ca_vips` / `dns_rr_vips` / `fleet_exclude`.
+  Those hosts are HAProxy VMs with an agent. DNS RR names stay hideable.
+
+## [3.12.0-rc.30] - 2026-08-21 (fix — Nodes = PuppetDB, not CA ∩)
+
+### Changed
+- **Live fleet (`get_live_nodes`):** OpenVoxDB `certnames` is the CMDB.
+  Nodes / Inventory / Dashboard / ENC unclassified no longer intersect
+  the CA signed list (a short or site-wrong `ovca.corp` lookup was
+  hiding real agents). DNS RR names (`ca_vips`, `dns_rr_vips`,
+  `vip_hosts`, `fleet_exclude`) are still hidden. **`ovcompilers.*`
+  stays visible** — those are HAProxy VMs with an agent. `infra_vips`
+  is health-probe only and no longer strips Nodes.
+
 ## [3.12.0-rc.29] - 2026-08-19 (docs — clustered LDAP + STATUS sync)
 
 ### Changed
@@ -234,7 +471,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **`ovox` 407 Proxy Authentication Required:** HTTP client no longer
   sends requests for internal console URLs (localhost, private IPs,
-  `*.corp.int-x.ai`, `*.twitter.biz`, `*.questy.org`, plus `NO_PROXY`)
+  `*.example.com`, `*.example.com`, `*.questy.org`, plus `NO_PROXY`)
   through `HTTP(S)_PROXY`. Dedicated consoles with corp proxy env vars
   can run `ovox infra health` against the local GUI again.
 
@@ -259,7 +496,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Nav footer:** under active users, show this GUI console's FQDN and
   primary IP (`facter ipaddress` / `networking.ip` when available) so dual
-  consoles (openvox.pdxc… vs openvox.atlc…) are obvious behind a VIP.
+  consoles (openvox.site-a… vs openvox.site-b…) are obvious behind a VIP.
   Data from `GET /api/version` (`hostname`, `ipaddress`).
 
 ## [3.12.0-rc.6] - 2026-08-14 (fix — Log Viewer empty result is not 502)
@@ -286,7 +523,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `vip_hosts`). Names are stripped in `get_live_nodes()` so Overview |
   Nodes, Inventory, Dashboard membership, ENC unclassified, and Node
   Health no longer show LB hostnames that only have VIP reports in
-  OpenVoxDB (e.g. `ovcompilers.pdxc-it.corp.int-x.ai`).
+  OpenVoxDB (e.g. `ovcompilers.site-a.example.com`).
 - Env override: `OPENVOX_GUI_FLEET_EXCLUDE=host1,host2`.
 
 ## [3.12.0-rc.3] - 2026-08-14 (docs — full feature inventory & stale-doc refresh)
@@ -455,7 +692,7 @@ Minor bump from the 3.11.1 beta train.
 ## [3.11.1-beta.4] - 2026-08-13 (fix — ovca1 PDXC/ATLC status flap)
 
 ### Fixed
-- **Overview | Nodes Failed flap on ovca1.pdxc and ovca1.atlc:** both
+- **Overview | Nodes Failed flap on ovca1.site-a and ovca1.site-b:** both
   certnames share the short host `ovca1`. Status overlay treated that as
   one node, so each refresh could apply the *other site's* latest report
   (often `failed`). Exact certname wins; short-name fallback only when
@@ -1063,7 +1300,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.29] - 2026-08-11 (fix — apply singleton Bolt layout)
 
 ### Added
-- **`scripts/apply-singleton-bolt-layout.sh`**: overwrites project + inventory + `openvox_enc` to match `openvox.pdxc-it.twitter.biz`. Run as root from the git clone.
+- **`scripts/apply-singleton-bolt-layout.sh`**: overwrites project + inventory + `openvox_enc` to match `openvox.site-a.example.com`. Run as root from the git clone.
 
 ### Changed
 - GUI Bolt always uses a generated singleton inventory (`-i` under `/opt/openvox-gui/data/`), never the dirty `/etc` file.
@@ -1071,12 +1308,12 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.28] - 2026-08-11 (fix — openvox_enc task is the live singleton file)
 
 ### Changed
-- `openvox_enc` `resolve_reference.rb` replaced with the exact 124-line task from `openvox.pdxc-it.twitter.biz` (self-contained, no `lib/` require).
+- `openvox_enc` `resolve_reference.rb` replaced with the exact 124-line task from `openvox.site-a.example.com` (self-contained, no `lib/` require).
 
 ## [3.11.0-alpha.27] - 2026-08-11 (fix — Bolt inventory matches working singleton)
 
 ### Changed
-- Console Bolt layout copied from the working single-server host (`openvox.pdxc-it.twitter.biz`): `name: openvox`, `config.ssh` only, ENC plugin as a **hash** target (`openvox_enc`), self-contained `resolve_reference.rb` from 3.10.6 (no `require_relative`). OpenVoxDB feeds GUI `resolve_targets`, not Bolt's `puppetdb` inventory plugin.
+- Console Bolt layout copied from the working single-server host (`openvox.site-a.example.com`): `name: openvox`, `config.ssh` only, ENC plugin as a **hash** target (`openvox_enc`), self-contained `resolve_reference.rb` from 3.10.6 (no `require_relative`). OpenVoxDB feeds GUI `resolve_targets`, not Bolt's `puppetdb` inventory plugin.
 
 ## [3.11.0-alpha.26] - 2026-08-11 (fix — sanitized Bolt inventory the GUI can write)
 
@@ -1140,7 +1377,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.14] - 2026-08-11 (fix — stop labeling the console as "server")
 
 ### Fixed
-- **Certificates signed list:** `openvox.pdxc` (and other consoles) no longer get a red **server** badge. That list was the GUI host's own agent cert plus `puppet.conf` SANs, leftover from a co-located master. Protected rows are now labeled from Settings → Cluster: **console**, **compiler**, **CA**, **puppetdb**. VIPs and `dns_alt_names` are not treated as certnames.
+- **Certificates signed list:** `openvox.site-a` (and other consoles) no longer get a red **server** badge. That list was the GUI host's own agent cert plus `puppet.conf` SANs, leftover from a co-located master. Protected rows are now labeled from Settings → Cluster: **console**, **compiler**, **CA**, **puppetdb**. VIPs and `dns_alt_names` are not treated as certnames.
 
 ## [3.11.0-alpha.13] - 2026-08-11 (feat — compiler and PuppetDB HTTP-first)
 
@@ -1184,7 +1421,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 ## [3.11.0-alpha.8] - 2026-08-10 (fix — remote CA HTTP API for dedicated consoles)
 
 ### Fixed
-- **Dedicated console / clustered CA:** Certificate list, sign/revoke/clean, and CA info no longer require a local `puppetserver` binary or `/etc/puppetlabs/puppet/ssl/ca/ca_crt.pem`. The GUI calls the remote CA HTTP API (`/puppet-ca/v1/certificate_statuses`, status, clean) with the console agent mTLS cert. Set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP (e.g. `ovca.corp.int-x.ai`) — not the compiler VIP. Co-located installs still fall back to `puppetserver ca` when that binary exists. A missing binary is an error (PDB fallback for live nodes), not an empty fleet.
+- **Dedicated console / clustered CA:** Certificate list, sign/revoke/clean, and CA info no longer require a local `puppetserver` binary or `/etc/puppetlabs/puppet/ssl/ca/ca_crt.pem`. The GUI calls the remote CA HTTP API (`/puppet-ca/v1/certificate_statuses`, status, clean) with the console agent mTLS cert. Set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP (e.g. `ovca.example.com`) — not the compiler VIP. Co-located installs still fall back to `puppetserver ca` when that binary exists. A missing binary is an error (PDB fallback for live nodes), not an empty fleet.
 - **Settings `extra = "ignore"`:** Unknown `OPENVOX_GUI_*` keys in `.env` no longer prevent startup (`extra_forbidden`). Putting `PUPPET_CA_HOST` in `.env` on 3.11.0-alpha.4 (or any older build) will still crash until this version is deployed — then the key is valid.
 
 ## [3.11.0-alpha.7] - 2026-08-07 (Insights — Host Health serving estate)
@@ -1218,7 +1455,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 - Backend: `cluster_config.json` under data dir; `GET/PUT /api/config/cluster`; enhanced `GET /api/config/services`; `POST /api/deploy/stage` and `/activate`
 
 ### Notes
-- **Production stay-put:** Keep **openvox.pdxc-it.twitter.biz** on **3.10.8-dev.3** (or current 3.10.x lab pin) until the multi-DC cluster is ready. This 3.11.0-alpha train is for multi-server development and lab validation (e.g. questy.org / new cluster), not a production cutover.
+- **Production stay-put:** Keep **openvox.site-a.example.com** on **3.10.8-dev.3** (or current 3.10.x lab pin) until the multi-DC cluster is ready. This 3.11.0-alpha train is for multi-server development and lab validation (e.g. questy.org / new cluster), not a production cutover.
 - Logging and Settings → OpenVox Configuration multi-host content deferred to a later 3.11 iteration.
 
 ## Unreleased
@@ -1252,7 +1489,7 @@ Alpha train `3.11.1-alpha.1`–`alpha.33` is promoted to this beta.
 - Services UI: HA primary/VIP badges, resource table, raw pcs/drbd expanders
 
 ### Notes
-- Production **openvox.pdxc-it.twitter.biz** remains on **3.10.8-dev.3** until cluster cutover.
+- Production **openvox.site-a.example.com** remains on **3.10.8-dev.3** until cluster cutover.
 
 
 
@@ -1597,10 +1834,10 @@ Beta cut for Monitoring wallboard quality + window controls. Promote to stable *
 
 ### Fixed
 - **Overview | Nodes: add boolean search operators.** The search box now supports simple boolean-style filtering:
-  - `-term` or `!term` to exclude nodes (e.g. `-atlc -pdxc` gives all nodes except those with "atlc" or "pdxc" in the certname or environment).
+  - `-term` or `!term` to exclude nodes (e.g. `-east -west` gives all nodes except those with those fragments in the certname or environment).
   - Multiple space-separated terms are OR-matched by default on certname or environment.
   - Works on the main All Nodes list, classified group lists, and Unclassified Nodes.
-  - Example: search `-atlc -pdxc` to quickly get a clean production fleet view without lab nodes.
+  - Example: search `-lab -dev` to quickly get a clean production fleet view without lab nodes.
 - **Insights | Monitoring | Fleet Node Status Trends has zero data.** The trend data (node status over time) was often empty in the 24h (or small) window because the reports query used for building `compute_trends` was limited to 5000 reports. For active fleets this truncated recent reports, so recent hourly buckets were missing, and after client window filtering the graph showed no points.
   - Raised report limit to 20000 in the three places that build time-series trends from recent reports (dashboard data, node status trends, report trends).
   - This ensures recent report activity is included so the status trends graph (and similar) have data in the selected window.
@@ -2601,7 +2838,7 @@ Assisted By: Grok AI
   - Detection now checks both uppercase and lowercase forms for compatibility with `sudo -E`, Docker, CI, `/etc/environment`, etc.
   - Removed "Proxy: none detected" and "No proxy configured for npm/pip" info spam that appeared on every normal install.
   - Added interactive "Network / Proxy (optional)" prompts during non-silent installs.
-  - Cleaned environment-specific Twitter/X domains (`*.twitter.com`, `*.corp`) out of the `no_proxy` default in `backend/app/config.py`.
+  - Cleaned environment-specific corporate proxy domains out of the `no_proxy` default in `backend/app/config.py`.
   - Updated `install.conf.example` and `INSTALL.md` to clearly document that no proxy is the default and exactly how to opt in when needed.
 - Resolves reports of the installer saying "proxy none detected even though I don't use one".
 
@@ -2934,7 +3171,7 @@ This change was developed and tested through the enhanced commit skill (Phases 1
 - Added proactive protections against internal corporate data points leaking into the public repository:
   - Committed `frontend/.npmrc` that forces the public npm registry (`registry=https://registry.npmjs.org/`).
   - Added `npm run check:internal-urls` script in `frontend/package.json`.
-  - New GitHub Action workflow `.github/workflows/leak-check.yml` that runs on every push/PR and fails the build if it detects Artifactory URLs, `*.pdxc-it.twitter.biz` hostnames, internal test IPs (`10.0.100.*`), etc. in committed source (intentionally skips historical CHANGELOG entries).
+  - New GitHub Action workflow `.github/workflows/leak-check.yml` that runs on every push/PR and fails the build if it detects Artifactory URLs, `*.site-a.example.com` hostnames, internal test IPs (`10.0.100.*`), etc. in committed source (intentionally skips historical CHANGELOG entries).
   - Updated internal example hostnames in source comments, README, and bolt-plugin examples to use `example.com` placeholders.
   - Added prominent note in README.md for internal developers.
 - These measures ensure that sensitive internal infrastructure details (registries, test hosts, etc.) cannot accidentally leak again via `package-lock.json` or source files when developers are inside the corporate network.
@@ -3213,7 +3450,7 @@ All changes follow the principle that the live system's sudoers configuration (n
 ## [3.7.20] - 2026-06-03
 
 ### Bug Fixes
-- **Reports "Canaries" subgroup node duplication**: In Logs | Reports, the Canaries group was showing the same node (ovagent1.pdxc-it.twitter.biz) listed multiple times in the expanded reports table (e.g. 3x due to duplicate report entries in the fetched list), while the "X nodes" count correctly showed "1 Node" thanks to hierarchy dedup. Added defensive deduplication of groupReports by hash (similar to existing node dedup logic) when building groups from reportList. This prevents duplicate report rows for the same run in the per-group tables.
+- **Reports "Canaries" subgroup node duplication**: In Logs | Reports, the Canaries group was showing the same node (ovagent1.site-a.example.com) listed multiple times in the expanded reports table (e.g. 3x due to duplicate report entries in the fetched list), while the "X nodes" count correctly showed "1 Node" thanks to hierarchy dedup. Added defensive deduplication of groupReports by hash (similar to existing node dedup logic) when building groups from reportList. This prevents duplicate report rows for the same run in the per-group tables.
 
 ## [3.7.19] - 2026-06-03
 
@@ -3385,7 +3622,7 @@ See the detailed sections below for the full history of changes that led to this
 
 - **Log Viewer Enhancements**: Major readability improvements in Logs | Log Viewer (all tabs).
   - Per-line client-side highlighting in a dark monospace container (consistent with other terminal-style output in the app).
-  - FQDNs/certnames (e.g., `ovagent1.pdxc-it.twitter.biz`) rendered in **bright blue bold** (`#4dabf7`).
+  - FQDNs/certnames (e.g., `ovagent1.site-a.example.com`) rendered in **bright blue bold** (`#4dabf7`).
   - Executed commands (from Orchestration "Run Command", `puppet agent -t`, `bolt ...`, `sudo ...`, etc.) and HTTP API calls/responses (e.g., `"GET /api/dashboard/data HTTP/1.1" 200 OK`) rendered in **bold red** (`#e03131`).
   - Robust regex-based `renderHighlightedLine` function with proper state management for journalctl and file-based logs.
   - Makes troubleshooting dramatically faster by highlighting hosts (targets) and actionable command/API activity.
@@ -3470,7 +3707,7 @@ See the detailed sections below for the full history of changes that led to this
   - New systemd timer+service: `openvox-gui-fleet-health.timer` / `.service`
   - Generator script now respects `FLEET_HEALTH_REPORT_ENABLED`, `FLEET_HEALTH_REPORT_EMAILS` (multi-recipient), and `FLEET_HEALTH_REPORT_OUTPUT_DIR`.
   - Consolidated snapshot endpoint `/api/reports/fleet-health-snapshot` with localhost bypass for on-server execution.
-  - Runs as `puppet` user, emails configurable PDF directly from the node (test or `openvox.pdxc-it.twitter.biz`).
+  - Runs as `puppet` user, emails configurable PDF directly from the node (test or `openvox.site-a.example.com`).
   - Install/update/deploy scripts automatically deploy the units and enable the timer.
 - Executive Summary Report recipients are now fully configurable inside the GUI.
   - New "Executive Summary Report" pane at the bottom of the Reports page.
@@ -3589,7 +3826,7 @@ configured.
 ### Improved — Log Viewer readability
 
 - In the **Logs | Log Viewer** page, log lines are now enhanced for better scannability across all tabs:
-  - All FQDNs / certnames (e.g. `ovagent1.pdxc-it.twitter.biz`, `openvox.pdxc-it.twitter.biz`) are rendered in **bold black**.
+  - All FQDNs / certnames (e.g. `ovagent1.site-a.example.com`, `openvox.site-a.example.com`) are rendered in **bold black**.
   - The command being run (especially those submitted via the Orchestration page, `puppet agent -t`, `bolt ...`, `sudo ...`, and similar) is rendered in **bold red**.
 - Highlighting is applied client-side per line using regex heuristics that work reliably on journalctl output and service log files.
 - The log container uses a dark monospace background (consistent with other terminal/code output in the app) for excellent contrast with the black and red highlights.
@@ -4701,7 +4938,7 @@ from a fresh clone of the v3.6.1 tag.
 
 ### Fixed
 
-- **`postcss` 8.5.12 lockfile entry now resolves from `https://registry.npmjs.org/`** instead of `https://artifactory.twitter.biz/...`. The 3.6.1 lockfile bump was performed on a workstation whose `~/.npmrc` pointed at an internal Artifactory mirror; npm faithfully recorded that resolved URL in the lockfile. On any host without access to that mirror -- including the test server -- `npm install` against the v3.6.1 lockfile failed with `403 Forbidden`. Re-pinned with `npm install postcss@^8.5.12 --save --registry=https://registry.npmjs.org/` so the lockfile is portable.
+- **`postcss` 8.5.12 lockfile entry now resolves from `https://registry.npmjs.org/`** instead of `https://artifactory.example.com/...`. The 3.6.1 lockfile bump was performed on a workstation whose `~/.npmrc` pointed at an internal Artifactory mirror; npm faithfully recorded that resolved URL in the lockfile. On any host without access to that mirror -- including the test server -- `npm install` against the v3.6.1 lockfile failed with `403 Forbidden`. Re-pinned with `npm install postcss@^8.5.12 --save --registry=https://registry.npmjs.org/` so the lockfile is portable.
 
 ### Operator notes
 
@@ -5008,9 +5245,9 @@ The 31 test-build iterations that produced this release are kept as historical e
   ```bash
   if [[ "$PUPPET_SERVER" == *"__OPENVOX_PUPPET_SERVER__"* ]]; then PUPPET_SERVER=""; fi
   ```
-  was meant to detect an UN-rendered placeholder and clear the var so the fallback paths could fire. But the server-side `sed` render replaces **every** literal `__OPENVOX_PUPPET_SERVER__` in the file -- including the literal in this check. After render, the check became `*"openvox.pdxc-it.twitter.biz"*` which always matches the substituted value, so PUPPET_SERVER was getting set to `openvox.pdxc-it.twitter.biz` and then immediately wiped to `""`. All four resolution paths then failed with the canonical "Could not determine the puppetserver FQDN" error -- on a host where the FQDN was *literally* the rendered value.
+  was meant to detect an UN-rendered placeholder and clear the var so the fallback paths could fire. But the server-side `sed` render replaces **every** literal `__OPENVOX_PUPPET_SERVER__` in the file -- including the literal in this check. After render, the check became `*"openvox.site-a.example.com"*` which always matches the substituted value, so PUPPET_SERVER was getting set to `openvox.site-a.example.com` and then immediately wiped to `""`. All four resolution paths then failed with the canonical "Could not determine the puppetserver FQDN" error -- on a host where the FQDN was *literally* the rendered value.
 - **Fix**: build the placeholder-marker string at runtime via bash concatenation (`'__OPENVOX''_PUPPET_SERVER__'`) so the literal sequence `__OPENVOX_PUPPET_SERVER__` never appears in the source as a single token. `sed` matches on text in the file; with the literal split, the render leaves it alone. Same fix applied to the literal in the "all paths failed" error message text.
-- **Caught by**: an actual install attempt on `eveng` against production where the error confessed itself ("openvox.pdxc-it.twitter.biz placeholder substituted by the openvox-gui server (not rendered)"). The mangled wording made the bug obvious in retrospect.
+- **Caught by**: an actual install attempt on `eveng` against production where the error confessed itself ("openvox.site-a.example.com placeholder substituted by the openvox-gui server (not rendered)"). The mangled wording made the bug obvious in retrospect.
 
 ## [3.3.5-13] - 2026-04-23
 
@@ -5195,7 +5432,7 @@ The 31 test-build iterations that produced this release are kept as historical e
 
 ### Fixed
 - **LDAP troubleshooting**: Added detailed logging of server URL, timeout, and Bind/User Base DN values. Improved error messages and hints for connection timeouts.
-- **Proxy handling**: Expanded default `no_proxy` to cover common internal/corporate networks (including `.local` domains and 172.29.* ranges) to prevent proxies from interfering with direct LDAP connections.
+- **Proxy handling**: Expanded default `no_proxy` to cover common internal/corporate networks (including `.local` domains and 192.0.2.0/24 ranges) to prevent proxies from interfering with direct LDAP connections.
 - **User Base DN**: Clarified in docs that the base must exactly match the directory structure (e.g. including intermediate `dc=ods,...` components). Mismatches were a common cause of "ldapsearch works but app times out".
 - **Version bump and docs**: Updated defaults, frontend, and troubleshooting documentation.
 

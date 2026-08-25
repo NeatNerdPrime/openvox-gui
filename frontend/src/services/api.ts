@@ -829,7 +829,8 @@ export interface SelectionUpdateResult {
 }
 
 export const installer = {
-  getInfo: () => fetchJSON<InstallerInfo>('/installer/info'),
+  getInfo: (full: boolean = false) =>
+    fetchJSON<InstallerInfo>(`/installer/info${full ? '?full=true' : ''}`),
   triggerSync: () =>
     fetchJSON<InstallerSyncResult>('/installer/sync', { method: 'POST' }),
   getLog: (lines: number = 200) =>

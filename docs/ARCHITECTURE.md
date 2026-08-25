@@ -6,7 +6,7 @@ This document describes the high-level architecture of OpenVox GUI, with special
 
 OpenVox GUI is a full-stack application that provides both a **web interface** and a **command-line interface** (`ovox`) for managing an OpenVox (open-source Puppet) infrastructure.
 
-**Version line:** see root `VERSION` and [CHANGELOG.md](../CHANGELOG.md). **Last stable Release:** 3.10.6 (AIO production default). **Active pre-release:** 3.12.0-rc (AIO + clustered). Status snapshot: [STATUS.md](STATUS.md). Features: [FEATURES.md](FEATURES.md).
+**Version line:** see root `VERSION` and [CHANGELOG.md](../CHANGELOG.md). **Current stable Release:** 3.12.0 (AIO + clustered). Status snapshot: [STATUS.md](STATUS.md). Features: [FEATURES.md](FEATURES.md).
 
 The system has two primary user interfaces that are treated as equals:
 
@@ -22,7 +22,7 @@ Both are clients of one FastAPI backend. There is no separate public vs internal
 | **single** | OpenVox Server (co-located) | SQLite or Postgres | Local fs, local CA tools |
 | **clustered** | Dedicated console(s) | **Postgres `openvox_gui` required** | Compilers via Bolt/HTTP; CA via `OPENVOX_GUI_PUPPET_CA_HOST` |
 
-**Live fleet rule:** `get_live_nodes()` = active OpenVoxDB ∩ signed CA for Dashboard, Nodes, Inventory, ENC reconciliation, Node Health. Certificates page remains CA-authoritative.
+**Live fleet rule:** `get_live_nodes()` = active OpenVoxDB `/nodes` (catalogs) minus DNS RR names (`ovca.example.com`, `ovdb.example.com`). HAProxy frontends (`ovcompilers.<site>-it.…`) are real agents and stay visible. Certificates page remains CA-authoritative. Two Postgres databases (`puppetdb` vs `openvox_gui`) and two Spock meshes: [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt). See [FEATURES.md](FEATURES.md#live-fleet-membership-cross-cutting-rule).
 
 **3.12 VIP sessions:** dual consoles behind one LB hostname need identical `SECRET_KEY`, shared Postgres, and `vip_hosts` / `OPENVOX_GUI_VIP_HOSTS`. SPA `access_mode=vip|direct` softens polls and never hard-reloads on 401. See [VIP_SESSIONS.md](VIP_SESSIONS.md).
 

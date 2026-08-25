@@ -85,7 +85,7 @@ async def get_compliance(
     hours_key = round(float(hours), 4)
     cn_list = [c.strip() for c in (certnames or "").split(",") if c.strip()]
     cache_key = (
-        f"compliance_{hours_key}_{scope or 'all'}_"
+        f"compliance_v4parity_{hours_key}_{scope or 'all'}_"
         f"{location or ''}_{certname_re or ''}_{','.join(sorted(cn_list))}"
     )
     cached = _get_cached(cache_key)
@@ -102,41 +102,29 @@ async def get_compliance(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Prefer live fleet membership, then restrict to scope
+    # Prefer live fleet membership, then restrict to scope.
+    # Monitoring "Failed" is the newest OpenVoxDB report status (same
+    # as Overview / Node Detail), not "any fail in the lookback window."
+    from ..database import async_session
+    from ..routers.nodes import apply_live_run_status
+    from ..services.fleet_insights import partition_display_nodes
+
     try:
         all_nodes = await puppetdb_service.get_live_nodes()
     except Exception:
         all_nodes = await puppetdb_service.get_nodes()
+    try:
+        async with async_session() as db:
+            await apply_live_run_status(all_nodes, db)
+    except Exception as e:
+        logger.warning("compliance live-run overlay failed: %s", e)
     nodes = filter_nodes_by_scope(all_nodes, scope_result)
-
-    compliant = []
-    drifted = []
-    failed = []
-    noop = []
-    unreported = []
-
-    for node in nodes:
-        status = node.get("latest_report_status", "")
-        corrective = node.get("latest_report_corrective_change", False)
-        entry = {
-            "certname": node.get("certname"),
-            "status": status,
-            "corrective": corrective,
-            "environment": node.get("report_environment"),
-            "report_timestamp": node.get("report_timestamp"),
-        }
-        if status == "failed":
-            failed.append(entry)
-        elif corrective:
-            drifted.append(entry)
-        elif status == "unchanged":
-            compliant.append(entry)
-        elif status == "changed":
-            compliant.append(entry)
-        elif status == "noop":
-            noop.append(entry)
-        else:
-            unreported.append(entry)
+    parts = partition_display_nodes(nodes)
+    compliant = parts["compliant"]
+    drifted = parts["drifted"]
+    failed = parts["failed"]
+    noop = parts["noop"]
+    unreported = parts["unreported"]
 
     # Rolling census trend for this scope (sum of series ≈ scoped fleet size)
     since = (datetime.now(timezone.utc) - timedelta(hours=float(hours))).isoformat()
@@ -170,6 +158,14 @@ async def get_compliance(
             ts = (row.get("timestamp") or "")[:13]
             if ts in hourly_drift:
                 row["drifted"] = hourly_drift[ts]
+        # Last bucket is *now*: do not leave replayed yesterday-failed
+        # as the wallboard's current Failed count.
+        if trend:
+            trend[-1]["failed"] = len(failed)
+            trend[-1]["compliant"] = len(compliant)
+            trend[-1]["unreported"] = len(unreported)
+            trend[-1]["noop"] = len(noop)
+            trend[-1]["drifted"] = len(drifted)
     except Exception as e:
         logger.warning("compliance trend failed: %s", e)
         trend = []
@@ -672,7 +668,7 @@ async def get_puppetdb_health(_user: str = Depends(_AUTH)):
 
     # Active nodes count
     try:
-        nodes = await puppetdb_service.get_nodes()
+        nodes = await puppetdb_service.get_live_nodes()
         result["active_nodes"] = len(nodes)
     except Exception:
         result["active_nodes"] = None
@@ -889,12 +885,14 @@ async def get_puppetserver_performance(_user: str = Depends(_AUTH)):
 @router.get("/heatmap")
 async def get_node_heatmap(_user: str = Depends(_AUTH)):
     """Node status grid for heatmap visualization."""
-    nodes = await puppetdb_service.get_nodes()
+    from ..services.fleet_insights import display_status
+
+    nodes = await puppetdb_service.get_live_nodes()
     grid = []
     for node in nodes:
         grid.append({
             "certname": node.get("certname"),
-            "status": node.get("latest_report_status", "unreported"),
+            "status": display_status(node),
             "environment": node.get("report_environment"),
             "report_timestamp": node.get("report_timestamp"),
             "corrective": node.get("latest_report_corrective_change", False),
@@ -908,14 +906,16 @@ async def get_node_heatmap(_user: str = Depends(_AUTH)):
 @router.get("/environments")
 async def get_environment_comparison(_user: str = Depends(_AUTH)):
     """Compare metrics across Puppet environments."""
-    nodes = await puppetdb_service.get_nodes()
+    from ..services.fleet_insights import display_status
+
+    nodes = await puppetdb_service.get_live_nodes()
     envs: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
         "total": 0, "changed": 0, "unchanged": 0, "failed": 0, "noop": 0, "unreported": 0,
     })
 
     for node in nodes:
         env = node.get("report_environment", "unknown") or "unknown"
-        status = node.get("latest_report_status", "unreported") or "unreported"
+        status = display_status(node)
         envs[env]["total"] += 1
         if status in envs[env]:
             envs[env][status] += 1
@@ -980,7 +980,7 @@ async def get_node_health(_user: str = Depends(_AUTH)):
     """Node health overview focused on Puppet agent enabled/disabled status.
 
     Membership is the **same fleet as Overview | Nodes**, Insights |
-    Inventory, and ENC: **active PuppetDB ∩ signed CA** (`get_live_nodes`).
+    Inventory, and ENC: **active PuppetDB** (`get_live_nodes`).
     CA-cleaned or deactivated/expired hosts do not appear.
 
     Facts (agent disabled / message) are applied only for certnames on that fleet.

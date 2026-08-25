@@ -4,19 +4,19 @@
 - **Default branch is `main`** — staging branch has been removed
 - All development and releases go through `main`
 
-### 3.12.0-rc train (active on `main` — 2026-08)
+### 3.12.0 stable (current on `main` — 2026-08-25)
 
-- **AIO first:** most installs are all-in-one on the OpenVox Server host (SQLite OK). Docs, installer defaults, and smoke tests must keep AIO as the primary path even while clustering lands.
-- **Clustered optional:** dual console + VIP sessions, fleet exclude, ovox estate health (members + VIPs), Bolt estate inventory, shared Postgres `openvox_gui`. See [docs/STATUS.md](docs/STATUS.md).
-- **Pre-release labels:** PEP 440 only (`rc` / `a` / `b` / `dev`). Never put `gamma` in `VERSION` (pip rejects it).
-- **Monday backlog:** Puppet **roles** = `profile::base` + technology profiles (compiler / CA / PDB / console). Not profiles-only.
-- Pre-release counter on every meaningful push: `3.12.0-rc.N` via bump + CHANGELOG + tag + push + lab deploy.
+- **Current stable GitHub Release:** **3.12.0** (`v3.12.0`). AIO + clustered.
+- **AIO first:** most installs are all-in-one on the OpenVox Server host (SQLite OK).
+- **Clustered optional:** dual console + VIP sessions, fleet exclude, ovox estate health, Bolt estate inventory, shared Postgres `openvox_gui`. See [docs/STATUS.md](docs/STATUS.md).
+- **Next train:** after 3.12.0, daily work uses `3.12.1-dev.N` (or `3.13.0-rc.N` for a new minor). PEP 440 only. Never put `gamma` in `VERSION`.
+- Pre-release counter on every meaningful push via bump + CHANGELOG + tag + **push branch and tags** + **lab deploy** to `openvox.questy.org` (`10.0.100.225`).
 
 ### Stable baseline and history
 
-- **Current stable GitHub Release (AIO production default):** **3.10.6** (`v3.10.6`). Performance train: lean Dashboard PDB extract, multi-worker uvicorn, graph-page SWR — see `docs/PERFORMANCE.md`. Live fleet = **`get_live_nodes()`** (active PuppetDB ∩ signed CA).
-- **3.11.x:** historical clustered-console foundations (alphas/betas). Prefer **3.12.0-rc+** for new clustered work.
-- **Prior stables:** **3.10.4**, **3.10.2**; local bugfix labels and old train markers (`3.10.a_r_alpha.*`, `3.10.01`–`3.10.04`, `3.10.3b*`, `3.10.5-dev.*`) are archaeology only.
+- **Current stable:** **3.12.0**. Live fleet = **`get_live_nodes()`** (active PuppetDB; DNS RR hide only; peer report merge).
+- **3.10.6:** prior AIO performance stable. **3.11.x:** historical clustered betas.
+- **Prior stables:** **3.10.4**, **3.10.2**; old train markers are archaeology only.
 - **Estate strategy (clustered):** build/validate the **new** multi-server estate; migrate nodes; repurpose legacy singleton as lab/dev. Do not treat in-place “upgrade production singleton to clustered” as the default path.
 - **New large spike:** optional alpha branch with lab-only rules; otherwise commit on `main` with SemVer pre-releases (`3.12.0-rc.N`) via `/commit`.
 
@@ -24,7 +24,7 @@
 - Primary validation deploys: lab **`openvox.questy.org`** (`10.0.100.225`) only unless the user names production bastion workflow.
 - Prefer: `OPENVOX_DEPLOY_HOST=10.0.100.225 OPENVOX_DEPLOY_USER=jsheets scripts/update_remote.sh --yes` (PATH `/usr/bin` first if Homebrew SSH breaks routing).
 - Maintenance wrapper on the server when using ovox: `ovox maintenance enable` → deploy → verify → `ovox maintenance disable`.
-- **Never** confuse lab claims with production (`openvox.pdxc-it.twitter.biz` via bastion). See Infrastructure section below.
+- **Never** confuse lab claims with production (`openvox.site-a.example.com` via bastion). See Infrastructure section below.
 
 ## Heredoc Safety (Important)
 
@@ -99,14 +99,14 @@ This rule was added after backticks in an unquoted sudoers heredoc caused instal
   ```
 - **WARNING**: This server is **not** production. Scale, certificate volume, performance characteristics, and any deployed state here must be clearly labeled "lab" or "test server" when discussing or reporting work.
 
-### Real Production Server (final / official deploys at xAI)
-- Hostname: `openvox.pdxc-it.twitter.biz` (user has also written it as `openvox.opdxc-it.twitter.biz`)
+### Real Production Server (final / official production deploys)
+- Hostname: `openvox.site-a.example.com`
 - Access model: **Not directly SSH-reachable** from the development laptop.
 - Must traverse a bastion/jump host first:
-  - `wormhole-1.atlc-it.twitter.biz` (Atlanta)
-  - `wormhole-2.pdxc-it.twitter.biz` (Portland)
-- Typical real-world workflow: `ssh wormhole-1...` (or wormhole-2), then from the bastion `ssh openvox.pdxc-it.twitter.biz`.
-- This is the server that runs the actual xAI / Twitter-internal OpenVox fleet. When the user talks about "production" or "final deploy," this (and its bastions) is what is meant.
+  - `bastion-east.example.com` (site B)
+  - `bastion-west.example.com` (site A)
+- Typical real-world workflow: `ssh bastion-east...` (or bastion-west), then from the bastion `ssh openvox.site-a.example.com`.
+- This is the server that runs the official production OpenVox fleet. When the user talks about "production" or "final deploy," this (and its bastions) is what is meant.
 
 **Rule for this project**: The deploy scripts in this repository (`update_remote.sh`, `deploy.sh`, `update_local.sh`, etc.) have historically been exercised almost exclusively against the test lab (10.0.100.225). Any claim that "we deployed X" in the context of openvox-gui work should default to "lab" unless the user explicitly states production bastion access was used.
 

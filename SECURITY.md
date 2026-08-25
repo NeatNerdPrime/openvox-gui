@@ -6,14 +6,14 @@ We actively support security and operational updates for the latest stable and p
 
 | Version | Supported          |
 | ------- | ------------------ |
-| **3.10.x** stable (**3.10.6** — current GitHub Release; **default for AIO production**) | :white_check_mark: |
-| **3.12.0-rc.N** pre-release on `main` (AIO + clustered early production by intent) | :white_check_mark: (lab / agreed pilots) |
-| 3.11.x betas | Prefer 3.12.0-rc+ |
-| 3.9.x | Prefer upgrade to 3.10.6+ |
+| **3.12.x** stable (**3.12.0** — current GitHub Release; AIO + clustered) | :white_check_mark: |
+| **3.10.x** stable (**3.10.6**) | :white_check_mark: (upgrade to 3.12.0 when you can) |
+| 3.11.x betas | Prefer 3.12.0 |
+| 3.9.x | Prefer upgrade to 3.12.0 |
 | 3.0 – 3.8.x | Limited — upgrade when you can |
 | < 3.0   | :x: (end of life)  |
 
-**Default recommendation:** run the latest **stable** GitHub Release (**[v3.10.6](https://github.com/cvquesty/openvox-gui/releases/tag/v3.10.6)**) for all-in-one production. Use **3.12.0-rc** when you need clustered consoles, VIP session fixes, or the current ovox estate health work — and track [docs/STATUS.md](docs/STATUS.md).
+**Default recommendation:** run the latest **stable** GitHub Release (**[v3.12.0](https://github.com/cvquesty/openvox-gui/releases/tag/v3.12.0)**). Track [docs/STATUS.md](docs/STATUS.md).
 
 **Dependency audits:** GitHub Actions workflow **Security audits** (`.github/workflows/security.yml`) runs on push/PR (path-filtered), weekly Mondays, and `workflow_dispatch`:
 

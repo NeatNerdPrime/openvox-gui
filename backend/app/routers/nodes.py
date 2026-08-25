@@ -142,9 +142,8 @@ async def list_nodes(
     guard against injection.
     """
     try:
-        # Live fleet = active PuppetDB ∩ signed CA (get_live_nodes). Hides
-        # deactivated/expired PDB ghosts and hosts after `ca clean`.
-        # (Stale ENC nodes no longer auto-purged; use purge queue + explicit purge.)
+        # Live fleet = active PuppetDB (get_live_nodes). DNS RR names only
+        # are hidden. ovcompilers.* stay visible. ENC purge is separate.
         fleet = await puppetdb_service.get_live_nodes()
 
         # Apply environment / status filters after fetch (Python), so we never

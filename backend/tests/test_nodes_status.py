@@ -202,6 +202,7 @@ def test_get_latest_reports_merges_recent_over_stuck_flag():
 
     svc.pql = fake_pql  # type: ignore[method-assign]
     svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+    svc._peer_puppetdb_hosts = lambda: []  # type: ignore[method-assign]
 
     latest = asyncio.run(PuppetDBService.get_latest_reports_by_certname(svc))
     row = latest["ovca1.pdxc-it.corp.int-x.ai"]
@@ -233,6 +234,7 @@ def test_get_newest_report_no_pql_order_by():
         ]
 
     svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+    svc._peer_puppetdb_hosts = lambda: []  # type: ignore[method-assign]
     row = asyncio.run(
         PuppetDBService.get_newest_report_for_certname(
             svc, "ovca1.pdxc-it.corp.int-x.ai"
@@ -240,6 +242,77 @@ def test_get_newest_report_no_pql_order_by():
     )
     assert "order by" not in (seen.get("query") or "").lower()
     assert row["status"] == "unchanged"
+
+
+def test_get_latest_reports_merges_newer_peer_row():
+    from app.services.puppetdb import PuppetDBService
+    import asyncio
+
+    svc = PuppetDBService.__new__(PuppetDBService)
+
+    async def fake_pql(query, limit=5000):
+        return [
+            {
+                "certname": "agent.example.com",
+                "status": "unchanged",
+                "receive_time": "2026-08-23T10:00:00Z",
+                "hash": "local-old",
+            }
+        ]
+
+    async def fake_get_reports(**kwargs):
+        return []
+
+    async def fake_from_host(host):
+        assert host == "ovdb.site-b.example.com"
+        return {
+            "agent.example.com": {
+                "certname": "agent.example.com",
+                "status": "unchanged",
+                "receive_time": "2026-08-25T11:00:00Z",
+                "hash": "peer-new",
+            }
+        }
+
+    svc.pql = fake_pql  # type: ignore[method-assign]
+    svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+    svc._peer_puppetdb_hosts = lambda: ["ovdb.site-b.example.com"]  # type: ignore[method-assign]
+    svc._latest_reports_from_host = fake_from_host  # type: ignore[method-assign]
+
+    latest = asyncio.run(PuppetDBService.get_latest_reports_by_certname(svc))
+    row = latest["agent.example.com"]
+    assert row["hash"] == "peer-new"
+    assert row["_openvoxdb_source"] == "ovdb.site-b.example.com"
+
+
+def test_peer_hosts_include_console_site_ovdb():
+    from unittest.mock import patch
+    from app.services.puppetdb import PuppetDBService, settings
+
+    def fake_cfg():
+        return {
+            "puppetdb_nodes": ["ovdb1.site-a.example.com"],
+            "dns_rr_vips": ["ovdb.site-a.example.com"],
+            "consoles": [
+                "openvox.site-a.example.com",
+                "openvox.site-b.example.com",
+            ],
+        }
+
+    with patch.object(settings, "puppetdb_host", "ovdb.example.com"):
+        with patch.object(settings, "puppetdb_peers", "ovdb.extra.example.com"):
+            with patch(
+                "app.services.cluster_config.load_cluster_config",
+                fake_cfg,
+            ):
+                hosts = PuppetDBService._peer_puppetdb_hosts(
+                    PuppetDBService.__new__(PuppetDBService)
+                )
+    assert "ovdb.extra.example.com" in hosts
+    assert "ovdb1.site-a.example.com" in hosts
+    assert "ovdb.site-a.example.com" in hosts
+    assert "ovdb.site-b.example.com" in hosts
+    assert "ovdb.example.com" not in hosts
 
 
 def test_apply_live_run_flips_stale_failed():

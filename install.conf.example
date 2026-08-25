@@ -15,9 +15,9 @@ APP_HOST="::"
 UVICORN_WORKERS="2"
 APP_DEBUG="false"
 
-# Python interpreter used to create the virtualenv. The backend requires
-# Python >= 3.10. On EL8/EL9 the default python3 is older; install the
-# python3.12 package and point this at it.
+# Python interpreter used to create the virtualenv. Backend requires
+# Python >= 3.10. On EL8/EL9 the default python3 is older; install
+# python3.12 from AppStream and point this at it.
 #PYTHON_BIN="/usr/bin/python3.12"
 
 # ─── PuppetServer Settings ────────────────────────────────────

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.29**
+**OpenVox GUI Version 3.12.1-dev.1**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -16,6 +16,7 @@ This guide helps you solve common problems with OpenVox GUI. Think of it as your
 6. [Performance Issues](#performance-issues)
 7. [Display and UI Problems](#display-and-ui-problems)
 8. [Data and Report Issues](#data-and-report-issues)
+8a. [GUI node count ≠ PuppetDB](#gui-node-count--puppetdb)
 9. [Certificate Problems](#certificate-problems)
 10. [CA log noise (already signed / no CSR)](#ca-log-noise-already-signed--no-csr)
 11. [Update and Deployment Issues](#update-and-deployment-issues)
@@ -131,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.29"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.1"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -203,14 +204,14 @@ To use a real certificate, see the Configuration documentation (SSL wizard under
 
 **Symptoms:**
 
-- `https://openvox.pdxc-…:4567` and `https://openvox.atlc-…:4567` are fine
+- `https://openvox.site-a.example.com:4567` and `https://openvox.site-b.example.com:4567` are fine
 - Via the load-balancer VIP, Insights/Dashboard auto-refresh “storms” and session ends early
 
 **Cause (3.12 fixed the client amplifier):** multi-backend RR + intermittent 401 used to call `window.location.reload()` on every poll. Remaining infra issues: mismatched `OPENVOX_GUI_SECRET_KEY`, non-shared app DB, different GUI versions per console, or missing VIP hostname config.
 
 **Fix:**
 
-1. Upgrade **both** consoles to **3.12.0-rc.1+** (same version).
+1. Upgrade **both** consoles to **3.12.0** (same version).
 2. Identical `OPENVOX_GUI_SECRET_KEY` and shared Postgres `openvox_gui` DSN.
 3. Set console VIP hostnames: Settings → Cluster → **Console VIP / public LB hostnames**, or `OPENVOX_GUI_VIP_HOSTS=…` on both hosts.
 4. Prefer LB sticky sessions **and** keep app RR-safe.
@@ -281,7 +282,7 @@ Use PEP 440 pre-release labels only (`rc`, `a`, `b`, `dev`). The string `gamma` 
 
    Dedicated consoles have no cadir. The GUI must fetch the issuing CA
    from `https://$OPENVOX_GUI_PUPPET_CA_HOST:8140/puppet-ca/v1/certificate/ca`
-   (the VIP, e.g. `ovca.corp.int-x.ai`). Confirm that host is set, the
+   (the VIP, e.g. `ovca.example.com`). Confirm that host is set, the
    console agent `ca.pem` is the **new** estate CA, and corp proxy is
    bypassed (`no_proxy` includes the CA VIP). Failover between ovca1/ovca2
    does not change the issuing cert — only which node presents Jetty.
@@ -541,7 +542,7 @@ Use PEP 440 pre-release labels only (`rc`, `a`, `b`, `dev`). The string `gamma` 
 
 4. **Dedicated console (GUI not on the CA):** do **not** install
    `openvox-server`. Set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP
-   (e.g. `ovca.corp.int-x.ai`) after deploying **3.11.0-alpha.8+**, and
+   (e.g. `ovca.example.com`) after deploying **3.11.0-alpha.8+**, and
    allow the console certname in CA `auth.conf`. Point
    `OPENVOX_GUI_PUPPET_SSL_*` at this host’s agent cert/key/`ca.pem`
    (not `localhost.pem`). `load_cert_chain` `FileNotFoundError` means
@@ -562,7 +563,7 @@ clustered / Spock mesh — after a later unchanged/changed report exists.
 
 **What the GUI does (3.11.1-beta.5+):**
 1. Merge `latest_report?` with a recent reports window; newest
-   `receive_time` wins (sites stay isolated — `ovca1.pdxc` ≠ `ovca1.atlc`).
+   `receive_time` wins (sites stay isolated — `ovca1.site-a` ≠ `ovca1.site-b`).
 2. If Orchestration recorded a newer successful `puppet agent` run and
    the compiler never stored that report, the badge follows the live run.
 
@@ -570,7 +571,7 @@ clustered / Spock mesh — after a later unchanged/changed report exists.
 rejects it):
 
 ```
-reports[hash, status, receive_time, producer] { certname = "ovca1.pdxc-it.corp.int-x.ai" }
+reports[hash, status, receive_time, producer] { certname = "ovca1.site-a.example.com" }
 ```
 
 Sort the result by `receive_time` yourself. Compilers need
@@ -618,6 +619,85 @@ Use `sudo puppet config print ssldir`.
    ```
 
 ---
+
+## GUI node count ≠ PuppetDB
+
+New estate or two-console cutover: read [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) first. There are **two** databases (`puppetdb` vs `openvox_gui`) and **two** Spock meshes. `/nodes` is catalogs, not `INSERT` into `certnames`.
+
+**Symptoms:** `ovox nodes list` shows 7 (or 8) names; `SELECT count(*) FROM certnames` on an ovdb is 16.
+
+**This is not a cache.** Three different numbers:
+
+| Source | What it counts |
+|--------|----------------|
+| `certnames` SQL | Every row, including stubs you INSERTed |
+| `GET /pdb/query/v4/nodes` | Nodes with a **catalog** (what the GUI uses) |
+| CA `ca/signed` | Signed PEMs, including hosts that never reported |
+
+**Fix (automated check):**
+
+```bash
+sudo /opt/openvox-gui/scripts/cluster-preflight.sh
+```
+
+Typical causes this script catches:
+
+1. `/etc/hosts` pins `ovdb.example.com` to **one** site VIP. `hosts: files dns` then never sees the other A record. Delete that line. Members (`ovdb1`/`ovdb2`) may stay in hosts.
+2. VIP A records (`.78`) are **not** the member IPs (`.76`/`.77`). Probe `/nodes` on **every** A record — they must match.
+3. Dashboard **Failed** after a good `puppet agent -t`: the new report is on the other site’s PDB. Compile once against the other site’s compiler, or put `reports` in the Spock `default` set.
+
+Never `INSERT` into `certnames`/`factsets`/`catalogs` and expect `/nodes` to change. Never `sub_resync_table` on `certnames`. Grant origin functions with `scripts/ensure-puppetdb-spock.sh` on every ovdb.
+
+### Unreported on Overview vs Unchanged on Node Detail
+
+Overview, Nodes, and Node Detail use the **same** newest-report
+status (after rc.47). A node is **Unreported** only when this GUI’s
+OpenVoxDB has no `latest_report_status` / no report document for that
+certname. A day-old Unchanged or Failed report keeps that status on
+every page. Needs attention still lists reports older than 24 hours.
+
+**Needs attention differs by console** (ATLC has six, PDXC has none):
+each console’s `ovdb.example.com` A record is one site VIP, and
+reports often do not replicate. After rc.48 the GUI merges the newest
+report from peer OpenVoxDBs (`puppetdb_nodes`, `dns_rr_vips`,
+`ovdb.<site>` derived from consoles, and
+`OPENVOX_GUI_PUPPETDB_PEERS`). Both consoles then show the same
+attention list. Until that build is on **both** GUIs, the list follows
+whichever `.78` stored the last report.
+
+It is **not** “puppet agent -tv printed Applied.” The report must exist
+on **this** PDB (often `ovdb.example.com` → one site). An ATLC compile stores
+the report on ATLC; PDXC can still say Unreported.
+
+**See why one name is Unreported** (console, as root):
+
+```bash
+CERT=/etc/puppetlabs/puppet/ssl/certs/$(puppet config print certname).pem
+KEY=/etc/puppetlabs/puppet/ssl/private_keys/$(puppet config print certname).pem
+CA=/etc/puppetlabs/puppet/ssl/certs/ca.pem
+CN=THE.CERT.NAME
+
+for ip in 192.0.2.76 198.51.100.76; do
+  echo "=== $ip ==="
+  curl -sk --cert "$CERT" --key "$KEY" --cacert "$CA" \
+    --resolve "ovdb.example.com:8081:${ip}" \
+    -G 'https://ovdb.example.com:8081/pdb/query/v4/nodes' \
+    --data-urlencode "query=[\"=\",\"certname\",\"${CN}\"]" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); n=(d[0] if d else {});
+print("status", n.get("latest_report_status"), "report", n.get("report_timestamp"))'
+done
+```
+
+**Clear it:** a new report on the PDB that showed `None` / old timestamp:
+
+```bash
+/opt/puppetlabs/bin/puppet agent -tv --server ovcompiler1.site-a.example.com
+```
+
+(Use an ATLC compiler if the empty side is `.160.76`.) Then hard-refresh
+Overview and Monitoring. Both must list the same Unreported certnames.
+
+Live-fleet rules and HAProxy vs DNS RR: [docs/FEATURES.md](docs/FEATURES.md#live-fleet-membership-cross-cutting-rule).
 
 ## Certificate Problems
 
@@ -775,7 +855,7 @@ to the browser).
 
    ```bash
    sudo -u bolt bolt command run 'true' \
-     --targets ovcompiler1.pdxc-it.corp.int-x.ai \
+     --targets ovcompiler1.site-a.example.com \
      --project /etc/puppetlabs/bolt
    ```
 
@@ -825,7 +905,7 @@ to the browser).
    # On each compiler as root, or from the console via Bolt:
    sudo /opt/openvox-gui/scripts/bootstrap-compiler.sh
    # then copy yaml from the working compiler
-   scp ovcompiler1.pdxc-it.corp.int-x.ai:/etc/puppetlabs/r10k/r10k.yaml \
+   scp ovcompiler1.site-a.example.com:/etc/puppetlabs/r10k/r10k.yaml \
      /etc/puppetlabs/r10k/r10k.yaml
    ```
 
@@ -850,7 +930,7 @@ to the browser).
 
 8. **Stage is painfully slow.** Four compilers each sync ~80 Forge
    modules through one ATLC proxy, and Bolt waits for the slowest.
-   ovcompiler1.pdxc with `proxy=none` added ~135s of `github.com:443`
+   ovcompiler1.site-a with `proxy=none` added ~135s of `github.com:443`
    hang. After 3.11.0-alpha.53: shared r10k cache, `forge.proxy`,
    `--incremental`, 20s git stall timeout, 15-minute Bolt cap.
    First Stage after an empty cache is still minutes. Warm cache +
@@ -867,9 +947,9 @@ to the browser).
    set both on every compiler (and later in Puppet):
 
    ```bash
-   sudo git config --global http.proxy  http://httpproxy.atlc.twitter.com:3128
-   sudo git config --global https.proxy http://httpproxy.atlc.twitter.com:3128
-   echo 'export HTTPS_PROXY=http://httpproxy.atlc.twitter.com:3128' \
+   sudo git config --global http.proxy  http://httpproxy.example.com:3128
+   sudo git config --global https.proxy http://httpproxy.example.com:3128
+   echo 'export HTTPS_PROXY=http://httpproxy.example.com:3128' \
      | sudo tee /etc/profile.d/https_proxy.sh
    ```
 

@@ -387,10 +387,12 @@ async def _get_fleet_health_snapshot_data(hours: int = 24) -> Dict[str, Any]:
     # Compliance logic is in metrics router; we simulate a minimal call by inlining
     # the core PuppetDB bits using the service (for a true service-only path).
     try:
-        nodes = await puppetdb_service.get_nodes()
+        from ..services.fleet_insights import display_status
+
+        nodes = await puppetdb_service.get_live_nodes()
         compliant = drifted = failed = noop = unreported = 0
         for n in nodes:
-            st = n.get("latest_report_status", "")
+            st = display_status(n)
             corr = n.get("latest_report_corrective_change", False)
             if st == "failed":
                 failed += 1

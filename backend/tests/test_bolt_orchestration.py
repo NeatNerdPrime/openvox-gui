@@ -37,6 +37,7 @@ def test_normalize_puppet_agent_adds_env():
             apply_escalation,
             BoltRunResultModel,
             sanitize_bolt_result,
+            summarize_bolt_item_failures,
         )
     except Exception as exc:
         # Offline CI without deps: structural test only
@@ -56,6 +57,17 @@ def test_normalize_puppet_agent_adds_env():
     assert cmd == "whoami" and esc is False
     cmd2, esc2 = apply_escalation("systemctl restart x", None)
     assert cmd2.startswith("sudo ") and esc2
+    fail_json = json.dumps({
+        "items": [{
+            "target": "openvox.atlc-it.corp.int-x.ai",
+            "status": "failure",
+            "value": {"exit_code": 1, "stdout": "", "stderr": "sudo: a password is required"},
+        }],
+    })
+    sm = sanitize_bolt_result({"returncode": 1, "stdout": fail_json, "stderr": ""})
+    assert "sudo: a password is required" in (sm.error or "")
+    assert summarize_bolt_item_failures(fail_json)
+
     m = sanitize_bolt_result({"returncode": 0, "stdout": "\x1b[31mhi\x1b[0m", "stderr": ""})
     assert m.returncode == 0
     assert m.output == "hi"
