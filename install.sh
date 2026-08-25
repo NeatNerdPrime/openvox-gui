@@ -46,6 +46,11 @@ APP_HOST="::"
 UVICORN_WORKERS="2"
 APP_DEBUG="false"
 
+# Interpreter used to create the venv. Backend pins need Python >= 3.10.
+# EL8/EL9 default python3 is older; set PYTHON_BIN=/usr/bin/python3.12
+# (environment or install.conf). Both families ship python3.12 in AppStream.
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
 PUPPET_SERVER_HOST="$(hostname -f)"
 PUPPET_SERVER_PORT="8140"
 # Clustered / dedicated console: CA VIP (not the compiler LB). Empty = same as server host.
@@ -502,6 +507,7 @@ Options:
 Answer File:
   Copy install.conf.example to install.conf and edit it.
   All variables are optional; defaults are used for any not specified.
+  On EL8/EL9 set PYTHON_BIN=/usr/bin/python3.12 (default python3 is too old).
 
 EOF
     exit 0
@@ -943,13 +949,20 @@ fi
 
 log_step 4 "Python Virtual Environment"
 
-if ! command -v python3 &>/dev/null; then
-    log_err "Python 3 is not installed. Please install python3 and python3-venv."
+if ! command -v "$PYTHON_BIN" &>/dev/null; then
+    log_err "Python interpreter '${PYTHON_BIN}' not found. Install it (plus its venv module), or set PYTHON_BIN (e.g. PYTHON_BIN=/usr/bin/python3.12 in install.conf)."
+    exit 1
+fi
+
+# Fail here, not inside pip's Requires-Python wall (EL8/EL9 default python3).
+if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+    PY_VER=$("$PYTHON_BIN" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "unknown")
+    log_err "Python >= 3.10 is required; '${PYTHON_BIN}' is ${PY_VER}. Set PYTHON_BIN to a newer interpreter (e.g. PYTHON_BIN=/usr/bin/python3.12 in install.conf)."
     exit 1
 fi
 
 if [ ! -d "${INSTALL_DIR}/venv" ]; then
-    python3 -m venv "${INSTALL_DIR}/venv"
+    "$PYTHON_BIN" -m venv "${INSTALL_DIR}/venv"
     log_ok "Created Python virtual environment"
 else
     log_ok "Virtual environment already exists"
@@ -975,8 +988,14 @@ if [ -d "${INSTALL_DIR}/ovox" ]; then
     # Make sure the running version matches the deployed ovox/VERSION file
     if [ -f "${INSTALL_DIR}/ovox/VERSION" ]; then
         VER=$(cat "${INSTALL_DIR}/ovox/VERSION")
-        SITE_PKG="${INSTALL_DIR}/venv/lib/python3.11/site-packages/ovox/__init__.py"
-        if [ -f "$SITE_PKG" ]; then
+        SITE_PKG=""
+        for f in "${INSTALL_DIR}"/venv/lib/python3.*/site-packages/ovox/__init__.py; do
+            if [ -f "$f" ]; then
+                SITE_PKG="$f"
+                break
+            fi
+        done
+        if [ -n "$SITE_PKG" ]; then
             sed -i "s/^__version__ = .*/__version__ = \"${VER}\"/" "$SITE_PKG" 2>/dev/null || true
         fi
     fi

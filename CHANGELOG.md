@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.1] - 2026-08-25 (fix — install.sh Python 3.10+ on EL8/EL9)
+
+### Fixed
+- **`install.sh`:** no longer assumes default `python3` is new enough.
+  Backend pins need **Python >= 3.10**. EL8 (`3.6`) and EL9 (`3.9`)
+  now fail in preflight with `PYTHON_BIN=/usr/bin/python3.12` instead
+  of a pip `Requires-Python` wall. `PYTHON_BIN` is overridable from
+  the environment or `install.conf` (Closes #42, credit @miharp / PR
+  #43).
+- **ovox version stamp:** `venv/lib/python3.11/site-packages` was
+  hardcoded in `install.sh`, `update_local.sh`, and `deploy.sh`, so
+  the stamp was a no-op on 3.10/3.12 venvs (including EL10). Now
+  globs `python3.*`.
+
 ## [3.12.0] - 2026-08-25 (stable — clustered consoles, one fleet status)
 
 Stable promotion of the **3.12.0-rc.1–rc.48** train on `main`. Per-commit

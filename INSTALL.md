@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.0**
+**OpenVox GUI Version 3.12.1-dev.1**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -47,6 +47,9 @@ cat /etc/os-release
 
 # Check Python is installed (need version 3.10 or newer)
 python3 --version
+# EL8/EL9: default python3 is 3.6/3.9. Use the AppStream package:
+#   sudo dnf install -y python3.12
+#   PYTHON_BIN=/usr/bin/python3.12 in install.conf
 
 # Check you have sudo access
 sudo echo "I have sudo access!"
@@ -244,10 +247,14 @@ sudo yum update -y        # For Red Hat/CentOS
 # OR
 sudo apt update && sudo apt upgrade -y   # For Ubuntu/Debian
 
-# Install required packages
-sudo yum install -y python3 python3-pip git   # For Red Hat/CentOS
-# OR
-sudo apt install -y python3 python3-pip git    # For Ubuntu/Debian
+# Install required packages (Python >= 3.10)
+# EL8/EL9: default python3 is too old — install python3.12 and set
+# PYTHON_BIN=/usr/bin/python3.12 in install.conf
+sudo dnf install -y python3.12 python3.12-pip git   # EL8/EL9
+# EL10 / Fedora: default python3 is already 3.12+
+# sudo dnf install -y python3 python3-pip git
+# Ubuntu/Debian 22.04+:
+sudo apt install -y python3 python3-venv python3-pip git
 ```
 
 ### Step 2: Create a Service User
@@ -332,7 +339,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.0"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.1-dev.1"}` if everything is working.
 
 ---
 
@@ -452,16 +459,22 @@ sudo ./install.sh   # Correct
 ./install.sh        # Wrong - needs sudo
 ```
 
-#### Problem: "Python 3.8+ is required"
+#### Problem: "Python >= 3.10 is required"
 
-**Solution:** Install or update Python:
+The backend pins (FastAPI / pydantic / cryptography) need Python 3.10
+or newer. EL8 default `python3` is 3.6; EL9 is 3.9. The installer now
+fails in preflight instead of later inside pip.
+
+**Solution:** Install a parallel interpreter and point the installer at it:
+
 ```bash
-# Red Hat/CentOS 8:
-sudo yum install -y python38
+# EL8 / EL9 (Alma, Rocky, RHEL):
+sudo dnf install -y python3.12
+# in install.conf:
+# PYTHON_BIN="/usr/bin/python3.12"
 
-# Ubuntu 20.04 already has Python 3.8
-# For older Ubuntu:
-sudo apt install -y python3.8
+# Ubuntu 20.04 / 22.04: system python3 is already 3.8 / 3.10.
+# On 20.04 install 3.10+ from deadsnakes or use 22.04+.
 ```
 
 #### Problem: "Cannot connect to OpenVoxDB"
