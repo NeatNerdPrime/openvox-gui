@@ -14,9 +14,11 @@ On **each ovdb member** (not the VIP name):
 sudo /opt/openvox-gui/scripts/ensure-puppetdb-spock.sh
 ```
 
-Reads use the OpenVoxDB DNS RR (`ovdb.corp`). **Compiler writes**
+Reads use the OpenVoxDB DNS RR (`ovdb.example.com`). **Compiler writes**
 use a single primary (n1 first, n2 failover, `command_broadcast = false`).
-Spock copies n1 → n2/n3/n4. Do not treat four-way DNS RR as a write fan-out.
+Spock on database **puppetdb** copies n1 → n2/n3/n4. That mesh does not
+copy database **openvox_gui**. Do not treat four-way DNS RR as a write
+fan-out. Full setup: [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 
 | VIP | Role | Hide on Nodes? |
 |-----|------|----------------|
@@ -24,11 +26,11 @@ Spock copies n1 → n2/n3/n4. Do not treat four-way DNS RR as a write fan-out.
 | `ovca.example.com` | CA | Yes (DNS only) |
 | `ovcompilers.<site>-it.…` | HAProxy VM + agent | **No** |
 
-GUI `OPENVOX_GUI_PUPPETDB_HOST=ovdb.corp` is the clustered **read**
+GUI `OPENVOX_GUI_PUPPETDB_HOST=ovdb.example.com` is the clustered **read**
 end state, only when every A record’s `/pdb/query/v4/nodes` count
 matches (preflight). Compilers stay on `server_urls` n1, n2.
 
-Do **not** put `ovdb.corp` in `/etc/hosts`. Members may be in hosts;
+Do **not** put `ovdb.example.com` in `/etc/hosts`. Members may be in hosts;
 the VIP FQDN must come from DNS.
 
 ## Bolt (Play button)
@@ -80,12 +82,13 @@ match. Put `reports` in `default` when the table has a PK; otherwise
 a new agent run against the site VIP is enough once apply works.
 
 Do **not** point `OPENVOX_GUI_PUPPETDB_HOST` at `ovdb1.*` except as a
-temporary read while you repair Spock. Putting it back on `ovdb.corp`
-is the clustered end state.
+temporary read while you repair Spock. Putting it back on
+`ovdb.example.com` is the clustered end state.
 
 ## What “healthy” looks like
 
 - `estate-health-check.sh` **PASS** on **both** consoles
-- `/nodes` count **equal** on `.32.76/77/78` and `.160.76/77/78`
+- `/nodes` count **equal** on every ovdb member and both site VIPs
+  (see [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt))
 - Play on an ATLC name from the **PDXC** console succeeds (and the reverse)
 - `bolt inventory show` lists ENC groups or estate targets without `_error`

@@ -6,6 +6,19 @@ etc.) is tracked as a versioned migration script with both `upgrade()` and
 `downgrade()` functions, enabling safe branch switching between stable and
 feature branches.
 
+## Current head
+
+`004_cluster_secrets` (2026-08-10). Clustered and AIO use the same chain.
+
+| Revision | Adds |
+|----------|------|
+| `001_baseline` | Existing GUI tables (users, ENC, sessions, history, …) |
+| `002_add_api_tokens` | `api_tokens` for ovox / Bolt service tokens |
+| `003_add_role_to_api_tokens` | `role` on `api_tokens` |
+| `004_cluster_secrets` | `cluster_secrets` (`enc:v1:` Fernet values) |
+
+**New Postgres (`openvox_gui`):** `scripts/bootstrap-openvox-gui-db.sh` runs SQLAlchemy `create_all` then `alembic stamp head`. Do not `upgrade` immediately after that — the tables already exist. Later deploys use `upgrade head` (update_local.sh). Empty `CREATE DATABASE openvox_gui` is not a schema. See [docs/CLUSTERED_SHARED_DB.txt](../../docs/CLUSTERED_SHARED_DB.txt).
+
 ## How It Works
 
 ```

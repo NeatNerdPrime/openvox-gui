@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.0-rc.45**
+**OpenVox GUI Version 3.12.0-rc.46**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.0-rc.45"}
+   # Should return: {"status":"ok","version":"3.12.0-rc.46"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -622,6 +622,8 @@ Use `sudo puppet config print ssldir`.
 
 ## GUI node count ≠ PuppetDB
 
+New estate or two-console cutover: read [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) first. There are **two** databases (`puppetdb` vs `openvox_gui`) and **two** Spock meshes. `/nodes` is catalogs, not `INSERT` into `certnames`.
+
 **Symptoms:** `ovox nodes list` shows 7 (or 8) names; `SELECT count(*) FROM certnames` on an ovdb is 16.
 
 **This is not a cache.** Three different numbers:
@@ -659,7 +661,7 @@ Both pages use the same live census (after rc.37). A node is
    (`OPENVOX_GUI_NODE_FRESH_HOURS`).
 
 It is **not** “puppet agent -tv printed Applied.” The report must exist
-on **this** PDB (often `ovdb.corp` → one site). An ATLC compile stores
+on **this** PDB (often `ovdb.example.com` → one site). An ATLC compile stores
 the report on ATLC; PDXC can still say Unreported.
 
 **See why one name is Unreported** (console, as root):

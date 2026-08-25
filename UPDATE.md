@@ -1,6 +1,6 @@
 # Update Guide
 
-**OpenVox GUI Version 3.12.0-rc.45**
+**OpenVox GUI Version 3.12.0-rc.46**
 
 This guide explains how to update your existing OpenVox GUI installation to the latest version. Updates bring new features, bug fixes, and security improvements.
 
@@ -191,7 +191,7 @@ The script automatically:
 curl -k https://localhost:4567/health
 
 # Should show something like:
-# {"status":"ok","version":"3.12.0-rc.45"}
+# {"status":"ok","version":"3.12.0-rc.46"}
 ```
 
 Open your browser and refresh the page. You might need to clear your browser cache:
@@ -569,7 +569,7 @@ sudo systemctl restart openvox-gui
 
 #### Problem: Database errors after update
 
-**Solution:** Run database migrations:
+**Solution:** Run database migrations (`update_local.sh` already does this):
 
 ```bash
 cd /opt/openvox-gui/backend
@@ -578,6 +578,13 @@ python -m alembic upgrade head
 deactivate
 sudo systemctl restart openvox-gui
 ```
+
+Current head is `004_cluster_secrets`. A new Postgres `openvox_gui`
+from `bootstrap-openvox-gui-db.sh` is already stamped — do not treat
+an empty `CREATE DATABASE` as a schema. Two consoles share one
+`openvox_gui` database (never `puppetdb`). See
+[docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) and
+[backend/alembic/README.md](backend/alembic/README.md).
 
 ### Getting Update Help
 

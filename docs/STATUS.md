@@ -1,8 +1,8 @@
 # OpenVox GUI — Project status (release readiness)
 
-**As of:** 2026-08-24  
+**As of:** 2026-08-25  
 **Branch:** `main`  
-**VERSION file:** `3.12.0-rc.42` (train continues; bump on each push)  
+**VERSION file:** see repo `VERSION` (3.12.0-rc train; bump on each push)  
 **Last stable GitHub Release:** **3.10.6** (still recommended for production AIO unless you opt into 3.12-rc)
 
 This document freezes **where we are** after the 3.12 clustering/VIP/ovox week, so Monday’s **roles/profiles** work starts from a clean map. It covers **all-in-one (AIO)** and **clustered** installs.
@@ -47,8 +47,10 @@ Pre-release labels must be PEP 440 (`rc` / `a` / `b` / `dev`). Do **not** use `g
 ### Fleet / Nodes
 - Live fleet = active PDB `/nodes` − DNS RR names only (`ovcompilers.*` stay)  
 - `cluster-preflight.sh` refuses `/etc/hosts` pins of the PDB VIP  
-- `ensure-puppetdb-spock.sh` grants `pg_replication_origin_*` to `repl_user`  
-- Status badge = newest OpenVoxDB **report** `status` (not CA)
+- `ensure-puppetdb-spock.sh` grants `pg_replication_origin_*` to `repl_user` on database **puppetdb**  
+- `bootstrap-openvox-gui-db.sh` provisions database **openvox_gui** (separate mesh)  
+- Status badge = newest OpenVoxDB **report** `status` (not CA)  
+- Failed ages out at 8h, any report older than 24h is Unreported; Overview and Monitoring share that census
 
 ### Log Viewer
 - Empty remote logs → **200** + message, not 502 “no log JSON”
@@ -125,7 +127,8 @@ Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,pu
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Single vs clustered |
 | [STATUS.md](STATUS.md) | **This file** — where we are |
 | [VIP_SESSIONS.md](VIP_SESSIONS.md) | Dual console sessions |
-| [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) | Shared GUI DB |
+| [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) | **Runbook:** two DBs, two Spock meshes, alembic, new-estate order |
+| [ESTATE_HEALTH.md](ESTATE_HEALTH.md) | Post-install console / Bolt / VIP checks |
 | [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) | Ops failures |
 | [SECURITY.md](../SECURITY.md) | Support matrix + reporting |
 | [TUNING.md](TUNING.md) | ovox infra (AIO + clustered notes) |
@@ -170,7 +173,9 @@ Compilers need `reports` under **`[server]`**. CA-only: **no** `reports=store,pu
 - [ ] `ovox infra settings show` shows `source: bolt` + host or clear warnings  
 - [ ] VIP login stable ≥ session floor; direct FQDN still OK  
 - [x] Fleet exclude **never** hides first-label `ovcompilers.*` (HAProxy agents)  
-- [x] Compilers write n1 then n2 (`command_broadcast=false`); GUI reads `ovdb.corp` when preflight is green  
+- [x] Compilers write n1 then n2 (`command_broadcast=false`); GUI reads `ovdb.example.com` when preflight is green  
+- [ ] `cluster-preflight.sh` PASS; `ensure-puppetdb-spock.sh` run on every ovdb member  
+- [ ] Both consoles: same `SECRET_KEY` + `OPENVOX_GUI_DATABASE_URL` (`openvox_gui`, not `puppetdb`)  
 - [ ] Log Viewer empty host → 200 not 502  
 
 ### Before GitHub Release 3.12.0
@@ -207,6 +212,10 @@ Estate map in Hiera should feed **both** Puppet and GUI `cluster_config.json`.
 4. `NO_PROXY` suffixes for internal domains; **systemd** for puppetserver, not only profile.d.  
 5. Dual console badge disagreement with same PQL → check **live_run** overlay vs PDB.  
 6. pcs CA restart via **Pacemaker**, not bare systemctl on Promoted stack.  
+7. **Two databases:** `puppetdb` (compiler writes, existing Spock) vs `openvox_gui` (GUI ENC/users/secrets). CREATE DATABASE does not follow the other mesh.  
+8. `/nodes` follows **catalogs**. Never `INSERT` fleet stubs; never `sub_resync_table` on `certnames`.  
+9. PG17 Spock apply needs `pg_replication_origin_*` EXECUTE (`ensure-puppetdb-spock.sh`).  
+10. Same `SECRET_KEY` on every console or LDAP decrypts on one site only.  
 
 ---
 

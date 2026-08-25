@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.0-rc.46] - 2026-08-25 (docs — clustered DB / Spock runbook for a new estate)
+
+### Changed
+- **docs/CLUSTERED_SHARED_DB.txt:** rewritten as the current new-estate
+  runbook. Two databases (`puppetdb` vs `openvox_gui`), two Spock
+  meshes, Alembic `001`–`004`, `bootstrap-openvox-gui-db.sh` as the
+  provision path, and the field failures from this week (empty DB ≠
+  schema, origin grants, `/nodes` = catalogs, SECRET_KEY/LDAP, DNS RR
+  vs writes, `sub_resync_table` on `certnames`). Removed the stale
+  `v3.11.0-alpha.9` checkout.
+- **INSTALL / STATUS / ESTATE_HEALTH / FEATURES / ARCHITECTURE /
+  VIP_SESSIONS / TROUBLESHOOTING / UPDATE / alembic README /
+  .env.example:** point at that runbook; document 8h/24h freshness
+  and ENC TLS verify; leftover `ovdb.corp` examples → `example.com`.
+
 ## [3.12.0-rc.45] - 2026-08-24 (docs — scrub estate FQDNs and 172.29 from docs)
 
 ### Changed

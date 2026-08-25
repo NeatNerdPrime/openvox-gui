@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.0-rc.45**
+**OpenVox GUI Version 3.12.0-rc.46**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -332,7 +332,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.0-rc.45"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.0-rc.46"}` if everything is working.
 
 ---
 
@@ -667,7 +667,7 @@ Now that you have OpenVox GUI installed:
 
 > **Most sites stop here.** The standard install places OpenVox GUI on a single OpenVox Server host. That model is intentional, well-supported, and sufficient for the large majority of environments (roughly **90%+** of deployments).
 >
-> This section is for **extra large** estates—many catalog compilers, multi-node OpenVoxDB, site-loss resilience, or multi–data-center designs—where OpenVox GUI’s **clustered** features become useful. It describes **capabilities, design philosophy, and workflow**, not a full multi-DC build runbook.
+> This section is for **extra large** estates—many catalog compilers, multi-node OpenVoxDB, site-loss resilience, or multi–data-center designs—where OpenVox GUI’s **clustered** features become useful. It describes **capabilities, design philosophy, and console workflow**. The GUI database, the two Spock meshes, and the mistakes that hide nodes live in [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). Pacemaker/DRBD and VIP/SAN design stay out of this product.
 
 ### Philosophy of operation
 
@@ -677,7 +677,7 @@ Now that you have OpenVox GUI installed:
 | **Opt-in clustered mode** | A explicit **Settings → Cluster** switch turns on multi-server awareness. Until then, the product behaves as a classic one-box console. |
 | **GUI is not the control plane fabric** | Compilers, OpenVoxDB mesh, and CA HA are **infrastructure** concerns. OpenVox GUI observes, configures, deploys, and classifies—it does not replace Pacemaker, Spock, or your load balancers. |
 | **FQDN over VIP for member health** | When checking individual machines, probe **each host’s FQDN** (compiler :8140, OpenVoxDB :8081, CA members :8140). VIPs answer “is the service reachable?”; FQDNs answer “is **this** member healthy?” |
-| **HAProxy frontends are nodes** | `ovcompilers.<site>-it.…` is a real VM (HAProxy + agent). DNS RR names (`ovca.corp`, `ovdb.corp`) are not. Details under **Compiler VIP names** below and in [docs/FEATURES.md](docs/FEATURES.md) (Live fleet). |
+| **HAProxy frontends are nodes** | `ovcompilers.<site>-it.…` is a real VM (HAProxy + agent). DNS RR names (`ovca.example.com`, `ovdb.example.com`) are not. Details under **Compiler VIP names** below and in [docs/FEATURES.md](docs/FEATURES.md) (Live fleet). |
 | **Same moment, same code** | In multi-compiler estates, code must not go live on one compiler minutes before another. Clustered **stage → activate** is about aligning that cutover. |
 | **Classification segments roles** | Compilers and OpenVoxDB hosts are fleet members too. ENC groups such as **Puppet Compiler** and **PuppetDB** keep roles visible and manageable without inventing a second inventory system. |
 
@@ -752,7 +752,7 @@ When **Settings → Cluster** is set to **clustered**, OpenVox GUI can:
    Seeded ENC groups such as **Puppet Compiler** and **PuppetDB**, with configured FQDNs attached, so infrastructure roles are first-class in **Classification and Code → Classification**.
 
 5. **What stays out of scope for this document**  
-   Full multi-DC bootstrap, DRBD/Pacemaker recipes, Spock mesh procedures, and VIP/SAN design deep-dives are **not** reproduced here. Those are infrastructure projects; the GUI assumes that foundation exists or is being built under separate design work.
+   DRBD/Pacemaker recipes and VIP/SAN design are infrastructure projects. **GUI Postgres (`openvox_gui`) and both Spock meshes** (PuppetDB vs GUI) are the runbook: [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt). The installer can provision the GUI database when `OPENVOX_GUI_DB_BACKEND=postgresql` (see `install.conf.example`).
 
 ### Basic operator workflow (clustered GUI)
 
@@ -812,9 +812,12 @@ sudo /opt/openvox-gui/scripts/seed-bolt-known-hosts.sh
 See [docs/ESTATE_HEALTH.md](docs/ESTATE_HEALTH.md).
 
 The installer runs `scripts/cluster-preflight.sh` after writing `.env`.
-On every ovdb, run `scripts/ensure-puppetdb-spock.sh` once so Spock
-apply does not crash-loop on PG17 origin functions. Re-run preflight
-any time the GUI node count disagrees with `/pdb/query/v4/nodes`.
+On every ovdb **member**, run `scripts/ensure-puppetdb-spock.sh` once so
+Spock apply on database **puppetdb** does not crash-loop on PG17 origin
+functions. That script is not the GUI-database mesh — `openvox_gui` is
+a separate database (bootstrap `--spock` or WAN to n1). Re-run preflight
+any time the GUI node count disagrees with `/pdb/query/v4/nodes`. Full
+order of operations: [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt).
 
 ### When to call for design help
 
@@ -837,12 +840,12 @@ A more detailed advanced installation example may be published in a later OpenVo
 
 Typical path for an existing singleton (or smaller) production estate:
 
-1. **Stand up** the new multi-server OpenVox + GUI (3.11+ clustered) environment separately.  
+1. **Stand up** the new multi-server OpenVox + GUI (**3.12.0-rc+** clustered) environment separately.  
 2. **Migrate agents and roles** onto that estate (compilers, OpenVoxDB, CA policy as designed).  
-3. **Do not** require a big-bang “upgrade the old production box to clustered 3.11 in place.”  
-4. After migration, **repurpose the former production OpenVox host(s)** as a **development / lab instance** (lower risk experiments, GUI alpha trains, training).
+3. **Do not** require a big-bang “upgrade the old production box to clustered 3.12 in place.”  
+4. After migration, **repurpose the former production OpenVox host(s)** as a **development / lab instance** (lower risk experiments, GUI rc trains, training).
 
-That keeps production stable on a known 3.10.x line until agents are moved, then gives you a permanent internal machine for ongoing OpenVox GUI and platform development.
+That keeps production stable on a known 3.10.x line until agents are moved, then gives you a permanent internal machine for ongoing OpenVox GUI and platform development. Use [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) when the new estate’s consoles share ENC.
 
 ---
 

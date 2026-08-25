@@ -5,7 +5,7 @@
 **Scope:** every primary **page**, **capability**, and **supporting subsystem** in the product as shipped on `main`.
 
 **Where we are:** [STATUS.md](STATUS.md) (AIO vs clustered readiness).  
-This is the canonical “what does the product do?” inventory. Installation and ops runbooks live in [INSTALL.md](../INSTALL.md), [UPDATE.md](../UPDATE.md), and [TROUBLESHOOTING.md](../TROUBLESHOOTING.md). Architecture and multi-console design: [ARCHITECTURE.md](ARCHITECTURE.md), [VIP_SESSIONS.md](VIP_SESSIONS.md), [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
+This is the canonical “what does the product do?” inventory. Installation and ops runbooks live in [INSTALL.md](../INSTALL.md), [UPDATE.md](../UPDATE.md), [TROUBLESHOOTING.md](../TROUBLESHOOTING.md), and the clustered DB/Spock runbook [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt). Architecture and multi-console design: [ARCHITECTURE.md](ARCHITECTURE.md), [VIP_SESSIONS.md](VIP_SESSIONS.md), [ESTATE_HEALTH.md](ESTATE_HEALTH.md).
 
 ---
 
@@ -355,7 +355,7 @@ Same RBAC as the web UI via session or service token.
 | JVM / server tuning via ovox | [TUNING.md](TUNING.md) |
 | Maintenance pages + flag | UPDATE.md + `ovox maintenance` |
 | Dual-console VIP sessions | [VIP_SESSIONS.md](VIP_SESSIONS.md) |
-| Shared DB / Spock notes | [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) |
+| Shared DB / two Spock meshes (runbook) | [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt) |
 | Estate health (clustered) | [ESTATE_HEALTH.md](ESTATE_HEALTH.md) |
 | Agent disabled fact | [puppet-agent-disabled-fact.md](puppet-agent-disabled-fact.md) |
 
@@ -365,10 +365,10 @@ Same RBAC as the web UI via session or service token.
 
 Unless a page is **CA-authoritative** (Certificates) or explicitly historical:
 
-**Shown nodes = active OpenVoxDB `certnames` − DNS RR names only.**
+**Shown nodes = active OpenVoxDB `/nodes` (catalogs) − DNS RR names only.**
 
 PuppetDB is the CMDB. The CA list is **not** intersected (a site-wrong
-`ovca.corp` lookup must not hide agents). Certificates page stays
+`ovca.example.com` lookup must not hide agents). Certificates page stays
 CA-centric. Two things are both called “VIPs” — they are not the same.
 
 ### DNS round-robin (no computer)
@@ -410,7 +410,7 @@ agent, also visible.
 
 | You are looking at… | Hide? | Classify as |
 |---------------------|-------|-------------|
-| `ovca.corp…` / `ovdb.corp…` | Yes (DNS RR) | Never — not a host |
+| `ovca.example.com` / `ovdb.example.com` | Yes (DNS RR) | Never — not a host |
 | `ovcompilers.<site>-it…` | **No** | HAProxy / base agent |
 | `ovcompiler1.<site>-it…` | No | Catalog compiler |
 | `ovdb1.<site>-it…` | No | OpenVoxDB member |
@@ -442,9 +442,11 @@ When you first turn on Settings → Cluster:
    matches). Those go in `ca_vips` / `dns_rr_vips` / `fleet_exclude`.
 2. List HAProxy frontends. Name them `ovcompilers.<site>-it.…`.
    Do **not** put those names in the hide fields.
-3. Point `OPENVOX_GUI_PUPPETDB_HOST` at one healthy OpenVoxDB
-   (`ovdb1.<site>-it.…`) until every address behind `ovdb.corp` has
-   the same `certnames` table.
+3. Point `OPENVOX_GUI_PUPPETDB_HOST` at `ovdb.example.com` when
+   `cluster-preflight.sh` shows every A record agreeing on `/nodes`.
+   Use a single `ovdb1.*` only as a temporary read while you repair
+   Spock. `/nodes` follows catalogs, not SQL `certnames`. See
+   [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 4. Point `OPENVOX_GUI_PUPPET_CA_HOST` at the CA you sign on
    (Certificates page only). Nodes do not use the CA for membership.
 5. After the HAProxy box’s first successful `puppet agent` run, it

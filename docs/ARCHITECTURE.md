@@ -22,7 +22,7 @@ Both are clients of one FastAPI backend. There is no separate public vs internal
 | **single** | OpenVox Server (co-located) | SQLite or Postgres | Local fs, local CA tools |
 | **clustered** | Dedicated console(s) | **Postgres `openvox_gui` required** | Compilers via Bolt/HTTP; CA via `OPENVOX_GUI_PUPPET_CA_HOST` |
 
-**Live fleet rule:** `get_live_nodes()` = active OpenVoxDB `certnames` minus DNS RR names (`ovca.corp`, `ovdb.corp`). HAProxy frontends (`ovcompilers.<site>-it.…`) are real agents and stay visible. Certificates page remains CA-authoritative. See [FEATURES.md](FEATURES.md#live-fleet-membership-cross-cutting-rule).
+**Live fleet rule:** `get_live_nodes()` = active OpenVoxDB `/nodes` (catalogs) minus DNS RR names (`ovca.example.com`, `ovdb.example.com`). HAProxy frontends (`ovcompilers.<site>-it.…`) are real agents and stay visible. Certificates page remains CA-authoritative. Two Postgres databases (`puppetdb` vs `openvox_gui`) and two Spock meshes: [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt). See [FEATURES.md](FEATURES.md#live-fleet-membership-cross-cutting-rule).
 
 **3.12 VIP sessions:** dual consoles behind one LB hostname need identical `SECRET_KEY`, shared Postgres, and `vip_hosts` / `OPENVOX_GUI_VIP_HOSTS`. SPA `access_mode=vip|direct` softens polls and never hard-reloads on 401. See [VIP_SESSIONS.md](VIP_SESSIONS.md).
 

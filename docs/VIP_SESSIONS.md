@@ -44,7 +44,9 @@ Direct node URLs keep the historic aggressive polling behaviour:
 Both consoles **must** share:
 
 - `OPENVOX_GUI_SECRET_KEY` (identical)
-- Postgres `openvox_gui` (`OPENVOX_GUI_DATABASE_URL`)
+- Postgres `openvox_gui` (`OPENVOX_GUI_DATABASE_URL`) — never the `puppetdb` database
+
+Order of operations and the two Spock meshes: [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 
 ### 2. Declare VIP hostnames
 

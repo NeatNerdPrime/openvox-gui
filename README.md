@@ -88,7 +88,7 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 | [UPDATE.md](UPDATE.md) | Clone-then-deploy updates, maintenance windows |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, single vs clustered console |
 | [docs/VIP_SESSIONS.md](docs/VIP_SESSIONS.md) | Dual-console VIP session / poll behaviour (3.12+) |
-| [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) | Shared `openvox_gui` Postgres / multi-console data |
+| [docs/CLUSTERED_SHARED_DB.txt](docs/CLUSTERED_SHARED_DB.txt) | Clustered DB + Spock runbook (two databases, two meshes) |
 | [docs/LDAP.md](docs/LDAP.md) | LDAP / Active Directory |
 | [docs/SUDOERS.md](docs/SUDOERS.md) | Service-user sudo rules |
 | [docs/METRICS.md](docs/METRICS.md) | Jolokia / auth.conf for Insights JMX charts |
