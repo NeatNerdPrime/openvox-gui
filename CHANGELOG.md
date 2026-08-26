@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.7] - 2026-08-26 (fix — create service group before useradd)
+
+### Fixed
+- **`install.sh` (#45):** Step 1 now `groupadd --system` for
+  `SERVICE_GROUP` when it is missing, and no longer swallows
+  `useradd` errors. Dedicated consoles (no OpenVox Server package)
+  and custom service users were printing *Created system user
+  'puppet'* then dying minutes later at `chown: invalid user`.
+  Reported by @miharp; same approach as PR #47.
+
+### Added
+- `tests/shell/test_installer_service_user.sh` — group-then-user
+  flow for defaults, re-run, and custom names.
+
 ## [3.12.1-dev.6] - 2026-08-26 (fix — TLS installer health probe)
 
 ### Fixed

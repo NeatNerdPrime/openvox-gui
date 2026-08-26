@@ -58,6 +58,14 @@ else
 fi
 
 echo
+echo "── installer service user (#45) ──"
+if bash "$REPO_ROOT/tests/shell/test_installer_service_user.sh"; then
+  pass "test_installer_service_user.sh"
+else
+  fail "test_installer_service_user.sh"
+fi
+
+echo
 echo "── VERSION is present and PEP 440-ish ──"
 ver="$(tr -d '[:space:]' < VERSION)"
 if [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?$ ]]; then
