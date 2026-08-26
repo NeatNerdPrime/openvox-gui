@@ -144,6 +144,14 @@ for doc in "${DOCS[@]}"; do
     fi
 done
 
+# README shields.io badge: hyphens in the version must be doubled
+README="$REPO_ROOT/README.md"
+if [ -f "$README" ]; then
+    SHIELDS_VER=$(printf '%s' "$NEW_VERSION" | sed 's/-/--/g')
+    sed -i.bak -E "s#version-[A-Za-z0-9._+-]+-orange#version-${SHIELDS_VER}-orange#" "$README"
+    rm -f "$README.bak"
+fi
+
 # ── 4. Health check examples in docs ─────────────────────────
 for doc in "INSTALL.md" "UPDATE.md" "TROUBLESHOOTING.md"; do
     DOC_PATH="$REPO_ROOT/$doc"

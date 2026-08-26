@@ -28,6 +28,6 @@ and implement complex business logic (hierarchical ENC resolution).
 - Errors are logged with context for debugging
 """
 
-from .puppetdb import PuppetDBService
-from .puppetserver import PuppetServerService
-from .enc import HierarchicalENCService as ENCService
+# Import submodules on demand (`from app.services.enc import ...`).
+# Eager imports here pull database.py, which mkdir's data_dir at import
+# time and breaks unit tests / CI that are not running as the service user.

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from app.services import cluster_config as cc
 from app.services.cluster_config import (
     fleet_excluded_certnames,
     is_compiler_haproxy_agent,
@@ -35,9 +36,8 @@ def test_fleet_excluded_merges_cluster_lists():
         "enc_api_urls": [],
         "database_backend": "postgresql",
     }
-    with patch("app.services.cluster_config.load_cluster_config", return_value=cfg):
-        with patch("app.services.cluster_config.settings") as st:
-            st.fleet_exclude = "env-only.example.com"
+    with patch.object(cc, "load_cluster_config", return_value=cfg):
+        with patch.object(cc.settings, "fleet_exclude", "env-only.example.com"):
             xs = fleet_excluded_certnames()
     assert "ovcompilers.pdxc-it.corp.example.com" not in xs
     assert "ovdb.corp.example.com" in xs

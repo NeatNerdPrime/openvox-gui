@@ -304,10 +304,10 @@ function MetricsPerformanceContent({
 }) {
 
   // Agent-side data — stride + cap before Recharts bind
-  const rawTrends = perfData.run_time_trends || [];
+  const rawTrends = (perfData.run_time_trends || []) as Record<string, unknown>[];
   const trends = smoothTimeSeries(
     downsampleSeries(
-      rawTrends.filter((_: any, i: number) => i % 2 === 0).slice(-240),
+      rawTrends.filter((_: Record<string, unknown>, i: number) => i % 2 === 0).slice(-240),
       120,
     ),
   );

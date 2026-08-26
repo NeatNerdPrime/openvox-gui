@@ -13,6 +13,38 @@ import types
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import pytest
+
+_STUB_KEYS = (
+    "fastapi",
+    "fastapi.responses",
+    "pydantic",
+    "app.middleware.security",
+    "app.dependencies",
+    "app.utils.sudo",
+    "app.services.deploy_history",
+    "app.routers.deploy",
+    "app.services.cluster_config",
+    "app.routers.bolt_runtime",
+    "app.utils.audit",
+)
+
+
+@pytest.fixture(autouse=True)
+def _restore_sys_modules():
+    """Do not leak FastAPI/pydantic stubs into later test modules."""
+    saved = {k: sys.modules.get(k) for k in _STUB_KEYS}
+    try:
+        yield
+    finally:
+        for key, mod in saved.items():
+            if mod is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = mod
+        if getattr(_install_stubs, "_done", False):
+            _install_stubs._done = False  # type: ignore[attr-defined]
+
 
 def _pkg(name: str) -> types.ModuleType:
     if name in sys.modules:

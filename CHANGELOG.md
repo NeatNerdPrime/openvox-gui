@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.4] - 2026-08-26 (ci — first-class test suite + current docs)
+
+### Added
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): pytest on Python
+  3.10/3.11, ruff error-class rules, frontend typecheck + Vitest + Vite
+  build, `bash -n` / ShellCheck, Bolt ENC plugin tests, VERSION lockstep.
+- **Vitest** for frontend helpers (status, export, charts, session cache,
+  VIP poll floor, chunk-load errors).
+- **docs/TESTING.md** — how to run the same checks locally.
+- Dev extras: `backend/requirements-dev.txt`, root `pyproject.toml`,
+  `scripts/ci-quality.sh`, `scripts/run-ci-local.sh`, Dependabot for
+  Actions / pip / npm.
+
+### Fixed
+- Restored `app.services.enc_merge` so ENC merge tests import without
+  SQLAlchemy.
+- Token expiry used `datetime`/`timezone` without importing them.
+- TypeScript: `dns_rr_vips` on cluster save, Node Health live lookup,
+  Performance trend series typing.
+- Existing pytest files no longer leak FastAPI stubs into later tests
+  or mkdir `/opt/openvox-gui` on a laptop/CI runner.
+
+### Changed
+- Docs brought current: README version badge + React 19, STATUS 3.12.1-dev
+  train, FEATURES stack, CONTRIBUTING / SECURITY / AGENTS CI notes.
+- `bump-version.sh` now syncs the README shields.io badge.
+- Security audit workflow uses Node 22 (react-router engine floor).
+
 ## [3.12.1-dev.3] - 2026-08-25 (perf — inventory no longer waits on peer reports)
 
 ### Changed

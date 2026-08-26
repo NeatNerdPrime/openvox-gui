@@ -1,8 +1,8 @@
-# OpenVox GUI — Project status (3.12.0)
+# OpenVox GUI — Project status (3.12.1-dev)
 
-**As of:** 2026-08-25  
+**As of:** 2026-08-26  
 **Branch:** `main`  
-**VERSION file:** `3.12.0`  
+**VERSION file:** see repo root `VERSION` (`3.12.1-dev.N` train)  
 **Current stable GitHub Release:** **3.12.0** (`v3.12.0`)
 
 This file is the operator map after the 3.12 clustering / VIP / fleet-status
@@ -26,6 +26,7 @@ defaults. Clustering is documented and supported in 3.12.0.
 
 | Line | Status | Notes |
 |------|--------|--------|
+| **3.12.1-dev.N** | **Active train** | Post-3.12.0 fixes (inventory, remote CA via Bolt, installer Python). See `VERSION`. |
 | **3.12.0** | **Stable** | Current GitHub Release. AIO + clustered. |
 | **3.10.6** | Prior stable | Fine for classic AIO if you are not ready to upgrade |
 | **3.11.x** | Historical beta | Clustered console foundations; prefer 3.12.0 |
@@ -126,6 +127,7 @@ See [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 | [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) | Ops failures |
 | [SECURITY.md](../SECURITY.md) | Support matrix |
 | [TUNING.md](TUNING.md) | ovox infra |
+| [TESTING.md](TESTING.md) | CI + local test suite |
 
 ---
 
@@ -138,6 +140,15 @@ See [CLUSTERED_SHARED_DB.txt](CLUSTERED_SHARED_DB.txt).
 5. **Two databases:** `puppetdb` vs `openvox_gui`. CREATE DATABASE does not follow the other mesh.
 6. `/nodes` follows **catalogs**. Never `INSERT` fleet stubs; never `sub_resync_table` on `certnames`.
 7. Same `SECRET_KEY` on every console or LDAP decrypts on one site only.
+
+---
+
+## 7. Continuous integration
+
+As of 2026-08-26 every push to `main` runs `.github/workflows/ci.yml`
+(pytest, ruff, Vitest, Vite build, shell syntax, bolt-plugin, VERSION
+lockstep). See [TESTING.md](TESTING.md). Security audits stay on
+`.github/workflows/security.yml`.
 
 ---
 

@@ -1,0 +1,56 @@
+# Tooling for the OpenVox GUI monorepo (backend + ovox + CI).
+# Runtime pins stay in backend/requirements.txt and ovox/pyproject.toml.
+[project]
+name = "openvox-gui-dev"
+version = "0.0.0"
+requires-python = ">=3.10"
+description = "Development tooling metadata for OpenVox GUI (not published)"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["backend/tests", "tests/ovox"]
+pythonpath = ["backend"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+  "-q",
+  "--strict-markers",
+  "--tb=short",
+  "--import-mode=importlib",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["backend/app", "ovox/ovox"]
+branch = true
+omit = [
+  "*/tests/*",
+  "*/alembic/*",
+  "*/venv/*",
+]
+
+[tool.coverage.report]
+skip_empty = true
+show_missing = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["backend", "ovox"]
+extend-exclude = [
+  "backend/venv",
+  "frontend/node_modules",
+  "frontend/dist",
+  ".venv-pip-audit",
+]
+
+[tool.ruff.lint]
+# CI gate: real bugs only. Style nits (E501, import order) stay local/optional.
+select = [
+  "E9",   # runtime syntax errors
+  "F63",  # is/is not vs ==
+  "F7",   # syntax error in type comments / f-strings
+  "F82",  # undefined names
+]

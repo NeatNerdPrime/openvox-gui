@@ -1,0 +1,148 @@
+# Continuous integration for OpenVox GUI
+#
+# Moderate, modern gates — unit tests + syntax/quality. Not a live
+# Puppet estate. Security dependency audits stay in security.yml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend + ovox (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor (EL/install.sh) and lab production (3.11)
+        python-version: ["3.10", "3.11"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install backend + test extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+      - name: Ruff (error-class rules)
+        run: ruff check --select E9,F821,F822,F823 backend/app backend/tests ovox/ovox tests/ovox
+
+      - name: Pytest (backend + ovox)
+        env:
+          OPENVOX_GUI_SECRET_KEY: ci-test-not-for-production
+          OPENVOX_GUI_AUTH_BACKEND: none
+        run: python -m pytest --cov --cov-report=term-missing
+
+  frontend:
+    name: Frontend (typecheck, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies (lockfile)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+  shell:
+    name: Shell syntax + smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      - name: bash -n + helper smoke
+        run: |
+          chmod +x scripts/*.sh tests/shell/run.sh bolt-plugin/bin/run-tests
+          ./tests/shell/run.sh
+
+      - name: ShellCheck (curated scripts, errors only)
+        run: |
+          shellcheck --severity=error --shell=bash \
+            scripts/bump-version.sh \
+            scripts/ci-pip-audit.sh \
+            scripts/ci-quality.sh \
+            scripts/run-ci-local.sh \
+            tests/shell/run.sh \
+            bolt-plugin/bin/run-tests
+
+  bolt-plugin:
+    name: Bolt plugin (Ruby)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+
+      - name: Plugin unit tests
+        run: |
+          chmod +x bolt-plugin/bin/run-tests
+          bolt-plugin/bin/run-tests
+
+  quality:
+    name: Version lockstep + leak scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: ci-quality.sh
+        run: |
+          chmod +x scripts/ci-quality.sh
+          ./scripts/ci-quality.sh

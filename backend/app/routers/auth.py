@@ -561,7 +561,7 @@ async def create_user_api_token(username: str, data: CreateApiTokenRequest, requ
 
     expires_at = None
     if data.expires_in_days and data.expires_in_days > 0:
-        from datetime import timedelta
+        from datetime import datetime, timedelta, timezone
         expires_at = datetime.now(timezone.utc) + timedelta(days=data.expires_in_days)
 
     try:

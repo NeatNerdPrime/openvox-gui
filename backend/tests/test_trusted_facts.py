@@ -69,8 +69,9 @@ def test_extract_trusted_extensions_maps_pp_role():
             "1.3.6.1.4.1.34380.1.1.13": _utf8_der("webserver"),
             "1.3.6.1.4.1.34380.1.1.12": _utf8_der("production"),
             "1.3.6.1.4.1.34380.1.1.19": _utf8_der("dc1"),
-            # Non-Puppet OID must be ignored
-            "2.5.29.19": _utf8_der("ignore-me"),
+            # Non-Puppet OID must be ignored (do not use 2.5.29.19 —
+            # cryptography 50 parses that as BasicConstraints).
+            "1.2.3.4.5": _utf8_der("ignore-me"),
         },
     )
     # Note: BasicConstraints is a standard OID; our UnrecognizedExtension with

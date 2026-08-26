@@ -1,5 +1,5 @@
 # Same layout as the working single-server install
-# (openvox.pdxc-it.twitter.biz /etc/puppetlabs/bolt/inventory.yaml).
+# (/etc/puppetlabs/bolt/inventory.yaml on a singleton OpenVox Server).
 #
 # Fleet membership for GUI "all nodes" is OpenVoxDB via the GUI API
 # (resolve_targets), not Bolt's puppetdb inventory plugin.

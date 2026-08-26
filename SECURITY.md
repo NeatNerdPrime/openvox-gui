@@ -15,6 +15,8 @@ We actively support security and operational updates for the latest stable and p
 
 **Default recommendation:** run the latest **stable** GitHub Release (**[v3.12.0](https://github.com/cvquesty/openvox-gui/releases/tag/v3.12.0)**). Track [docs/STATUS.md](docs/STATUS.md).
 
+**CI (every push/PR to `main`):** GitHub Actions workflow **CI** (`.github/workflows/ci.yml`) runs pytest (Python 3.10/3.11), ruff error-class rules, frontend typecheck + Vitest + Vite build, `bash -n` / ShellCheck, the Bolt ENC plugin tests, and VERSION lockstep. See [docs/TESTING.md](docs/TESTING.md).
+
 **Dependency audits:** GitHub Actions workflow **Security audits** (`.github/workflows/security.yml`) runs on push/PR (path-filtered), weekly Mondays, and `workflow_dispatch`:
 
 | Job | What |

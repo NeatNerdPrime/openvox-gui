@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the EXACT Bolt layout from openvox.pdxc-it.twitter.biz.
+# Apply the EXACT Bolt layout from a singleton OpenVox Server host.
 # Always overwrites. Run as root from the git clone: ./scripts/apply-singleton-bolt-layout.sh
 set -euo pipefail
 [[ ${EUID} -eq 0 ]] || { echo "Run as root"; exit 1; }

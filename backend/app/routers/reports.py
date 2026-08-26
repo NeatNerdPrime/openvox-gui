@@ -13,7 +13,7 @@ Provides:
 
 All heavy lifting is delegated to puppetdb_service (mTLS) and puppetserver_service.
 Snapshot supports local-only bypass for direct execution on the production
-Puppet server (openvox.pdxc-it.twitter.biz and lab equivalents) and also
+Puppet server (production and lab equivalents) and also
 accepts service tokens for CI/automation.
 
 Security note: all filter values are validated against a strict character
@@ -249,7 +249,7 @@ async def get_report_detail(report_hash: str):
 #
 # Reliability features:
 #   - Localhost bypass (via middleware skip + handler IP check) for running the generator
-#     directly on the production node (openvox.pdxc-it.twitter.biz) as the puppet user.
+#     directly on the production OpenVox Server as the puppet user.
 #     Calls to 127.0.0.1:.... succeed without JWT or pre-created token.
 #   - Service token support (OPENVOX_REPORT_TOKEN or Authorization: Bearer) for remote/automated use.
 #   - Uses puppetdb_service + puppetserver_service (mTLS to localhost:8081/8140 works out of box on server).

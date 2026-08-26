@@ -13,9 +13,15 @@ The best thing about Open Source software is you can fix it yourself and contrib
 3. Create a new branch for your changes (base branch is **`main`** — there is no long-lived `staging` branch).
 4. Make your changes. Prefer the friendly, beginner-readable tone used in README / INSTALL / UPDATE if you touch docs.
 5. Update **CHANGELOG.md** when the change is user-visible; keep **VERSION** in sync only when maintainers cut a release (single source of truth: root `VERSION`; `scripts/bump-version.sh` propagates to frontend + ovox).
-6. Commit your changes with a clear conventional-style message when possible (`fix:`, `feat:`, `docs:`).
-7. Push your changes to your forked repository.
-8. Open a pull request **into `main`**.
+6. Run the test suite that CI will run. See [docs/TESTING.md](docs/TESTING.md). Minimum local check:
+   ```bash
+   python3 -m pytest
+   (cd frontend && npm test && npm run typecheck)
+   ./scripts/ci-quality.sh
+   ```
+7. Commit your changes with a clear conventional-style message when possible (`fix:`, `feat:`, `docs:`).
+8. Push your changes to your forked repository.
+9. Open a pull request **into `main`**. GitHub Actions **CI** must be green.
 
 We will review the PR and merge it as soon as possible. It's that simple!
 

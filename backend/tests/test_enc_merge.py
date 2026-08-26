@@ -24,8 +24,14 @@ def test_deep_merge_override_replaces_non_dict():
 
 
 def test_deep_merge_matches_source_file_signature():
-    """Guard: source still defines deep_merge with same contract."""
+    """Guard: merge lives in enc_merge.py so tests skip SQLAlchemy."""
     from pathlib import Path
-    src = (Path(__file__).resolve().parents[1] / "app" / "services" / "enc.py").read_text()
-    assert "def deep_merge(base: Dict, override: Dict)" in src
-    assert "dicts are merged recursively" in src or "merged recursively" in src
+    merge_src = (
+        Path(__file__).resolve().parents[1] / "app" / "services" / "enc_merge.py"
+    ).read_text()
+    enc_src = (
+        Path(__file__).resolve().parents[1] / "app" / "services" / "enc.py"
+    ).read_text()
+    assert "def deep_merge(base: Dict, override: Dict)" in merge_src
+    assert "dicts are merged recursively" in merge_src or "merged recursively" in merge_src
+    assert "from .enc_merge import deep_merge" in enc_src

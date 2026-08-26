@@ -47,4 +47,4 @@ def test_denylist_fail_open_on_db_error():
             revoked = await al._is_jti_revoked("any-jti")
             assert revoked is False
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())

@@ -25,7 +25,7 @@ Usage (on server where openvox-gui runs):
   # or with live fetch (when auth-free internal endpoint or token provided)
   python scripts/generate_fleet_health_report.py --live --output /Users/.../Desktop/fleet_health_report.pdf
 
-For production (openvox.pdxc-it.twitter.biz):
+For production (the OpenVox Server / console host):
   - Deploy this script + updated requirements.
   - Run as the 'puppet' user or via systemd timer.
   - Pipe output or use --email manager@company to send directly.

@@ -4,14 +4,15 @@
 
 **A web-based management interface for OpenVox/Puppet infrastructure**
 
-[![Version](https://img.shields.io/badge/version-3.12.0--rc.42-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases)
+[![Version](https://img.shields.io/badge/version-3.12.1--dev.4-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![React](https://img.shields.io/badge/react-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![React](https://img.shields.io/badge/react-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![SQLite](https://img.shields.io/badge/SQLite-AIO%20default-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](INSTALL.md)
 [![Postgres](https://img.shields.io/badge/Postgres-clustered%20GUI-336791?style=for-the-badge&logo=postgresql&logoColor=white)](docs/CLUSTERED_SHARED_DB.txt)
 
+[![CI](https://github.com/cvquesty/openvox-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/cvquesty/openvox-gui/actions/workflows/ci.yml)
 [![npm audit](https://img.shields.io/badge/npm%20audit-0%20vulns-brightgreen?style=flat-square)](CHANGELOG.md)
 [![Security audits](https://github.com/cvquesty/openvox-gui/actions/workflows/security.yml/badge.svg)](https://github.com/cvquesty/openvox-gui/actions/workflows/security.yml)
 [![Status](https://img.shields.io/badge/docs-STATUS-blue?style=flat-square)](docs/STATUS.md)
@@ -82,7 +83,7 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 
 | Doc | Contents |
 |-----|----------|
-| **[docs/STATUS.md](docs/STATUS.md)** | **Where we are** — AIO vs clustered readiness, 3.12-rc map, Monday backlog |
+| **[docs/STATUS.md](docs/STATUS.md)** | **Where we are** — AIO vs clustered readiness, 3.12.1-dev train |
 | **[docs/FEATURES.md](docs/FEATURES.md)** | Canonical page-by-page feature inventory |
 | [INSTALL.md](INSTALL.md) | **AIO first**; clustered in advanced section |
 | [UPDATE.md](UPDATE.md) | Clone-then-deploy updates, maintenance windows |
@@ -100,6 +101,7 @@ That's it! For detailed installation instructions, see the [Installation Guide](
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common failures |
 | [CHANGELOG.md](CHANGELOG.md) | Full version history |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
+| [docs/TESTING.md](docs/TESTING.md) | Local and GitHub Actions test suite |
 | [docs/releases/](docs/releases/) | Stable release press kits |
 
 ## ✨ Main Features

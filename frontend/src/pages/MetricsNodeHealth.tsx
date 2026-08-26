@@ -221,7 +221,7 @@ export function MetricsNodeHealthPage() {
               )}
               {filtered.map((n) => {
                 // Robust live result lookup: exact, then case-insensitive, then base name match
-                let live = liveResults[n.certname];
+                let live: LiveResult | undefined = liveResults[n.certname];
                 if (!live) {
                   const lower = n.certname.toLowerCase();
                   live = Object.keys(liveResults).find(k => k.toLowerCase() === lower) 

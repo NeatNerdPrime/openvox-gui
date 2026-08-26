@@ -429,6 +429,7 @@ export const config = {
     ca_nodes?: string[];
     ca_vips?: string[];
     infra_vips?: string[];
+    dns_rr_vips?: string[];
     fleet_exclude?: string[];
     code_deploy_targets: string[];
     consoles?: string[];

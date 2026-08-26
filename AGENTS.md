@@ -119,3 +119,11 @@ Use `/commit` (the project-scoped skill in `.grok/skills/commit/SKILL.md`) to ha
 GitHub Releases remain a separate, deliberate, manual step performed only when a tag is clean, tested, and explicitly "ready to ship".
 
 The goal is to keep the development cadence fast (tag+push on every change) while making releases intentional and high-signal.
+
+## Continuous Integration
+
+- Workflow: `.github/workflows/ci.yml` (push/PR/`workflow_dispatch` on `main`).
+- Jobs: backend pytest + ruff, frontend typecheck/vitest/build, shell syntax, bolt-plugin Ruby tests, VERSION lockstep / leak scan.
+- Security audits remain in `.github/workflows/security.yml`.
+- Local equivalent: `./scripts/run-ci-local.sh`. Map: [docs/TESTING.md](docs/TESTING.md).
+- A `/commit` that adds or changes tests must leave CI green on GitHub; iterate on the workflow until it is.

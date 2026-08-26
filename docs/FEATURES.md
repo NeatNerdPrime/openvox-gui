@@ -1,6 +1,6 @@
 # OpenVox GUI — Feature Reference
 
-**Document version:** matches root `VERSION` (see repo `VERSION` file; 3.12.0 stable)  
+**Document version:** matches root `VERSION` (see repo `VERSION` file; 3.12.0 stable, 3.12.1-dev train)  
 **Audience:** operators, reviewers, and release prep  
 **Scope:** every primary **page**, **capability**, and **supporting subsystem** in the product as shipped on `main`.
 
@@ -13,7 +13,7 @@ This is the canonical “what does the product do?” inventory. Installation an
 
 | Surface | Role |
 |---------|------|
-| **Web UI** | React 18 + Mantine + Vite; JWT **httpOnly cookie** session; dual themes (Casual / Formal) |
+| **Web UI** | React 19 + Mantine 7 + Vite 7; JWT **httpOnly cookie** session; dual themes (Casual / Formal) |
 | **ovox CLI** | Thin noun-verb client of the same FastAPI API; version lockstep with root `VERSION` |
 | **Backend** | FastAPI + uvicorn (multi-worker), systemd `openvox-gui`, runs as service user (usually `puppet`) |
 | **App DB** | SQLite (singleton) or Postgres **`openvox_gui`** (required for clustered / dual console) — **never** the `puppetdb` database |
