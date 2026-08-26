@@ -7,7 +7,7 @@ import fs from 'fs';
 // single source of truth shared by the backend (__init__.py), the
 // frontend (version.ts), and the package.json. Vite injects this as
 // a build-time constant accessible via the global `__APP_VERSION__`.
-const appVersion = fs.readFileSync(path.resolve(__dirname, '../VERSION'), 'utf-8').trim();
+const appVersion = fs.readFileSync(path.resolve(import.meta.dirname, '../VERSION'), 'utf-8').trim();
 
 export default defineConfig({
   plugins: [react()],
@@ -16,7 +16,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   server: {

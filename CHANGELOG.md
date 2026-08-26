@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.5] - 2026-08-26 (deps — Dependabot PRs #50–#62)
+
+Implements and validates GitHub PRs **#50–#62** on `main`.
+
+### Changed
+- **GitHub Actions (#50–#52):** `actions/setup-node`, `setup-python`, and
+  `checkout` **v7** (Node 20 runner deprecation).
+- **Frontend (#53, #57, #60–#62):** postcss 8.5.26; `@xyflow/react` 12.11.3;
+  `@tabler/icons-react` 3.46.0; TypeScript 7.0.2 (`baseUrl` removed, `@/*`
+  paths are relative); Vite **8.2** + `@vitejs/plugin-react` **6.1** (6.x
+  requires Vite 8). Configs use `import.meta.dirname`.
+- **Backend (#54–#56, #58–#59):** ruff `>=0.16.4,<1`; slowapi 0.1.10;
+  pyhocon `>=0.3.63`; FastAPI 0.141.1; **bcrypt 5.0.0**.
+- **Auth:** password hashing uses `bcrypt` directly. passlib 1.7.4 is
+  unmaintained and crashes on bcrypt 5 (`__about__` + 72-byte `ValueError`).
+  Existing `$2b$` hashes still verify. htpasswd migration parses the file
+  without `passlib.apache`.
+
 ## [3.12.1-dev.4] - 2026-08-26 (ci — first-class test suite + current docs)
 
 ### Added

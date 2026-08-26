@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request
-from passlib.hash import bcrypt
+import bcrypt as _bcrypt
 import jwt
 from jwt.exceptions import InvalidTokenError
 
@@ -57,17 +57,38 @@ def token_max_age_seconds() -> int:
     return token_expire_hours() * 3600
 
 
+def _password_bytes(password: str) -> bytes:
+    """bcrypt 5 rejects secrets longer than 72 bytes (passlib used to truncate)."""
+    raw = password.encode("utf-8")
+    return raw[:72]
+
+
 def _hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return bcrypt.hash(password)
+    """Hash a password using bcrypt. Returns a $2b$ ASCII string."""
+    return _bcrypt.hashpw(_password_bytes(password), _bcrypt.gensalt()).decode("ascii")
 
 
 def _verify_password_hash(password: str, password_hash: str) -> bool:
-    """Verify a password against a bcrypt hash."""
+    """Verify a password against a bcrypt hash (passlib $2b$ hashes still work)."""
     try:
-        return bcrypt.verify(password, password_hash)
+        hashed = password_hash.encode("ascii") if isinstance(password_hash, str) else password_hash
+        return _bcrypt.checkpw(_password_bytes(password), hashed)
     except Exception:
         return False
+
+
+def _parse_htpasswd(path: Path) -> Dict[str, str]:
+    """username:hash lines. Replaces passlib.apache.HtpasswdFile."""
+    users: Dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        username, hashed = line.split(":", 1)
+        username = username.strip()
+        if username:
+            users[username] = hashed.strip()
+    return users
 
 
 def create_token(username: str, role: str) -> str:
@@ -448,9 +469,8 @@ async def migrate_htpasswd_users():
     logger.info("Found legacy htpasswd file - migrating users to database...")
 
     try:
-        from passlib.apache import HtpasswdFile
-        ht = HtpasswdFile(str(HTPASSWD_PATH))
-        usernames = ht.users()
+        ht_users = _parse_htpasswd(HTPASSWD_PATH)
+        usernames = list(ht_users.keys())
 
         # Load roles
         roles = {}
@@ -469,7 +489,7 @@ async def migrate_htpasswd_users():
                     logger.info(f"  User '{username}' already in database, skipping")
                     continue
 
-                raw_hash = ht.get_hash(username)
+                raw_hash = ht_users.get(username)
                 if raw_hash:
                     if isinstance(raw_hash, bytes):
                         raw_hash = raw_hash.decode('utf-8')
