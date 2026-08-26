@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.8**
+**OpenVox GUI Version 3.12.1-dev.9**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.8"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.9"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -723,12 +723,16 @@ Live-fleet rules and HAProxy vs DNS RR: [docs/FEATURES.md](docs/FEATURES.md#live
    sudo puppetserver ca sign --certname node.example.com
    ```
 
-4. **Dedicated console:** list/info use the CA HTTP API
-   (`OPENVOX_GUI_PUPPET_CA_HOST` = CA VIP). **Sign / revoke / clean**
-   try that PUT first; if it 404s (standby VIP / CSR on the other
-   ovca), the GUI Bolts `puppetserver ca …` as root on each
-   **Settings → Cluster → CA members** (`ovca1`/`ovca2`, not the DNS
-   VIP) until one succeeds. Confirm `bolt@` SSH + sudo to those hosts.
+4. **Dedicated console (openvox.pdxc-it / openvox.atlc-it):** Sign
+   does **not** run `puppetserver ca` on the console. At click time
+   the GUI probes every **Settings → Cluster → CA members** ovca
+   with GET `/puppet-ca/v1/certificate_status/<cn>`. The host that
+   returns `state=requested` is the Promoted CA; Sign is a PUT to
+   **that** member (not the VIP — HAProxy may hit the standby).
+   Site-local ovca is probed first. If HTTP fails, Bolt runs
+   `puppetserver ca` as root on the same Promoted host, then the
+   remaining members. Confirm `ca_nodes` lists real ovca FQDNs and
+   `bolt@` SSH + sudo works.
 
 ### Problem: Certificate Expiration Warnings
 

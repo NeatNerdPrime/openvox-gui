@@ -191,6 +191,66 @@ def resolve_ca_port() -> int:
     return int(settings.puppet_server_port or 8140)
 
 
+def _console_site_token() -> str:
+    """Short site token from this console's FQDN (pdxc, atlc, …)."""
+    host = ""
+    try:
+        cert_path = Path(getattr(settings, "puppet_ssl_cert", "") or "")
+        if cert_path.suffix == ".pem":
+            host = cert_path.stem.lower()
+    except Exception:
+        host = ""
+    if not host:
+        try:
+            host = socket.getfqdn().lower()
+        except OSError:
+            host = ""
+    # openvox.pdxc-it.… / ovca1.atlc-it.…
+    for token in ("pdxc", "atlc"):
+        if f".{token}-" in f".{host}" or f".{token}." in f".{host}":
+            return token
+    return ""
+
+
+def order_ca_targets(hosts: List[str]) -> List[str]:
+    """Site-local ovca* first so both consoles probe the near side first."""
+    token = _console_site_token()
+    seen: List[str] = []
+    for h in hosts:
+        n = (h or "").strip().lower()
+        if n and n not in seen:
+            seen.append(n)
+    if not token:
+        return seen
+    local = [h for h in seen if token in h]
+    remote = [h for h in seen if token not in h]
+    return local + remote
+
+
+def ca_http_targets() -> List[str]:
+    """Hosts to talk to for CA writes: real ovca members, then the VIP.
+
+    Never PUT only the VIP — HAProxy may land on the standby, which has
+    no CSR. Members come from Settings → Cluster ca_nodes.
+    """
+    members = ca_member_targets()
+    vip = (resolve_ca_host() or "").strip().lower()
+    ordered = order_ca_targets(members)
+    if vip and vip not in ordered:
+        ordered.append(vip)
+    return ordered
+
+
+def _certname_from_ca_args(argv: List[str]) -> Optional[str]:
+    if "--certname" in argv:
+        i = argv.index("--certname")
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    if len(argv) >= 2:
+        return argv[1]
+    return None
+
+
 def _create_ca_ssl_context() -> ssl.SSLContext:
     ctx = ssl.create_default_context(cafile=settings.puppet_ssl_ca)
     ctx.load_cert_chain(
@@ -240,9 +300,11 @@ async def _ca_http_request(
     *,
     json_body: Optional[dict] = None,
     timeout: int = 30,
+    host: Optional[str] = None,
 ) -> Tuple[int, Any, str]:
     """mTLS HTTPS to the CA API. Returns (http_status, json_or_none, error_text)."""
-    url = f"https://{resolve_ca_host()}:{resolve_ca_port()}{path}"
+    target = (host or resolve_ca_host() or "").strip()
+    url = f"https://{target}:{resolve_ca_port()}{path}"
     try:
         ctx = _create_ca_ssl_context()
     except Exception as e:
@@ -590,6 +652,63 @@ def ca_member_targets() -> List[str]:
     return out
 
 
+async def discover_signing_ca(
+    certname: Optional[str] = None,
+    timeout: float = 4.0,
+) -> Optional[str]:
+    """Real-time: which ovca* currently holds this CSR (the Promoted CA).
+
+    Both site consoles (openvox.pdxc-it… / openvox.atlc-it…) call this on
+    every Sign. GET /certificate_status/<cn> is 200 + state=requested only
+    on the primary cadir. Standbys 404. Probes run in parallel.
+    """
+    hosts = ca_http_targets()
+    if not hosts:
+        return None
+    path = None
+    if certname:
+        path = f"/puppet-ca/v1/certificate_status/{quote(certname, safe='')}"
+
+    async def _probe(host: str) -> Tuple[str, int, str]:
+        if not path:
+            # No certname: any host that answers the CA API is a candidate.
+            status, _body, _text = await _ca_http_request(
+                "GET",
+                "/puppet-ca/v1/certificate/ca",
+                timeout=int(timeout) or 4,
+                host=host,
+            )
+            return host, status, ""
+        status, body, _text = await _ca_http_request(
+            "GET",
+            path,
+            timeout=int(timeout) or 4,
+            host=host,
+        )
+        state = ""
+        if isinstance(body, dict):
+            state = str(body.get("state") or "").strip().lower()
+        return host, status, state
+
+    results = await asyncio.gather(
+        *[_probe(h) for h in hosts],
+        return_exceptions=True,
+    )
+    requested: List[str] = []
+    for item in results:
+        if isinstance(item, BaseException):
+            logger.info("CA probe failed: %s", item)
+            continue
+        host, status, state = item
+        if status == 200 and state in ("requested", "request"):
+            requested.append(host)
+    if requested:
+        chosen = requested[0]
+        logger.info("Signing CA for %s is %s (CSR present)", certname, chosen)
+        return chosen
+    return None
+
+
 def unwrap_bolt_item(bolt: Dict[str, Any]) -> Tuple[int, str, str]:
     """Exit code + stdout/stderr of the first Bolt target."""
     raw = str(bolt.get("stdout") or "")
@@ -622,6 +741,11 @@ async def _try_ca_bolt_command(args: List[str], timeout: int = 120) -> Optional[
     if not args or args[0] == "list":
         return None
     targets = ca_member_targets()
+    cn = _certname_from_ca_args(args)
+    if cn:
+        primary = await discover_signing_ca(cn, timeout=4.0)
+        if primary:
+            targets = [primary] + [t for t in targets if t != primary]
     if not targets:
         return None
     try:
@@ -678,6 +802,50 @@ async def _try_ca_bolt_command(args: List[str], timeout: int = 120) -> Optional[
     return last
 
 
+async def _http_mutate_on_hosts(
+    method: str,
+    path: str,
+    json_body: dict,
+    hosts: List[str],
+    timeout: int,
+    action: str,
+    certname: str,
+) -> Optional[dict]:
+    """PUT/POST the CA API on each host until one succeeds."""
+    if not hosts:
+        return None
+    errors: List[str] = []
+    any_contact = False
+    for host in hosts:
+        status, _body, text = await _ca_http_request(
+            method,
+            path,
+            json_body=json_body,
+            timeout=timeout,
+            host=host,
+        )
+        if status == 0:
+            errors.append(f"{host}: {text[:200]}")
+            continue
+        any_contact = True
+        if 200 <= status < 300:
+            logger.info("CA %s %s succeeded via HTTP on %s", action, certname, host)
+            return {
+                "returncode": 0,
+                "stdout": (text or f"{action} {certname}").strip() + f"\n(via ca-http:{host})\n",
+                "stderr": "",
+                "via": f"ca-http:{host}",
+            }
+        errors.append(f"{host}: HTTP {status} {(text or '')[:200]}")
+    if not any_contact:
+        return None
+    return {
+        "returncode": 1,
+        "stdout": "",
+        "stderr": f"CA HTTP {action} failed: " + " | ".join(errors),
+    }
+
+
 async def _try_ca_http_command(args: List[str], timeout: int = 30) -> Optional[dict]:
     """Map puppetserver-ca CLI args to the CA HTTP API. None = use CLI."""
     if not args:
@@ -697,81 +865,58 @@ async def _try_ca_http_command(args: List[str], timeout: int = 30) -> Optional[d
                 lines.append("    " + (c.get("raw") or c.get("name") or ""))
         return {"returncode": 0, "stdout": "\n".join(lines) + "\n", "stderr": ""}
 
-    def _certname_from(argv: List[str]) -> Optional[str]:
-        if "--certname" in argv:
-            i = argv.index("--certname")
-            if i + 1 < len(argv):
-                return argv[i + 1]
-        if len(argv) >= 2:
-            return argv[1]
+    cn = _certname_from_ca_args(args)
+    if args[0] in ("sign", "revoke", "clean") and not cn:
         return None
 
+    hosts = ca_http_targets()
+    if args[0] == "sign" and cn:
+        primary = await discover_signing_ca(cn, timeout=min(timeout, 5))
+        if primary:
+            hosts = [primary] + [h for h in hosts if h != primary]
+
     if args[0] == "sign":
-        cn = _certname_from(args)
-        if not cn:
-            return None
-        status, _body, text = await _ca_http_request(
+        return await _http_mutate_on_hosts(
             "PUT",
             f"/puppet-ca/v1/certificate_status/{quote(cn, safe='')}",
-            json_body={"desired_state": "signed"},
-            timeout=timeout,
+            {"desired_state": "signed"},
+            hosts,
+            timeout,
+            "sign",
+            cn or "",
         )
-        if status == 0:
-            return None
-        ok = 200 <= status < 300
-        return {
-            "returncode": 0 if ok else status,
-            "stdout": text if ok else "",
-            "stderr": "" if ok else f"CA HTTP {status}: {text[:500]}",
-        }
 
     if args[0] == "revoke":
-        cn = _certname_from(args)
-        if not cn:
-            return None
-        status, _body, text = await _ca_http_request(
+        return await _http_mutate_on_hosts(
             "PUT",
             f"/puppet-ca/v1/certificate_status/{quote(cn, safe='')}",
-            json_body={"desired_state": "revoked"},
-            timeout=timeout,
+            {"desired_state": "revoked"},
+            hosts,
+            timeout,
+            "revoke",
+            cn or "",
         )
-        if status == 0:
-            return None
-        ok = 200 <= status < 300
-        return {
-            "returncode": 0 if ok else status,
-            "stdout": text if ok else "",
-            "stderr": "" if ok else f"CA HTTP {status}: {text[:500]}",
-        }
 
     if args[0] == "clean":
-        cn = _certname_from(args)
-        if not cn:
-            return None
-        status, _body, text = await _ca_http_request(
+        return await _http_mutate_on_hosts(
             "PUT",
             "/puppet-ca/v1/clean",
-            json_body={"certnames": [cn]},
-            timeout=timeout,
+            {"certnames": [cn]},
+            hosts,
+            timeout,
+            "clean",
+            cn or "",
         )
-        if status == 0:
-            return None
-        ok = 200 <= status < 300
-        return {
-            "returncode": 0 if ok else status,
-            "stdout": text if ok else "",
-            "stderr": "" if ok else f"CA HTTP {status}: {text[:500]}",
-        }
 
     return None
 
 
 async def run_ca_command(args: List[str], timeout: int = 30) -> dict:
-    """Sign/revoke/clean: CA HTTP, then Bolt to ovca*, then local CLI.
+    """Sign/revoke/clean: discover primary ovca, CA HTTP, Bolt, then local CLI.
 
-    Dedicated consoles must not run ``puppetserver ca`` locally. HTTP PUT
-    to the CA VIP 404s when the request hits the standby (CSR is only on
-    the Promoted cadir). Bolt walks ``ca_nodes`` until one succeeds.
+    Dedicated consoles must not run ``puppetserver ca`` locally. At Sign
+    time we probe every ``ca_nodes`` member for the pending CSR and PUT
+    the Promoted host (not the VIP, which may be the standby).
     """
     errors: List[str] = []
     http = await _try_ca_http_command(args, timeout=timeout)

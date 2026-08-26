@@ -9,11 +9,15 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from app.services.certificates_service import (
+    ca_http_targets,
     ca_member_targets,
+    discover_signing_ca,
+    order_ca_targets,
     parse_ca_certificate_pem,
     parse_ca_crl_pem,
     parse_certificate_statuses,
     unwrap_bolt_item,
+    _try_ca_http_command,
 )
 
 
@@ -147,3 +151,93 @@ def test_ca_member_targets_skips_vip(monkeypatch):
     hosts = ca_member_targets()
     assert hosts == ["ovca1.site-a.example.com", "ovca2.site-a.example.com"]
     assert "ovca.example.com" not in hosts
+
+
+def test_order_ca_targets_prefers_console_site(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.certificates_service._console_site_token",
+        lambda: "pdxc",
+    )
+    hosts = [
+        "ovca1.atlc-it.example.com",
+        "ovca1.pdxc-it.example.com",
+        "ovca2.atlc-it.example.com",
+    ]
+    assert order_ca_targets(hosts)[0] == "ovca1.pdxc-it.example.com"
+    assert "ovca1.atlc-it.example.com" in order_ca_targets(hosts)
+
+
+def test_ca_http_targets_members_before_vip(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.certificates_service.ca_member_targets",
+        lambda: ["ovca1.pdxc-it.example.com", "ovca1.atlc-it.example.com"],
+    )
+    monkeypatch.setattr(
+        "app.services.certificates_service.resolve_ca_host",
+        lambda: "ovca.example.com",
+    )
+    monkeypatch.setattr(
+        "app.services.certificates_service._console_site_token",
+        lambda: "atlc",
+    )
+    hosts = ca_http_targets()
+    assert hosts[0] == "ovca1.atlc-it.example.com"
+    assert hosts[-1] == "ovca.example.com"
+    assert "ovca1.pdxc-it.example.com" in hosts
+
+
+async def test_discover_signing_ca_picks_host_with_csr(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.certificates_service.ca_http_targets",
+        lambda: ["ovca-standby.example.com", "ovca-primary.example.com"],
+    )
+
+    async def fake_http(method, path, **kwargs):
+        host = kwargs.get("host")
+        if host == "ovca-primary.example.com" and "pending.example.com" in path:
+            return 200, {"name": "pending.example.com", "state": "requested"}, ""
+        if host == "ovca-standby.example.com":
+            return 404, None, "Not Found"
+        return 0, None, "down"
+
+    monkeypatch.setattr(
+        "app.services.certificates_service._ca_http_request",
+        fake_http,
+    )
+    chosen = await discover_signing_ca("pending.example.com")
+    assert chosen == "ovca-primary.example.com"
+
+
+async def test_sign_http_puts_discovered_primary(monkeypatch):
+    puts: list[str] = []
+    monkeypatch.setattr(
+        "app.services.certificates_service.ca_http_targets",
+        lambda: ["ovca-standby.example.com", "ovca-primary.example.com"],
+    )
+
+    async def fake_discover(cn, timeout=4.0):
+        assert cn == "agent9.example.com"
+        return "ovca-primary.example.com"
+
+    async def fake_http(method, path, **kwargs):
+        host = kwargs.get("host") or "vip"
+        if method == "PUT":
+            puts.append(host)
+            if host == "ovca-primary.example.com":
+                return 204, None, ""
+            return 404, None, "no CSR"
+        return 404, None, ""
+
+    monkeypatch.setattr(
+        "app.services.certificates_service.discover_signing_ca",
+        fake_discover,
+    )
+    monkeypatch.setattr(
+        "app.services.certificates_service._ca_http_request",
+        fake_http,
+    )
+    result = await _try_ca_http_command(["sign", "--certname", "agent9.example.com"])
+    assert result is not None
+    assert result["returncode"] == 0
+    assert result["via"] == "ca-http:ovca-primary.example.com"
+    assert puts == ["ovca-primary.example.com"]
