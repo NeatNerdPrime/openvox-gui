@@ -241,3 +241,31 @@ async def test_sign_http_puts_discovered_primary(monkeypatch):
     assert result["returncode"] == 0
     assert result["via"] == "ca-http:ovca-primary.example.com"
     assert puts == ["ovca-primary.example.com"]
+
+
+async def test_sign_http_404_but_already_signed_is_success(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.certificates_service.ca_http_targets",
+        lambda: ["ovca-standby.example.com"],
+    )
+
+    async def no_primary(cn, timeout=4.0):
+        return None
+
+    async def fake_http(method, path, **kwargs):
+        if method == "PUT":
+            return 404, None, "Not Found"
+        return 200, {"name": "agent9.example.com", "state": "signed"}, ""
+
+    monkeypatch.setattr(
+        "app.services.certificates_service.discover_signing_ca",
+        no_primary,
+    )
+    monkeypatch.setattr(
+        "app.services.certificates_service._ca_http_request",
+        fake_http,
+    )
+    result = await _try_ca_http_command(["sign", "--certname", "agent9.example.com"])
+    assert result is not None
+    assert result["returncode"] == 0
+    assert "already-signed" in (result.get("via") or "")

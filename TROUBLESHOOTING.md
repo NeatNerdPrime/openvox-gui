@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.9**
+**OpenVox GUI Version 3.12.1-dev.10**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.9"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.10"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -732,7 +732,9 @@ Live-fleet rules and HAProxy vs DNS RR: [docs/FEATURES.md](docs/FEATURES.md#live
    Site-local ovca is probed first. If HTTP fails, Bolt runs
    `puppetserver ca` as root on the same Promoted host, then the
    remaining members. Confirm `ca_nodes` lists real ovca FQDNs and
-   `bolt@` SSH + sudo works.
+   `bolt@` SSH + sudo works. If Sign works but the modal shows
+   `sudo: sorry, you must have a tty`, the CSR is already signed —
+   refresh Pending. On each ovca: `Defaults:bolt !requiretty`.
 
 ### Problem: Certificate Expiration Warnings
 

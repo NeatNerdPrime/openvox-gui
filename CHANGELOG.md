@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.10] - 2026-08-26 (fix — Sign success is not a Bolt tty error)
+
+### Fixed
+- **Sign already succeeded, UI still errored:** HTTP often signed the
+  CSR, then Bolt `--run-as root` on ovca hit `sudo: you must have a
+  tty to run sudo` (`requiretty` + inventory `tty: false`). Sign now
+  treats `state=signed` as success and does not open the error modal.
+  CA Bolt uses a TTY inventory. If Bolt still fails, the message is
+  short — not a raw inventory JSON dump.
+
 ## [3.12.1-dev.9] - 2026-08-26 (fix — sign CSR on the live Promoted ovca)
 
 ### Fixed

@@ -777,6 +777,7 @@ async def _try_ca_bolt_command(args: List[str], timeout: int = 120) -> Optional[
                     "json",
                 ],
                 timeout=timeout,
+                tty=True,
             )
         except Exception as e:
             last = {
@@ -800,6 +801,32 @@ async def _try_ca_bolt_command(args: List[str], timeout: int = 120) -> Optional[
             return last
         logger.info("CA %s via bolt@%s rc=%s: %s", args[0], host, rc, (stderr or "")[:200])
     return last
+
+
+async def cert_state_anywhere(certname: str, timeout: int = 5) -> Optional[str]:
+    """First CA-reported state for *certname* across ovca members + VIP."""
+    path = f"/puppet-ca/v1/certificate_status/{quote(certname, safe='')}"
+    for host in ca_http_targets():
+        status, body, _text = await _ca_http_request(
+            "GET", path, timeout=timeout, host=host
+        )
+        if status == 200 and isinstance(body, dict):
+            state = str(body.get("state") or "").strip().lower()
+            if state:
+                return state
+    return None
+
+
+async def _signed_already(certname: str, via: str) -> Optional[dict]:
+    state = await cert_state_anywhere(certname)
+    if state == "signed":
+        return {
+            "returncode": 0,
+            "stdout": f"Certificate {certname} is already signed\n",
+            "stderr": "",
+            "via": via,
+        }
+    return None
 
 
 async def _http_mutate_on_hosts(
@@ -836,7 +863,15 @@ async def _http_mutate_on_hosts(
                 "stderr": "",
                 "via": f"ca-http:{host}",
             }
+        if action == "sign" and status in (404, 409, 422):
+            done = await _signed_already(certname, f"ca-http:{host}:already-signed")
+            if done:
+                return done
         errors.append(f"{host}: HTTP {status} {(text or '')[:200]}")
+    if action == "sign" and certname:
+        done = await _signed_already(certname, "ca-http:already-signed")
+        if done:
+            return done
     if not any_contact:
         return None
     return {
@@ -926,11 +961,21 @@ async def run_ca_command(args: List[str], timeout: int = 30) -> dict:
     if http is not None:
         errors.append(str(http.get("stderr") or "CA HTTP failed"))
 
+    cn = _certname_from_ca_args(args)
+    if args and args[0] == "sign" and cn:
+        done = await _signed_already(cn, "ca-http:already-signed")
+        if done:
+            return done
+
     bolt = await _try_ca_bolt_command(args, timeout=max(timeout, 120))
     if bolt is not None and int(bolt.get("returncode") or 1) == 0:
         return bolt
     if bolt is not None:
         errors.append(str(bolt.get("stderr") or "CA bolt failed"))
+        if args and args[0] == "sign" and cn:
+            done = await _signed_already(cn, "ca-http:already-signed")
+            if done:
+                return done
 
     cli = await run_ca_command_cli(args, timeout=timeout)
     if int(cli.get("returncode") or 1) == 0:

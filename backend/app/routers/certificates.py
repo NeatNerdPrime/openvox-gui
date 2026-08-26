@@ -109,9 +109,20 @@ def _ca_failure_detail(result: dict) -> str:
     rc = result.get("returncode")
     stdout = (result.get("stdout") or "").strip()
     stderr = (result.get("stderr") or "").strip()
+    blob = f"{stderr}\n{stdout}"
+    if "must have a tty to run sudo" in blob:
+        return (
+            "Sign reached ovca via Bolt but sudo on that host requires a TTY "
+            "(requiretty). The CSR may already be signed — refresh Pending. "
+            "On each ovca add: Defaults:bolt !requiretty"
+        )
     parts = [p for p in (stderr, stdout) if p]
     if parts:
-        return f"rc={rc}: " + " | ".join(parts)
+        # Do not dump full Bolt inventory JSON into the error modal.
+        detail = " | ".join(parts)
+        if len(detail) > 400:
+            detail = detail[:400] + "…"
+        return f"rc={rc}: {detail}"
     return f"rc={rc}: puppetserver ca command failed with no output"
 
 
