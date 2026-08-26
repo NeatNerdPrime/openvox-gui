@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.6] - 2026-08-26 (fix — TLS installer health probe)
+
+### Fixed
+- **`install.sh` (#44):** health checks now use
+  `${APP_SCHEME}://localhost:${APP_PORT}/health` with `curl -skf`.
+  A TLS install (`SSL_ENABLED=true`) serves HTTPS on that port, so the
+  old plaintext `http://` probe always failed (curl exit 52) and the
+  installer exited 1 with *Service did not start* even when the unit
+  was healthy. Reported by @miharp; same approach as PR #46.
+
+### Added
+- `tests/shell/test_installer_health_probe.sh` — proves the old probe
+  fails against TLS and the new one succeeds for both schemes.
+
 ## [3.12.1-dev.5] - 2026-08-26 (deps — Dependabot PRs #50–#62)
 
 Implements and validates GitHub PRs **#50–#62** on `main`.

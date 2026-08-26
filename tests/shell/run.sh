@@ -50,6 +50,14 @@ else
 fi
 
 echo
+echo "── installer health probe (#44) ──"
+if bash "$REPO_ROOT/tests/shell/test_installer_health_probe.sh"; then
+  pass "test_installer_health_probe.sh"
+else
+  fail "test_installer_health_probe.sh"
+fi
+
+echo
 echo "── VERSION is present and PEP 440-ish ──"
 ver="$(tr -d '[:space:]' < VERSION)"
 if [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?$ ]]; then
