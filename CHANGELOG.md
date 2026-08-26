@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.8] - 2026-08-26 (ci — end-to-end install.sh in containers)
+
+### Added
+- **CI install-test (#48 / PR #49, @miharp):** after the frontend
+  build, run `install.sh -c` in privileged systemd containers for
+  AlmaLinux 9, AlmaLinux 10, and Ubuntu 24.04, with and without TLS.
+  Asserts exit 0, service active, `/health` on the right scheme, and
+  admin login 200. Script: `scripts/ci-install-test.sh` (Docker or
+  Podman locally). This is the job that would have caught #44 and #45.
+
 ## [3.12.1-dev.7] - 2026-08-26 (fix — create service group before useradd)
 
 ### Fixed

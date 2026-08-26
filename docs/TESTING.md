@@ -18,6 +18,7 @@ on every push and pull request to `main`:
 | **shell** | bash + ShellCheck | `bash -n`, helper `--help`, error-level lint |
 | **bolt-plugin** | Ruby 3.2 | `openvox_enc` inventory plugin tests |
 | **quality** | python3 | VERSION lockstep, README badge, leak scan |
+| **install-test** | systemd containers | `install.sh` Alma 9/10, Ubuntu 24.04 |
 
 Dependency vulnerability scans stay in
 [`.github/workflows/security.yml`](../.github/workflows/security.yml)
@@ -55,6 +56,10 @@ npm run build
 
 # Bolt ENC plugin
 bolt-plugin/bin/run-tests
+
+# End-to-end installer (Docker or Podman; needs frontend/dist)
+scripts/ci-install-test.sh almalinux:10 false
+scripts/ci-install-test.sh ubuntu:24.04 true
 ```
 
 ## What we do **not** run in CI
@@ -62,7 +67,6 @@ bolt-plugin/bin/run-tests
 These need a real OpenVox server, Bolt inventory, or operator credentials:
 
 - Live PuppetDB / CA / compiler HTTP
-- `install.sh` on a disposable VM (manual lab)
 - `scripts/update_remote.sh` deploys
 - Browser end-to-end (Playwright) — not wired yet
 - Full mypy / ruff style on the historical tree (the CI ruff gate is
@@ -79,6 +83,7 @@ Lab validation still happens on the isolated lab console after a `/commit` deplo
 | `frontend/src/**/*.test.ts` | Vitest + jsdom, pure UI helpers |
 | `bolt-plugin/spec/` | Ruby tests for the ENC inventory plugin |
 | `tests/shell/run.sh` | Shell syntax and helper smoke |
+| `scripts/ci-install-test.sh` | Full `install.sh` in a systemd container |
 | `backend/requirements-dev.txt` | pytest, pytest-asyncio, pytest-cov, ruff |
 | `pyproject.toml` | pytest / ruff / coverage config |
 

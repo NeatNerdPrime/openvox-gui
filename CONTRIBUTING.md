@@ -19,6 +19,12 @@ The best thing about Open Source software is you can fix it yourself and contrib
    (cd frontend && npm test && npm run typecheck)
    ./scripts/ci-quality.sh
    ```
+   Installer changes should also run the container install-test (Docker or Podman):
+   ```bash
+   (cd frontend && npm ci && npm run build)
+   scripts/ci-install-test.sh almalinux:10 false
+   scripts/ci-install-test.sh ubuntu:24.04 true
+   ```
 7. Commit your changes with a clear conventional-style message when possible (`fix:`, `feat:`, `docs:`).
 8. Push your changes to your forked repository.
 9. Open a pull request **into `main`**. GitHub Actions **CI** must be green.

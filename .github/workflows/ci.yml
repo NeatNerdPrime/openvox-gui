@@ -85,6 +85,40 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+
+  # End-to-end install.sh (issue #48 / PR #49, @miharp).
+  # Would have caught #44 (TLS health probe) and #45 (missing service group).
+  install-test:
+    name: install.sh ${{ matrix.image }} ssl=${{ matrix.ssl }}
+    needs: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["almalinux:9", "almalinux:10", "ubuntu:24.04"]
+        ssl: ["false", "true"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Run install.sh in a systemd container
+        run: |
+          chmod +x scripts/ci-install-test.sh
+          bash scripts/ci-install-test.sh "${{ matrix.image }}" "${{ matrix.ssl }}"
+
   shell:
     name: Shell syntax + smoke
     runs-on: ubuntu-latest
@@ -108,6 +142,7 @@ jobs:
             scripts/ci-pip-audit.sh \
             scripts/ci-quality.sh \
             scripts/run-ci-local.sh \
+            scripts/ci-install-test.sh \
             tests/shell/run.sh \
             bolt-plugin/bin/run-tests
 
