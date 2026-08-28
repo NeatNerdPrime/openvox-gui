@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.11**
+**OpenVox GUI Version 3.12.1-dev.12**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.11"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.12"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1278,6 +1278,23 @@ puppetserver's actual FQDN. Workaround:
 curl -k --noproxy <fqdn> https://<fqdn>:8140/packages/install.bash \
     | sudo bash -s -- --server <fqdn>
 ```
+
+### Problem: Agent install 404s on `https://<compilers>:8140/packages/yum/.../repomd.xml`
+
+`--server` is the compile VIP (`puppet.conf`). The yum/apt tree is
+on the **console** (`/opt/openvox-pkgs`, GUI port 4567). Compilers
+answer HTTP on 8140 but have no `/packages` mount, so dnf gets a
+real 404 (TCP worked; this is not a network drop).
+
+```bash
+curl -k --noproxy <console>,<compilers> \
+  https://<console>:4567/packages/install.bash \
+  | sudo bash -s -- --server <compilers> \
+      --pkg-repo-url https://<console>:4567/packages
+```
+
+`GET /packages` (the directory) is 404 by design -- there is no
+index. Probe `.../packages/install.bash` or `.../repomd.xml`.
 
 ### Problem: Agent install gets through repo setup but `dnf install openvox-agent` fails with 404s
 

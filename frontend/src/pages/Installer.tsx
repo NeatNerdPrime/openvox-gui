@@ -467,7 +467,7 @@ export function InstallerPage() {
             <CommandBlock
               title="Run as root on the agent host"
               icon={<IconBrandUbuntu size={18} />}
-              helper="Detects the platform automatically, configures the local OpenVox repo, installs openvox-agent, and points puppet.conf at this server."
+              helper="Downloads packages from this console (/packages), installs openvox-agent, and points puppet.conf at the compile server. Compilers do not serve the yum/apt mirror."
               command={info.linux_command}
             />
           </Tabs.Panel>
@@ -477,7 +477,7 @@ export function InstallerPage() {
             <CommandBlock
               title="Run in an elevated PowerShell prompt"
               icon={<IconBrandWindows size={18} />}
-              helper="Downloads install.ps1 from this server, then installs openvox-agent.msi and configures puppet.conf."
+              helper="Downloads install.ps1 and the MSI from this console, then points puppet.conf at the compile server."
               command={info.windows_command}
             />
           </Tabs.Panel>

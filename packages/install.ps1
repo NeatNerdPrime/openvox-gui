@@ -29,10 +29,9 @@ Param(
   #      (helpful when re-installing on an already-configured host)
   [String]$Server = '__OPENVOX_PUPPET_SERVER__',
 
-  # Override the default openvox-gui mirror URL. Almost never needed:
-  # if not set, it is derived from -Server as
-  # "https://<server>:8140/packages". Useful only when the package
-  # mirror lives on a different host from the puppetserver.
+  # Console /packages URL. Required on a cluster: -Server is the
+  # compiler VIP and does not serve the yum/apt mirror. If omitted
+  # it is derived as "https://<server>:8140/packages" (AIO only).
   [String]$PkgRepoUrl = '',
 
   # OpenVox major version (8 or 9). Defaults to 8.
@@ -110,7 +109,9 @@ if (-not $OpenVoxVersion -or $OpenVoxVersion -notmatch '^[89]$') {
     $OpenVoxVersion = '8'
 }
 
-# Derive PkgRepoUrl from $Server unless explicitly set
+# Derive PkgRepoUrl from $Server only when the caller did not pass
+# -PkgRepoUrl. Clustered one-liners must pass the console URL;
+# compilers return 404 for /packages/yum/.../repomd.xml.
 if (-not $PkgRepoUrl) {
     $PkgRepoUrl = "https://${Server}:8140/packages"
 }

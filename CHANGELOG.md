@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.12] - 2026-08-28 (fix — clustered agent install hits console /packages)
+
+### Fixed
+- **Agent Install 404 on compiler VIP:** the copied one-liner passed
+  `--server <compilers>` and `install.bash` then pointed yum/apt at
+  `https://<compilers>:8140/packages`. Compilers do not serve
+  `/opt/openvox-pkgs`, so `repomd.xml` 404s (TCP worked). Linux and
+  Windows commands now pass `--pkg-repo-url` / `-PkgRepoUrl` at the
+  console (`:4567/packages`). `install.bash` also recovers the curl
+  origin (4567 / 443 / 8140) and adds that host to `no_proxy`.
+
 ## [3.12.1-dev.11] - 2026-08-28 (feat — remove unclassified ghost nodes)
 
 ### Added

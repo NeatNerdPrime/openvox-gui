@@ -76,11 +76,10 @@ router = APIRouter(prefix="/api/installer", tags=["installer"])
 PKG_REPO_DIR = Path(os.environ.get("OPENVOX_GUI_PKG_REPO_DIR", "/opt/openvox-pkgs"))
 SYNC_SCRIPT  = Path(os.environ.get("OPENVOX_GUI_SYNC_SCRIPT", "/opt/openvox-gui/scripts/sync-openvox-repo.sh"))
 
-# How agents reach the local mirror.  Default to https://<puppetserver>:8140/packages
-# because that's the puppetserver static-content mount we install at
-# setup time.  Override via OPENVOX_GUI_PKG_REPO_URL when the openvox-gui
-# server hosts the mirror under a different scheme/port (e.g. when the
-# puppetserver is not co-located).
+# How agents reach the local mirror. Clustered consoles serve it on the
+# GUI port (https://<this-host>:4567/packages). AIO can also use the
+# puppetserver static-content mount on 8140. Override via
+# OPENVOX_GUI_PKG_REPO_URL when the published URL must differ.
 DEFAULT_PUPPETSERVER_PORT = 8140
 DEFAULT_OPENVOX_VERSION   = "8"
 # OpenVox 7 is no longer published (yum/apt/windows/mac). Mirror 8 + 9 only.
@@ -134,6 +133,44 @@ def _puppet_server_fqdn() -> str:
     if not host or host.lower() in ("localhost", "127.0.0.1", "::1"):
         return _local_fqdn()
     return host
+
+
+def _noproxy_hosts(console: str, compile_srv: str) -> str:
+    """Comma-separated hosts curl/dnf must not send through a corp proxy."""
+    left = (console or "").strip()
+    right = (compile_srv or "").strip()
+    if left and right and left.lower() != right.lower():
+        return f"{left},{right}"
+    return left or right
+
+
+def _agent_install_commands(
+    console: str, compile_srv: str, repo_url: str,
+) -> tuple[str, str]:
+    """Linux and Windows one-liners for a clustered or AIO console.
+
+    ``--server`` / ``-Server`` is the compile VIP (puppet.conf).
+    ``--pkg-repo-url`` / ``-PkgRepoUrl`` is *this* console's ``/packages``
+    mount. Deriving the yum/apt URL from ``--server`` 404s on compiler
+    VIPs that do not serve ``/opt/openvox-pkgs``.
+    """
+    noproxy = _noproxy_hosts(console, compile_srv)
+    linux = (
+        f"curl -k --noproxy {noproxy} {repo_url}/install.bash "
+        f"| sudo bash -s -- --server {compile_srv} "
+        f"--pkg-repo-url {repo_url}"
+    )
+    win = (
+        "[System.Net.ServicePointManager]::SecurityProtocol = "
+        "[Net.SecurityProtocolType]::Tls12; "
+        "[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; "
+        f"$url = '{repo_url}/install.ps1'; "
+        "$wc = New-Object System.Net.WebClient; "
+        "$wc.Proxy = $null; "
+        "$wc.DownloadFile($url, 'install.ps1'); "
+        f".\\install.ps1 -Server '{compile_srv}' -PkgRepoUrl '{repo_url}' -v"
+    )
+    return linux, win
 
 
 def _read_status_file() -> dict:
@@ -325,48 +362,7 @@ async def get_installer_info(full: bool = False) -> InstallerInfo:
     compile_srv   = _puppet_server_fqdn()
     install_url_l = f"{repo_url}/install.bash"
     install_url_w = f"{repo_url}/install.ps1"
-
-    # Linux one-liner. Same shape as Puppet Enterprise's:
-    # https://help.puppet.com/pe/2023.8/topics/installing_agents.htm
-    # The script auto-discovers the puppetserver FQDN from the kernel's
-    # TCP state (the curl connection lingers in /proc/net/tcp) plus
-    # reverse DNS, so no --server arg is needed -- the URL the operator
-    # types IS the server. See packages/install.bash discovery functions.
-    #
-    # --noproxy <fqdn>: bypass any inherited http_proxy/HTTPS_PROXY
-    # for this curl. Most enterprise networks have a corporate proxy
-    # set globally that demands auth or cannot reach internal hosts;
-    # without --noproxy the bootstrap curl fails with "CONNECT tunnel
-    # failed, response 407" before install.bash even runs. install.bash
-    # itself sets no_proxy for apt/yum after it starts (3.3.5-17), but
-    # this curl runs before that.
-    linux_cmd = (
-        f"curl -k --noproxy {console} {install_url_l} "
-        f"| sudo bash -s -- --server {compile_srv}"
-    )
-
-    # Windows one-liner. Same shape as PE's, but pointed at our mirror
-    # and using the same -Server-from-URL trick the Linux one-liner
-    # uses: extract the Host from the download URL via [System.Uri]
-    # and pass it to install.ps1 explicitly. The URL the operator
-    # typed IS the most authoritative source for the server FQDN, so
-    # we never have to depend on the server-side render of
-    # __OPENVOX_PUPPET_SERVER__ inside install.ps1.
-    # $wc.Proxy = $null bypasses the system-configured proxy so the
-    # bootstrap download works on hosts with a corporate proxy that
-    # would otherwise return 407 Proxy Authentication Required for
-    # internal-network destinations. install.ps1 itself doesn't need
-    # a proxy because it's downloaded to disk and runs locally.
-    win_cmd = (
-        "[System.Net.ServicePointManager]::SecurityProtocol = "
-        "[Net.SecurityProtocolType]::Tls12; "
-        "[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; "
-        f"$url = '{install_url_w}'; "
-        "$wc = New-Object System.Net.WebClient; "
-        "$wc.Proxy = $null; "
-        "$wc.DownloadFile($url, 'install.ps1'); "
-        f".\\install.ps1 -Server '{compile_srv}' -v"
-    )
+    linux_cmd, win_cmd = _agent_install_commands(console, compile_srv, repo_url)
 
     status = _read_status_file()
     if full:

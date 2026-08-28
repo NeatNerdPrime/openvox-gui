@@ -7,24 +7,32 @@
 # repository (typically the openvox-gui server) and installs it on the
 # requesting host.
 #
-# Typical invocation:
+# Typical invocation (clustered: console serves /packages, --server is
+# the compiler VIP for puppet.conf):
 #
-#   curl -k https://<openvox-gui-server>:8140/packages/install.bash | sudo bash
+#   curl -k --noproxy <console>,<compilers> \
+#     https://<console>:4567/packages/install.bash | \
+#     sudo bash -s -- --server <compilers> \
+#                     --pkg-repo-url https://<console>:4567/packages
 #
-# Optional arguments may be appended after `bash -s --` to pass
-# configuration directives:
+# Optional extra arguments may be appended after `bash -s --`:
 #
-#   curl -k https://server:8140/packages/install.bash | \
-#     sudo bash -s -- main:certname=web01.example.com \
-#                     extension_requests:pp_role=webserver
+#   ... | sudo bash -s -- --server <compilers> \
+#                         --pkg-repo-url https://<console>:4567/packages \
+#                         main:certname=web01.example.com \
+#                         extension_requests:pp_role=webserver
 #
 # Supported argument forms:
 #
-#   --server <fqdn>                    Puppetserver FQDN. Overrides any
+#   --server <fqdn>                    Puppetserver FQDN (compiler VIP
+#                                      on a cluster). Overrides any
 #                                      server-side render and any value
 #                                      pulled from existing puppet.conf.
-#   --pkg-repo-url <url>               Override the package mirror base
-#                                      URL (default: https://<server>:8140/packages)
+#   --pkg-repo-url <url>               Package mirror base URL. Required
+#                                      on clustered estates: compilers
+#                                      do not serve /packages. Default
+#                                      is the curl download origin, then
+#                                      https://<server>:8140/packages.
 #   --version <8|9>                    Pick OpenVox major version (default 8)
 #   --puppet-service-ensure <state>    running | stopped (default: running)
 #   --puppet-service-enable <bool>     true | false (default: true)
@@ -37,9 +45,8 @@
 # server's puppetserver FQDN, so agents that "curl ... | sudo bash"
 # get a self-configuring script. If that render fails for any reason,
 # the script falls back to /etc/puppetlabs/puppet/puppet.conf (helpful
-# on re-install) and finally requires --server. PKG_REPO_URL is always
-# *derived* from the puppetserver FQDN unless explicitly overridden --
-# there is no separate PKG_REPO_URL placeholder to break.
+# on re-install) and finally requires --server. PKG_REPO_URL is the
+# console /packages URL, not the compiler, unless this is an AIO host.
 ###############################################################################
 set -u
 set -e
@@ -57,10 +64,10 @@ set -e
 #   4. The server= line in /etc/puppetlabs/puppet/puppet.conf, when the
 #      agent is being re-installed on a host that's already configured.
 #
-# $PKG_REPO_URL is *derived* from $PUPPET_SERVER unless explicitly set;
-# it is not a separate placeholder. This means the agent only needs to
-# know one piece of information (the server) and the URL falls out of
-# that automatically.
+# $PKG_REPO_URL is *not* the same host as $PUPPET_SERVER on a cluster.
+# The GUI console owns /opt/openvox-pkgs; the compiler VIP compiles
+# catalogs. Resolution: --pkg-repo-url / env, then the curl download
+# origin (console:4567), then https://$PUPPET_SERVER:8140/packages.
 #
 # Resolution order for the agent install version ($OPENVOX_VERSION):
 #   1. --version CLI arg
@@ -189,6 +196,29 @@ discover_server_from_curl_socket() {
     local ip
     ip=$(discover_remote_ip_via_proc_net_tcp "${1:-8140}") || return 1
     reverse_dns_lookup "$ip"
+}
+
+# Host:port that just served install.bash. Clustered one-liners curl
+# the console on 4567 (or 443) and pass --server as the compiler VIP;
+# yum/apt must keep using that console, not the compiler.
+# Prints "host port" on success.
+discover_download_origin() {
+    local port ip host
+    for port in 4567 443 8140; do
+        ip=$(discover_remote_ip_via_proc_net_tcp "$port") || continue
+        host=$(reverse_dns_lookup "$ip" || true)
+        [ -z "$host" ] && host="$ip"
+        echo "${host} ${port}"
+        return 0
+    done
+    return 1
+}
+
+# https://host:port/path -> host
+pkg_repo_host_from_url() {
+    local url="${1#https://}"
+    url="${url#http://}"
+    echo "${url%%[:/]*}"
 }
 
 # ─── Argument parsing ────────────────────────────────────────────────────────
@@ -342,11 +372,22 @@ case "$OPENVOX_VERSION" in
     *)   fail "OPENVOX_VERSION must be 8 or 9 (got '${OPENVOX_VERSION}')" ;;
 esac
 
-# Derive PKG_REPO_URL from the puppetserver FQDN unless an explicit
-# override has been provided (rare; only useful if the package mirror
-# lives on a different host from the puppetserver).
+# Package mirror lives on the console, not the compiler VIP.
+# Prefer an explicit --pkg-repo-url; otherwise recover the host:port
+# we just curl'd (4567 / 443 / 8140); last resort is --server:8140
+# (AIO, where console and compiler are the same host).
 if [ -z "$PKG_REPO_URL" ]; then
-    PKG_REPO_URL="https://${PUPPET_SERVER}:${PUPPET_SERVER_PORT}/packages"
+    _origin=""
+    _origin=$(discover_download_origin 2>/dev/null) || true
+    if [ -n "$_origin" ]; then
+        _origin_host="${_origin%% *}"
+        _origin_port="${_origin##* }"
+        PKG_REPO_URL="https://${_origin_host}:${_origin_port}/packages"
+        info "Derived package URL from download origin: ${PKG_REPO_URL}"
+    else
+        PKG_REPO_URL="https://${PUPPET_SERVER}:${PUPPET_SERVER_PORT}/packages"
+    fi
+    unset _origin _origin_host _origin_port
 fi
 info "Server     : ${PUPPET_SERVER}"
 info "Repo URL   : ${PKG_REPO_URL}"
@@ -370,7 +411,11 @@ info "OpenVox ver: ${OPENVOX_VERSION}"
 # the puppet-agent uses direct connections so this is only needed
 # for the install fetch.
 existing_no_proxy="${no_proxy:-${NO_PROXY:-}}"
+pkg_host=$(pkg_repo_host_from_url "$PKG_REPO_URL")
 no_proxy_extra="${PUPPET_SERVER},localhost,127.0.0.1"
+if [ -n "$pkg_host" ] && [ "$pkg_host" != "$PUPPET_SERVER" ]; then
+    no_proxy_extra="${no_proxy_extra},${pkg_host}"
+fi
 if [ -n "$existing_no_proxy" ]; then
     export no_proxy="${existing_no_proxy},${no_proxy_extra}"
 else

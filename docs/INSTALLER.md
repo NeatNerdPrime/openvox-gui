@@ -257,31 +257,43 @@ revoke / clean / details), expiry warnings.
 ## How the install one-liners work
 
 The Agent Install page publishes copy-to-clipboard one-liners for
-both Linux and Windows. The script auto-discovers everything it
-needs from the URL the operator just typed -- no `--server` flag,
-no env vars, no manual configuration.
+both Linux and Windows. On a **clustered** estate the console and
+the compile VIP are different hosts. Packages live on the console
+(`/opt/openvox-pkgs` on the GUI port). `--server` is only
+`puppet.conf server=` (the compiler VIP). Do not point yum/apt at
+`https://<compilers>:8140/packages` -- that path 404s.
 
 ### Linux
+
+AIO (console and compiler are the same host):
 
 ```bash
 curl -k --noproxy <fqdn> https://<fqdn>:8140/packages/install.bash | sudo bash
 ```
 
-Three things the bare-looking command quietly does:
+Clustered (what the GUI copies today):
 
-- **`--noproxy <fqdn>`** tells curl to bypass any inherited
-  `http_proxy` / `https_proxy` for the puppetserver host. Without
-  this, hosts behind a corporate proxy fail at the bootstrap
-  curl with `CONNECT tunnel failed, response 407`.
+```bash
+curl -k --noproxy <console>,<compilers> \
+  https://<console>:4567/packages/install.bash \
+  | sudo bash -s -- --server <compilers> \
+      --pkg-repo-url https://<console>:4567/packages
+```
+
+Things the command quietly does:
+
+- **`--noproxy`** lists the console and the compiler so curl/dnf
+  skip any inherited `http_proxy` / `https_proxy`. Without this,
+  hosts behind a corporate proxy fail with `CONNECT tunnel failed,
+  response 407`.
 - **`-k`** skips cert verification on the bootstrap curl because
-  the puppetserver presents a cert signed by Puppet's internal CA
+  the server presents a cert signed by Puppet's internal CA
   that the agent doesn't trust *yet* (the script installs that CA
   later, see step 2 below).
-- **No script args needed** -- the script extracts the puppetserver
-  FQDN from the kernel's TCP state (the curl connection lingers in
-  `/proc/net/tcp` for ~60 s in TIME_WAIT) and reverse-DNSes the
-  remote IP back to the FQDN. Whatever hostname the operator
-  pointed curl at IS the hostname the agent gets configured against.
+- **`--server`** is the compile VIP. **`--pkg-repo-url`** is this
+  console's `/packages` mount. `install.bash` will also try to
+  recover the download origin from `/proc/net/tcp` (ports 4567,
+  443, then 8140) if `--pkg-repo-url` is omitted.
 
 The script then:
 
@@ -332,8 +344,8 @@ Supported argument forms:
 
 | Argument | Effect |
 |----------|--------|
-| `--server <fqdn>` | Override the puppetserver FQDN (rare -- discovery handles it) |
-| `--pkg-repo-url <url>` | Override the package mirror base URL. Default: `https://<server>:8140/packages` |
+| `--server <fqdn>` | `puppet.conf server=` (compiler VIP on a cluster) |
+| `--pkg-repo-url <url>` | Package mirror base URL (console `/packages`). Default: download origin, then `https://<server>:8140/packages` |
 | `--version <7\|8>` | Pick OpenVox major version (default: 8) |
 | `--puppet-service-ensure running\|stopped` | Service state after install (default: running) |
 | `--puppet-service-enable true\|false\|manual` | Service startup mode (default: true) |
@@ -458,10 +470,31 @@ Installer page or run `sudo systemctl start openvox-repo-sync.service`.
 Debian families.  Install it with `sudo dnf install wget` or
 `sudo apt install wget`.
 
+### `dnf` 404 on `https://<compilers>:8140/packages/yum/openvox8/el/9/x86_64/repodata/repomd.xml`
+
+The agent reached the compiler VIP (TCP worked; this is not a
+network drop). Compilers do not serve `/opt/openvox-pkgs`. The
+mirror is on the **console**.
+
+```bash
+# should be 200 + XML  -- console FastAPI / Apache mount
+curl -kI https://<console>:4567/packages/yum/openvox8/el/9/x86_64/repodata/repomd.xml
+
+# expected 404 -- compiler VIP has no package tree
+curl -kI https://<compilers>:8140/packages/yum/openvox8/el/9/x86_64/repodata/repomd.xml
+```
+
+Use the GUI one-liner (it now passes `--pkg-repo-url`). A directory
+GET of `/packages` itself is also 404 by design -- StaticFiles does
+not list directories. Probe a file (`install.bash` or `repomd.xml`).
+
+If the console file URL 404s too, the mirror is empty: **Sync now**
+on Infrastructure → Agent Install.
+
 ### Puppetserver returns 404 for `/packages/install.bash` (~ 378 bytes of HTML)
 
-This is the most common post-install gotcha and almost always means
-puppetserver was never restarted after the openvox-gui upgrade
+This is the most common **AIO** post-install gotcha and almost always
+means puppetserver was never restarted after the openvox-gui upgrade
 dropped its static-content mount config. The 378-byte HTML you got
 back is puppetserver's default "unknown path" page.
 
