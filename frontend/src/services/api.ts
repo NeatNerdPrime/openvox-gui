@@ -164,7 +164,11 @@ export const nodes = {
   deactivate: (certname: string) =>
     fetchJSON<any>(`/nodes/${certname}/deactivate`, { method: 'POST' }),
   purge: (certname: string) =>
-    fetchJSON<any>(`/nodes/${certname}/purge`, { method: 'POST' }),
+    fetchJSON<any>(`/nodes/${encodeURIComponent(certname)}/purge`, { method: 'POST' }),
+  dismiss: (certname: string) =>
+    fetchJSON<any>(`/nodes/${encodeURIComponent(certname)}/dismiss`, { method: 'POST' }),
+  undismiss: (certname: string) =>
+    fetchJSON<any>(`/nodes/${encodeURIComponent(certname)}/dismiss`, { method: 'DELETE' }),
   getReports: (certname: string, limit = 20) =>
     fetchJSON<any[]>(`/nodes/${certname}/reports?limit=${limit}`),
   /** Node Detail only — at-a-glance facts + estate Host Health */

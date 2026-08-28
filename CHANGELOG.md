@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.11] - 2026-08-28 (feat — remove unclassified ghost nodes)
+
+### Added
+- **Remove ghost** on Classification Unclassified badges (X) and the
+  Nodes Unclassified table (trash). Hides the certname from live-fleet
+  lists even when PuppetDB still has an active row. Best-effort
+  deactivate + ENC delete; does not require CA clean.
+
 ## [3.12.1-dev.10] - 2026-08-26 (fix — Sign success is not a Bolt tty error)
 
 ### Fixed

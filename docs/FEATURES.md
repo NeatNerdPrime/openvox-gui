@@ -369,7 +369,7 @@ Same RBAC as the web UI via session or service token.
 
 Unless a page is **CA-authoritative** (Certificates) or explicitly historical:
 
-**Shown nodes = active OpenVoxDB `/nodes` (catalogs) − DNS RR names only.**
+**Shown nodes = active OpenVoxDB `/nodes` (catalogs) − DNS RR names − operator-dismissed ghosts.**
 
 PuppetDB is the CMDB. The CA list is **not** intersected (a site-wrong
 `ovca.example.com` lookup must not hide agents). Certificates page stays
@@ -423,7 +423,9 @@ Rule of thumb: if you can SSH to it and run `puppet agent`, it is a
 node. If you cannot, it is a DNS name and belongs on the hide list.
 
 After PDB deactivate/expire, hosts drop from Dashboard, Nodes,
-Inventory, ENC unclassified, and Node Health. ENC rows still need
+Inventory, ENC unclassified, and Node Health. Operators can **Remove
+ghost** on Unclassified (Classification X / Nodes trash) to hide a
+gone host from those lists. ENC rows still need
 purge-stale.
 
 Overview, Nodes, and Node Detail all show the **newest OpenVoxDB

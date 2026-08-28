@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.10**
+**OpenVox GUI Version 3.12.1-dev.11**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.10"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.11"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1395,6 +1395,16 @@ These commands run privileged operations (reading configs, restarting services).
 - Smoke: `set -a; . /etc/sysconfig/openvox-enc; set +a; /usr/local/bin/enc.py <certname>`
 - Restart **puppetserver** after ENC env or drop-in changes.
 - ENC YAML good but no resources → code missing on the compiler (Stage/Activate).
+
+### Problem: Unclassified still shows a host I already decommissioned
+
+**Cause:** Unclassified is the live fleet (active PuppetDB) minus ENC
+rows. A gone host that is still active in PuppetDB stays in that list.
+
+**Fix:** On Classification, click the **X** on the badge. On Nodes,
+use the trash icon on Unclassified. That dismisses the name from GUI
+lists (`POST /api/nodes/<certname>/dismiss`) and tries PDB deactivate
++ ENC delete. Full CA clean is still **Purge** on the node detail page.
 
 ### Problem: ENC Unclassified or Inventory still lists hosts after `ca clean`
 - **3.10.4** defines the live fleet as **active PuppetDB ∩ signed CA** (`get_live_nodes`). CA-cleaned hosts must not appear on Nodes, Inventory, ENC Unclassified, Dashboard, or Node Health. Open **Classification (ENC)** once after upgrade so SQLite reconciliation prunes stale ENC rows.

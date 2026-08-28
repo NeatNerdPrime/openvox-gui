@@ -232,9 +232,16 @@ class PuppetDBService:
         try:
             from .cluster_config import fleet_excluded_certnames
 
-            excluded = fleet_excluded_certnames()
+            excluded = set(fleet_excluded_certnames())
         except Exception:
             excluded = set()
+
+        try:
+            from .dismissed_nodes import dismissed_certnames
+
+            excluded |= await dismissed_certnames()
+        except Exception:
+            pass
 
         live = [
             n

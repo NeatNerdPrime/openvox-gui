@@ -23,6 +23,7 @@ from ..models.schemas import NodeSummary, NodeDetail
 from ..models.execution_history import ExecutionHistory
 from ..dependencies import require_role
 from ..utils.validation import validate_pql_value as _validate_pql_value_raw
+from ..services.dismissed_nodes import dismiss_node, undismiss_node
 
 logger = logging.getLogger(__name__)
 
@@ -668,4 +669,52 @@ async def purge_node(
 
     if status == "failed":
         raise HTTPException(status_code=500, detail=payload)
+    try:
+        await dismiss_node(db, certname, dismissed_by=str(_user), reason="purged")
+        results["dismissed"] = True
+    except Exception as e:
+        logger.warning("purge dismiss '%s': %s", certname, e)
     return payload
+
+
+@router.post("/{certname}/dismiss")
+async def dismiss_ghost_node(
+    certname: str,
+    db: AsyncSession = Depends(get_db),
+    _user: str = Depends(require_role("admin", "operator")),
+):
+    """Hide a ghost/unclassified certname from GUI fleet lists.
+
+    Always records the dismiss so Unclassified / Nodes drop the name even
+    if PuppetDB deactivate or CA clean cannot run. Best-effort PDB
+    deactivate and ENC delete still run.
+    """
+    certname = validate_pql_value(certname, "certname")
+    stored = await dismiss_node(db, certname, dismissed_by=str(_user), reason="ghost")
+    enc_ok = await _remove_from_enc(certname, db)
+    pdb_ok = await puppetdb_service.deactivate_node(certname)
+    return {
+        "status": "success",
+        "message": (
+            f"'{stored}' removed from GUI fleet lists. "
+            "It will stay hidden until restored."
+        ),
+        "details": {
+            "dismissed": True,
+            "enc_removed": enc_ok,
+            "puppetdb_deactivate": pdb_ok,
+        },
+    }
+
+
+@router.delete("/{certname}/dismiss")
+async def restore_dismissed_node(
+    certname: str,
+    db: AsyncSession = Depends(get_db),
+    _user: str = Depends(require_role("admin", "operator")),
+):
+    """Undo a dismiss so the certname can reappear if still in PuppetDB."""
+    certname = validate_pql_value(certname, "certname")
+    if not await undismiss_node(db, certname):
+        raise HTTPException(status_code=404, detail=f"'{certname}' is not dismissed")
+    return {"status": "success", "message": f"'{certname}' restored to fleet lists"}

@@ -32,7 +32,11 @@ async def test_compute_live_nodes_uses_pdb_not_ca():
             "app.services.cluster_config.fleet_excluded_certnames",
             return_value=excluded,
         ):
-            live = await svc._compute_live_nodes()
+            with patch(
+                "app.services.dismissed_nodes.dismissed_certnames",
+                new=AsyncMock(return_value=set()),
+            ):
+                live = await svc._compute_live_nodes()
 
     names = {n["certname"] for n in live}
     assert "ovcompilers.atlc-it.corp.int-x.ai" in names
@@ -119,9 +123,35 @@ async def test_compute_live_nodes_keeps_day_old_unchanged():
             "app.services.cluster_config.fleet_excluded_certnames",
             return_value=set(),
         ):
-            live = await PuppetDBService()._compute_live_nodes()
+            with patch(
+                "app.services.dismissed_nodes.dismissed_certnames",
+                new=AsyncMock(return_value=set()),
+            ):
+                live = await PuppetDBService()._compute_live_nodes()
     assert live[0]["latest_report_status"] == "unchanged"
     assert live[0]["report_stale"] is True
+
+
+@pytest.mark.asyncio
+async def test_compute_live_nodes_hides_dismissed_ghosts():
+    svc = PuppetDBService()
+    pdb = [
+        {"certname": "alive.example.com", "deactivated": None},
+        {"certname": "ghost.example.com", "deactivated": None},
+    ]
+    with patch.object(svc, "get_nodes", new=AsyncMock(return_value=pdb)):
+        with patch(
+            "app.services.cluster_config.fleet_excluded_certnames",
+            return_value=set(),
+        ):
+            with patch(
+                "app.services.dismissed_nodes.dismissed_certnames",
+                new=AsyncMock(return_value={"ghost.example.com"}),
+            ):
+                live = await svc._compute_live_nodes()
+    names = {n["certname"] for n in live}
+    assert "alive.example.com" in names
+    assert "ghost.example.com" not in names
 
 
 def test_empty_status_is_unreported_not_unchanged():

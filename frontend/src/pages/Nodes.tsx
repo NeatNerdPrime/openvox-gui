@@ -10,7 +10,7 @@ import {
   Title, Table, Card, TextInput, Stack, Group, Text, Alert,
   ActionIcon, Tooltip, Collapse, ScrollArea, Box,
 } from '@mantine/core';
-import { IconSearch, IconEye, IconChevronDown, IconChevronRight, IconPlayerPlay, IconLink } from '@tabler/icons-react';
+import { IconSearch, IconEye, IconChevronDown, IconChevronRight, IconPlayerPlay, IconLink, IconTrash } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useApi } from '../hooks/useApi';
 import { nodes, bolt } from '../services/api';
@@ -240,6 +240,8 @@ export function NodesPage() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [runTarget, setRunTarget] = useState<string | null>(null);
   const [runningCert, setRunningCert] = useState<string | null>(null);
+  const [dismissTarget, setDismissTarget] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState(false);
   const { data: nodeList, loading: nodesLoading, error: nodesError, refetch, refreshing } = useApi<NodeSummary[]>(
     nodes.list,
     [],
@@ -398,7 +400,24 @@ export function NodesPage() {
   const classifiedCount = Object.values(filteredGroups).reduce((sum, g) => sum + g.nodes.length, 0);
   const totalNodes = classifiedCount + filteredUnclassified.length;
 
-  const actionCell = (node: NodeSummary) => (
+  const dismissGhost = async (certname: string) => {
+    setDismissing(true);
+    try {
+      await nodes.dismiss(certname);
+      notifications.show({
+        title: 'Removed',
+        message: `'${certname}' hidden from Unclassified and fleet lists.`,
+        color: 'green',
+      });
+      setDismissTarget(null);
+      refetch();
+    } catch (e: any) {
+      notifications.show({ title: 'Error', message: e.message, color: 'red' });
+    }
+    setDismissing(false);
+  };
+
+  const actionCell = (node: NodeSummary, opts?: { ghost?: boolean }) => (
     <Group gap={4} onClick={(e) => e.stopPropagation()}>
       {canPlay && (
       <Tooltip label="Run OpenVox (puppet agent -t as root)">
@@ -411,6 +430,17 @@ export function NodesPage() {
           <IconPlayerPlay size={18} />
         </ActionIcon>
       </Tooltip>
+      )}
+      {opts?.ghost && canPlay && (
+        <Tooltip label="Remove ghost (host gone)">
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            onClick={() => setDismissTarget(node.certname)}
+          >
+            <IconTrash size={18} />
+          </ActionIcon>
+        </Tooltip>
       )}
       <Tooltip label="View details">
         <ActionIcon variant="subtle" onClick={() => navigate(`/nodes/${node.certname}`)}>
@@ -464,6 +494,17 @@ export function NodesPage() {
         confirmLabel="Run agent"
         confirmColor="green"
         loading={!!runningCert}
+      />
+      <ConfirmModal
+        opened={!!dismissTarget}
+        onClose={() => !dismissing && setDismissTarget(null)}
+        onConfirm={() => dismissTarget && dismissGhost(dismissTarget)}
+        title="Remove ghost node?"
+        body={`Hide '${dismissTarget}' from Unclassified and the live fleet lists. Use this when the host no longer exists.`}
+        details={dismissTarget ? [dismissTarget] : undefined}
+        confirmLabel="Remove ghost"
+        danger
+        loading={dismissing}
       />
 
       {/* Casual illustration */}
@@ -664,7 +705,7 @@ export function NodesPage() {
           defaultPageSize={50}
           maxHeight={480}
           emptyTitle="All known nodes are classified"
-          emptyDescription={search || statusFilter ? 'No unclassified nodes match the current search/filters.' : undefined}
+          emptyDescription={search || statusFilter ? 'No unclassified nodes match the current search/filters.' : 'Trash icon removes a ghost that no longer exists.'}
           onRowClick={(n) => navigate(`/nodes/${n.certname}`)}
           columns={[
             {
@@ -696,7 +737,7 @@ export function NodesPage() {
               key: 'actions',
               header: 'Actions',
               sortable: false,
-              render: (n) => actionCell(n),
+              render: (n) => actionCell(n, { ghost: true }),
             },
           ] as OpsColumn<NodeSummary>[]}
         />

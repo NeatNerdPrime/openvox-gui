@@ -1136,6 +1136,7 @@ function NodesTab({
   const [formClasses, setFormClasses] = useState<string[]>([]);
   const [formParams, setFormParams] = useState<Array<{ key: string; val: string }>>([]);
   const [pendingDeleteNode, setPendingDeleteNode] = useState<string | null>(null);
+  const [pendingDismissNode, setPendingDismissNode] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -1204,6 +1205,23 @@ function NodesTab({
       await enc.deleteNode(certname);
       notifications.show({ title: 'Removed', message: `'${certname}' removed`, color: 'green' });
       setPendingDeleteNode(null);
+      load();
+    } catch (e: any) {
+      notifications.show({ title: 'Error', message: e.message, color: 'red' });
+    }
+    setDeleteLoading(false);
+  };
+
+  const handleDismissGhost = async (certname: string) => {
+    setDeleteLoading(true);
+    try {
+      await nodesApi.dismiss(certname);
+      notifications.show({
+        title: 'Removed',
+        message: `'${certname}' hidden from Unclassified (ghost).`,
+        color: 'green',
+      });
+      setPendingDismissNode(null);
       load();
     } catch (e: any) {
       notifications.show({ title: 'Error', message: e.message, color: 'red' });
@@ -1304,12 +1322,36 @@ function NodesTab({
         {unclassified.length > 0 ? (
           <>
             <Text size="xs" c="dimmed" mb="sm">
-              On the live fleet (active in PuppetDB with a signed cert) but not yet classified. Click to classify.
+              On the live fleet but not yet classified. Click the name to classify.
+              Use the X to remove a ghost (host gone, still listed in PuppetDB).
             </Text>
             <Group gap="xs" wrap="wrap">
               {unclassified.map((cn) => (
-                <Badge key={cn} variant="outline" color="gray" size="sm" style={{ cursor: 'pointer' }}
-                  onClick={() => openCreate(cn)}>{cn}</Badge>
+                <Badge
+                  key={cn}
+                  variant="outline"
+                  color="gray"
+                  size="sm"
+                  pr={4}
+                  rightSection={
+                    <ActionIcon
+                      size="xs"
+                      color="red"
+                      variant="transparent"
+                      aria-label={`Remove ghost ${cn}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingDismissNode(cn);
+                      }}
+                    >
+                      <IconX size={10} />
+                    </ActionIcon>
+                  }
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => openCreate(cn)}
+                >
+                  {cn}
+                </Badge>
               ))}
             </Group>
           </>
@@ -1435,6 +1477,17 @@ function NodesTab({
         body={`Remove classification for '${pendingDeleteNode}'?`}
         details={pendingDeleteNode ? [pendingDeleteNode] : undefined}
         confirmLabel="Remove"
+        danger
+        loading={deleteLoading}
+      />
+      <ConfirmModal
+        opened={!!pendingDismissNode}
+        onClose={() => !deleteLoading && setPendingDismissNode(null)}
+        onConfirm={() => pendingDismissNode && handleDismissGhost(pendingDismissNode)}
+        title="Remove ghost node?"
+        body={`Hide '${pendingDismissNode}' from Unclassified and the live fleet lists. Use this when the host is gone but PuppetDB still lists it. Classification is also removed if present.`}
+        details={pendingDismissNode ? [pendingDismissNode] : undefined}
+        confirmLabel="Remove ghost"
         danger
         loading={deleteLoading}
       />
