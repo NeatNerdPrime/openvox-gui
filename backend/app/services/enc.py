@@ -12,12 +12,26 @@ but classes from lower levels are preserved unless explicitly
 overridden.
 """
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from ..models.enc import EncCommon, EncEnvironment, EncGroup, EncNode
 from .enc_merge import deep_merge  # re-exported for callers / tests
+
+
+def filter_enc_names_to_live(
+    enc_names: List[str], live_names: List[str],
+) -> List[str]:
+    """Keep ENC environment names that still exist on the compilers.
+
+    If discovery returned nothing, leave the ENC list alone (do not
+    wipe the UI because compilers were unreachable).
+    """
+    if not live_names:
+        return list(enc_names)
+    live = set(live_names)
+    return [n for n in enc_names if n in live]
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +133,57 @@ class HierarchicalENCService:
         env = await self.get_environment(db, name)
         if not env:
             return False
+        if await self.environment_in_use(db, name):
+            return False
         await db.delete(env)
         return True
+
+    async def environment_in_use(self, db: AsyncSession, name: str) -> bool:
+        g = await db.execute(
+            select(EncGroup.id).where(EncGroup.environment == name).limit(1)
+        )
+        if g.scalar_one_or_none() is not None:
+            return True
+        n = await db.execute(
+            select(EncNode.certname).where(EncNode.environment == name).limit(1)
+        )
+        return n.scalar_one_or_none() is not None
+
+    async def sync_with_live_environments(
+        self, db: AsyncSession, live_names: List[str],
+    ) -> Dict[str, List[str]]:
+        """Create ENC rows for live r10k envs; drop unused pruned ones."""
+        created: List[str] = []
+        pruned: List[str] = []
+        kept_in_use: List[str] = []
+        if not live_names:
+            return {
+                "live": [],
+                "created": created,
+                "pruned": pruned,
+                "kept_in_use": kept_in_use,
+            }
+        live_set: Set[str] = {str(n) for n in live_names if n}
+        existing = {e.name: e for e in await self.list_environments(db)}
+        for name in sorted(live_set):
+            if name not in existing:
+                await self.save_environment(db, name=name)
+                created.append(name)
+        for name in list(existing):
+            if name in live_set:
+                continue
+            if await self.environment_in_use(db, name):
+                kept_in_use.append(name)
+                continue
+            await db.delete(existing[name])
+            pruned.append(name)
+        await db.flush()
+        return {
+            "live": sorted(live_set),
+            "created": created,
+            "pruned": pruned,
+            "kept_in_use": kept_in_use,
+        }
 
     # ─── Groups (Layer 3) ─────────────────────────────────
 
@@ -446,3 +509,15 @@ class HierarchicalENCService:
 
 # Singleton
 enc_service = HierarchicalENCService()
+
+
+async def sync_enc_environments_from_compilers() -> Dict[str, List[str]]:
+    """After r10k: ENC environments match compiler codedirs."""
+    from .puppetserver import puppetserver_service
+    from ..database import async_session
+
+    live = await puppetserver_service.fetch_environments()
+    async with async_session() as db:
+        result = await enc_service.sync_with_live_environments(db, live or [])
+        await db.commit()
+        return result

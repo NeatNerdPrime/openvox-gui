@@ -13,7 +13,7 @@ import yaml
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
-from ..services.enc import enc_service
+from ..services.enc import enc_service, filter_enc_names_to_live
 from ..services.puppetdb import puppetdb_service
 from ..dependencies import require_role, READ_ROLES
 
@@ -113,6 +113,10 @@ async def get_hierarchy(db: AsyncSession = Depends(get_db)):
     common = await enc_service.get_common(db)
     envs = await enc_service.list_environments(db)
     groups = await enc_service.list_groups(db)
+    live_names = await _live_environment_names()
+    if live_names:
+        live = set(live_names)
+        envs = [e for e in envs if e.name in live]
 
     # Return the full set of nodes known to the ENC.
     # We keep classified nodes visible even if they temporarily fall out of
@@ -314,12 +318,39 @@ async def save_common(data: CommonData, db: AsyncSession = Depends(get_db), _use
 
 # ─── Environments (Layer 2) ────────────────────────────────
 
+async def _live_environment_names() -> List[str]:
+    """Control_repo environments currently on the compilers (r10k)."""
+    from ..services.puppetserver import puppetserver_service
+
+    try:
+        names = await puppetserver_service.fetch_environments()
+    except Exception as e:
+        logger.warning("live environment discovery failed: %s", e)
+        return []
+    return [str(n) for n in (names or []) if n]
+
+
 @router.get("/environments")
 async def list_environments(db: AsyncSession = Depends(get_db)):
     envs = await enc_service.list_environments(db)
+    live = await _live_environment_names()
+    keep = set(filter_enc_names_to_live([e.name for e in envs], live))
+    if live:
+        envs = [e for e in envs if e.name in keep]
     return [{"name": e.name, "description": e.description,
              "classes": e.classes or {}, "parameters": e.parameters or {}}
             for e in envs]
+
+
+@router.post("/environments/sync")
+async def sync_environments(
+    db: AsyncSession = Depends(get_db),
+    _user: str = Depends(_ENC_WRITE),
+):
+    """Create ENC rows for live r10k envs; drop unused pruned branches."""
+    live = await _live_environment_names()
+    return await enc_service.sync_with_live_environments(db, live)
+
 
 @router.post("/environments", status_code=201)
 async def create_environment(data: EnvironmentData, db: AsyncSession = Depends(get_db), _user: str = Depends(_ENC_WRITE)):
@@ -337,8 +368,14 @@ async def update_environment(name: str, data: EnvironmentData, db: AsyncSession 
 
 @router.delete("/environments/{name}", status_code=204)
 async def delete_environment(name: str, db: AsyncSession = Depends(get_db), _user: str = Depends(_ENC_WRITE)):
-    if not await enc_service.delete_environment(db, name):
+    if await enc_service.get_environment(db, name) is None:
         raise HTTPException(status_code=404, detail="Environment not found")
+    if await enc_service.environment_in_use(db, name):
+        raise HTTPException(
+            status_code=409,
+            detail="Environment still has groups or nodes; reclassify them first",
+        )
+    await enc_service.delete_environment(db, name)
 
 
 # ─── Groups (Layer 3) ─────────────────────────────────────

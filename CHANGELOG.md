@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.14] - 2026-08-31 (fix — drop pruned ENC environments)
+
+### Fixed
+- **Classification lists live r10k environments only.** Pruned
+  control_repo branches (e.g. `kea_cutover`) no longer appear in
+  Classification & Code → Classification after r10k removes them.
+  Discovery no longer falls back to PuppetDB (historical report
+  names). Refresh list / successful r10k creates missing ENC rows
+  and deletes unused ghost rows. In-use ghosts stay in the DB until
+  those nodes/groups are reclassified, but they are hidden from the
+  menus.
+
 ## [3.12.1-dev.13] - 2026-08-31 (fix — #63 #64 #65 from @miharp)
 
 ### Fixed

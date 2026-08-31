@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.13**
+**OpenVox GUI Version 3.12.1-dev.14**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.13"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.14"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1424,6 +1424,12 @@ These commands run privileged operations (reading configs, restarting services).
 - Check on the server: `sudo journalctl -u puppet -n 50 --output short-iso` and `sudo journalctl -t puppet-agent -n 50 --output short-iso`.
 
 ## Live fleet / ENC / Inventory membership
+
+### Problem: Classification still lists a pruned control_repo branch (e.g. `kea_cutover`)
+
+r10k prune removes the environment from `/etc/puppetlabs/code/environments` on the compilers. Older GUIs kept the ENC database row and (until 3.12.1-dev.14) left it in the Classification menus. PuppetDB was also used as a discovery fallback, and PDB never forgets an environment that once reported.
+
+**Fix:** Upgrade to **3.12.1-dev.14** or later, then **Classification → Environments → Refresh list**. Unused ENC rows are deleted. Rows still referenced by a node or group stay in the database but are hidden from the menus until you reclassify those objects. After Code Deployment / r10k the GUI syncs automatically.
 
 ### Problem: Classification | Common Classes dropdown is empty
 - Discovery is **not** from the ENC SQLite/Postgres DB — it is API-first from compilers:

@@ -175,9 +175,10 @@ class PuppetServerService:
     async def fetch_environments(self) -> List[str]:
         """Discover environment names (control_repo branches after r10k).
 
-        - **single / all-in-one:** local codedir first, then HTTP/PDB.
+        - **single / all-in-one:** local codedir first, then compiler HTTP.
         - **clustered:** compiler HTTP race → Bolt on deploy target →
-          PuppetDB → local codedir last (usually empty on console).
+          local codedir last (usually empty on console).
+        PuppetDB is not used: it retains pruned branch names forever.
         """
         import asyncio
         from .cluster_config import is_clustered
@@ -290,25 +291,9 @@ class PuppetServerService:
             errors.append(f"bolt-envs: {e}")
             logger.warning("Bolt environment list failed: %s", e)
 
-        # PuppetDB: only environments that have had node reports (subset)
-        try:
-            from .puppetdb import puppetdb_service
-
-            pdb_envs = await puppetdb_service.get_environments()
-            names = []
-            if isinstance(pdb_envs, list):
-                for item in pdb_envs:
-                    if isinstance(item, dict) and item.get("name"):
-                        names.append(str(item["name"]))
-                    elif isinstance(item, str) and item:
-                        names.append(item)
-            names = sorted(set(names))
-            if names:
-                logger.info("environments from PuppetDB count=%s", len(names))
-                return names
-        except Exception as e:
-            errors.append(f"puppetdb: {e}")
-            logger.warning("PuppetDB environments failed: %s", e)
+        # Do not fall back to PuppetDB. PDB lists every environment that
+        # ever filed a report, so pruned control_repo branches
+        # (kea_cutover after r10k prune) stay visible forever.
 
         # Last resort: local codedir (singleton already tried first above)
         local = self.list_environments_local()

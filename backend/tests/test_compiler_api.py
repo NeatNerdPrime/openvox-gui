@@ -8,6 +8,16 @@ from app.services.puppetserver import (
 )
 
 
+def test_filter_enc_names_drops_pruned_branches():
+    from app.services.enc import filter_enc_names_to_live
+
+    enc = ["production", "staging", "kea_cutover"]
+    live = ["production", "staging"]
+    assert filter_enc_names_to_live(enc, live) == ["production", "staging"]
+    assert filter_enc_names_to_live(enc, []) == enc
+    assert filter_enc_names_to_live([], live) == []
+
+
 def test_parse_environments_payload():
     data = {
         "search_paths": ["/etc/puppetlabs/code/environments"],

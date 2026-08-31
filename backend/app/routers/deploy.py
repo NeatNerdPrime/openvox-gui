@@ -392,6 +392,15 @@ async def webhook_deploy(request: Request):
         success=result["success"],
     )
 
+    if result.get("success"):
+        try:
+            from ..services.enc import sync_enc_environments_from_compilers
+
+            synced = await sync_enc_environments_from_compilers()
+            logger.info("ENC environments after webhook r10k: %s", synced)
+        except Exception as enc_exc:
+            logger.warning("ENC environment sync after webhook r10k failed: %s", enc_exc)
+
     return {
         "success": result["success"],
         "branch": branch,
@@ -473,6 +482,15 @@ async def run_deployment(
                 )
         except Exception as db_exc:
             logger.warning("deploy execution_history dual-write failed: %s", db_exc)
+
+        if result.get("success"):
+            try:
+                from ..services.enc import sync_enc_environments_from_compilers
+
+                synced = await sync_enc_environments_from_compilers()
+                logger.info("ENC environments after r10k: %s", synced)
+            except Exception as enc_exc:
+                logger.warning("ENC environment sync after r10k failed: %s", enc_exc)
 
         response = {
             "success": result["success"],

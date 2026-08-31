@@ -561,9 +561,7 @@ async function discoverControlRepoEnvironments(force = false): Promise<string[]>
   } catch {
     /* fall through */
   }
-  const fallback = ['production'];
-  _envDiscoveryCache = { at: Date.now(), names: fallback };
-  return fallback;
+  return [];
 }
 
 /**
@@ -576,7 +574,7 @@ async function discoverControlRepoEnvironments(force = false): Promise<string[]>
  */
 async function ensureEncEnvironments(opts?: {
   notify?: boolean;
-  /** When true, POST missing ENC environment rows (Refresh list only). */
+  /** When true, sync ENC rows to live r10k environments (Refresh list). */
   ensureRows?: boolean;
   /** Bypass discovery cache (after r10k / operator refresh). */
   forceDiscover?: boolean;
@@ -596,69 +594,73 @@ async function ensureEncEnvironments(opts?: {
     if (e?.name) byName.set(String(e.name), e);
   }
 
-  const created: string[] = [];
+  let created: string[] = [];
+  let pruned: string[] = [];
+  let keptInUse: string[] = [];
   if (ensureRows) {
-    const missing = discovered.filter((name) => !byName.has(name));
-    // Parallel creates (bounded) — far faster than sequential await in a loop
-    await Promise.all(
-      missing.map(async (name) => {
-        try {
-          const row = await enc.createEnvironment({
-            name,
-            description: '',
-            classes: {},
-            parameters: {},
-          });
-          byName.set(name, row || { name, classes: {}, parameters: {}, description: '' });
-          created.push(name);
-        } catch {
-          byName.set(name, { name, classes: {}, parameters: {}, description: '' });
-        }
-      }),
-    );
-    if (created.length > 0) {
-      try {
-        const fresh = await enc.listEnvironments();
-        if (Array.isArray(fresh)) {
-          for (const e of fresh) {
-            if (e?.name) byName.set(String(e.name), e);
-          }
-        }
-      } catch {
-        /* keep map */
+    try {
+      const sync = await enc.syncEnvironments();
+      created = Array.isArray(sync?.created) ? sync.created : [];
+      pruned = Array.isArray(sync?.pruned) ? sync.pruned : [];
+      keptInUse = Array.isArray(sync?.kept_in_use) ? sync.kept_in_use : [];
+      if (Array.isArray(sync?.live) && sync.live.length > 0) {
+        discovered.splice(0, discovered.length, ...sync.live.map((n) => String(n)));
       }
+      const fresh = await enc.listEnvironments();
+      if (Array.isArray(fresh)) {
+        byName.clear();
+        for (const e of fresh) {
+          if (e?.name) byName.set(String(e.name), e);
+        }
+      }
+    } catch {
+      /* keep current ENC map */
     }
   }
 
-  const names = discovered.length > 0 ? discovered : ['production'];
-  for (const name of names) {
-    if (!byName.has(name)) {
-      byName.set(name, { name, classes: {}, parameters: {}, description: '' });
+  // Live r10k environments only. Pruned branches (kea_cutover) must not
+  // appear in Classification menus even if an ENC row still exists.
+  const names = discovered.length > 0 ? discovered : [];
+  const live = new Set(names);
+  if (live.size > 0) {
+    for (const name of names) {
+      if (!byName.has(name)) {
+        byName.set(name, { name, classes: {}, parameters: {}, description: '' });
+      }
     }
+  } else if (byName.size === 0) {
+    byName.set('production', { name: 'production', classes: {}, parameters: {}, description: '' });
   }
-  // ENC rows that compilers did not advertise (e.g. kea_cutover) stay visible
-  const envs = Array.from(byName.values()).sort((a, b) =>
-    String(a.name).localeCompare(String(b.name)),
-  );
+  const envs = Array.from(byName.values())
+    .filter((e) => live.size === 0 || live.has(String(e.name)))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
   if (opts?.notify) {
     const listed = envs.map((e) => e.name).join(', ');
-    if (created.length > 0) {
-      notifications.show({
-        title: 'Environments ready',
-        message: `Created ENC rows for: ${created.join(', ')}. Showing ${envs.length}: ${listed}`,
-        color: 'blue',
-      });
-    } else if (envs.length === 0) {
+    const bits: string[] = [];
+    if (created.length > 0) bits.push(`added ${created.join(', ')}`);
+    if (pruned.length > 0) bits.push(`removed ${pruned.join(', ')}`);
+    if (keptInUse.length > 0) {
+      bits.push(`kept in-use ${keptInUse.join(', ')} (reclassify nodes/groups first)`);
+    }
+    if (envs.length === 0) {
       notifications.show({
         title: 'No environments found',
         message: 'Could not discover control_repo branches from compilers',
         color: 'yellow',
       });
+    } else {
+      notifications.show({
+        title: 'Environments synced',
+        message: bits.length > 0
+          ? `${bits.join('; ')}. Showing ${envs.length}: ${listed}`
+          : `Showing ${envs.length} live environment${envs.length === 1 ? '' : 's'}: ${listed}`,
+        color: 'blue',
+      });
     }
   }
 
-  return { envs, discovered: names };
+  return { envs, discovered: names.length > 0 ? names : envs.map((e) => String(e.name)) };
 }
 
 /**
@@ -855,7 +857,7 @@ function EnvironmentsTab({
 
   const handleResync = async () => {
     setSyncing(true);
-    // Explicit refresh: re-discover from compilers and create missing ENC rows
+    // Re-discover from compilers; drop ENC rows for pruned branches.
     await load({ notify: true, ensureRows: true, forceDiscover: true });
     setSyncing(false);
   };

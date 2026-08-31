@@ -265,6 +265,13 @@ export const enc = {
 
   // Environments (Layer 2)
   listEnvironments: () => fetchJSON<any[]>('/enc/environments'),
+  syncEnvironments: () =>
+    fetchJSON<{
+      live: string[];
+      created: string[];
+      pruned: string[];
+      kept_in_use: string[];
+    }>('/enc/environments/sync', { method: 'POST' }),
   createEnvironment: (data: any) =>
     fetchJSON<any>('/enc/environments', { method: 'POST', body: JSON.stringify(data) }),
   updateEnvironment: (name: string, data: any) =>
