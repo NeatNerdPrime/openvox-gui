@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.12**
+**OpenVox GUI Version 3.12.1-dev.13**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.12"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.13"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -222,6 +222,24 @@ Full write-up: [docs/VIP_SESSIONS.md](docs/VIP_SESSIONS.md).
 ### Problem: `project.version` / pep440 error on deploy (ovox install)
 
 Use PEP 440 pre-release labels only (`rc`, `a`, `b`, `dev`). The string `gamma` is **not** valid for pip/setuptools — the product train may be called “gamma” in notes but the version file must be e.g. `3.12.0-rc.1`.
+
+### Problem: `install.sh` dies at `venv/bin/pip: No such file or directory`
+
+**Symptom:** First run on Debian/Ubuntu without `python3-venv` prints `ensurepip is not available` and exits. Re-runs (even after `apt install python3-venv`) log `Virtual environment already exists` and then:
+
+```
+venv/bin/pip: No such file or directory
+```
+
+**Cause:** `python3 -m venv` created the directory, then failed at ensurepip, leaving a tree with no `bin/pip`. Older installers treated `[ -d venv ]` as success. Reported by [@miharp](https://github.com/miharp) in [#64](https://github.com/cvquesty/openvox-gui/issues/64).
+
+**Fix:** Upgrade to **3.12.1-dev.13** or later (preflight imports `ensurepip`/`venv`; an incomplete venv is removed and recreated). On an already-broken host:
+
+```bash
+sudo apt install -y python3-venv   # if missing
+sudo rm -rf /opt/openvox-gui/venv
+sudo ./install.sh
+```
 
 ---
 
@@ -1021,6 +1039,18 @@ OpenBolt). Production uvicorn hides the traceback as a generic 500.
    ```
 
 4. **Inventory / targets:** Prefer ENC groups or PuppetDB-backed targets from the GUI Target selector. Sync inventory if you still maintain a static file: Orchestration inventory sync or `openvox_enc` plugin (see [bolt-plugin/README.md](bolt-plugin/README.md)).
+
+### Problem: Every Bolt run logs `Failed to save result to /etc/puppetlabs/bolt/.rerun.json`
+
+**Symptom:** Command, task, and Stage/Activate succeed, then every result pane ends with:
+
+```
+Failed to save result to /etc/puppetlabs/bolt/.rerun.json: Permission denied @ rb_sysopen - /etc/puppetlabs/bolt/.rerun.json [ID: unwriteable_file]
+```
+
+**Cause:** On a dedicated console, `/etc/puppetlabs/bolt` is `root:bolt 0750`. The GUI runs `sudo -u bolt … --project /etc/puppetlabs/bolt`, so Bolt can read the project but cannot create `.rerun.json`. The GUI does not use that file. Reported by [@miharp](https://github.com/miharp) in [#63](https://github.com/cvquesty/openvox-gui/issues/63).
+
+**Fix:** Upgrade to **3.12.1-dev.13** or later. `bolt_runtime.py` now passes `--no-save-rerun`. New `bolt-project.yaml` templates also set `save-rerun: false`.
 
 ### Problem: One click on Run Command runs the shell command three times on targets
 

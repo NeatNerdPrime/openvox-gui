@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.13] - 2026-08-31 (fix — #63 #64 #65 from @miharp)
+
+### Fixed
+- **#63 Bolt `.rerun.json` permission denied:** every GUI Bolt run
+  (command, task, Stage/Activate) ended with
+  `Failed to save result to /etc/puppetlabs/bolt/.rerun.json` on
+  dedicated consoles (`root:bolt 0750`). `bolt_runtime.py` now passes
+  `--no-save-rerun`; new `bolt-project.yaml` templates set
+  `save-rerun: false`. Reported by [@miharp](https://github.com/miharp).
+- **#64 `install.sh` reuses a broken venv:** on Debian/Ubuntu without
+  `python3-venv`, `python3 -m venv` left a directory with no `bin/pip`.
+  Later runs said the venv already existed and died at `venv/bin/pip`.
+  Preflight now `import ensurepip, venv`; an incomplete venv is removed
+  and recreated. Reported by [@miharp](https://github.com/miharp).
+- **#65 Settings raw `puppet_ca_host` / `puppet_ca_port`:** Application
+  Settings now labels those rows (OpenVox CA Host / Port) with the same
+  blurb style as the other keys. Reported by [@miharp](https://github.com/miharp).
+
 ## [3.12.1-dev.12] - 2026-08-28 (fix — clustered agent install hits console /packages)
 
 ### Fixed

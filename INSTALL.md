@@ -1,6 +1,6 @@
 # Installation Guide
 
-**OpenVox GUI Version 3.12.1-dev.12**
+**OpenVox GUI Version 3.12.1-dev.13**
 
 This guide will walk you through installing OpenVox GUI on your server. Don't worry if you're new to this - we'll explain everything step by step!
 
@@ -254,6 +254,8 @@ sudo dnf install -y python3.12 python3.12-pip git   # EL8/EL9
 # EL10 / Fedora: default python3 is already 3.12+
 # sudo dnf install -y python3 python3-pip git
 # Ubuntu/Debian 22.04+:
+# python3-venv is required — without it `python3 -m venv` leaves a
+# broken tree and a later install.sh used to reuse it (#64).
 sudo apt install -y python3 python3-venv python3-pip git
 ```
 
@@ -339,7 +341,7 @@ sudo systemctl status openvox-gui
 curl -k https://localhost:4567/health
 ```
 
-You should see `{"status":"ok","version":"3.12.1-dev.12"}` if everything is working.
+You should see `{"status":"ok","version":"3.12.1-dev.13"}` if everything is working.
 
 ---
 

@@ -974,7 +974,21 @@ if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,
     exit 1
 fi
 
-if [ ! -d "${INSTALL_DIR}/venv" ]; then
+# Debian/Ubuntu split python3-venv: `python3 -m venv` creates the directory
+# then dies at ensurepip, leaving a tree with no bin/pip. A later run used
+# to treat that directory as a good venv and fail at venv/bin/pip (#64, @miharp).
+if ! "$PYTHON_BIN" -c 'import ensurepip, venv' 2>/dev/null; then
+    log_err "Python '${PYTHON_BIN}' is missing the venv/ensurepip modules."
+    log_err "On Debian/Ubuntu: apt install python3-venv"
+    log_err "On RHEL family:   dnf install python3-pip (or the matching python3.X-pip)"
+    exit 1
+fi
+
+if [ ! -x "${INSTALL_DIR}/venv/bin/pip" ]; then
+    if [ -d "${INSTALL_DIR}/venv" ]; then
+        log_warn "Existing venv at ${INSTALL_DIR}/venv is incomplete (no bin/pip). Recreating."
+        rm -rf "${INSTALL_DIR}/venv"
+    fi
     "$PYTHON_BIN" -m venv "${INSTALL_DIR}/venv"
     log_ok "Created Python virtual environment"
 else
@@ -1508,6 +1522,7 @@ if [ "$CONFIGURE_BOLT" = "true" ]; then
 name: openvox
 modulepath:
   - /etc/puppetlabs/bolt/modules
+save-rerun: false
 BOLTEOF
         chown root:bolt "${BOLT_DIR}/bolt-project.yaml"
         chmod 640 "${BOLT_DIR}/bolt-project.yaml"

@@ -104,6 +104,7 @@ modulepath:
 
 analytics: false
 color: true
+save-rerun: false
 EOF
 chown root:bolt "$BOLT_DIR/bolt-project.yaml"
 chmod 640 "$BOLT_DIR/bolt-project.yaml"

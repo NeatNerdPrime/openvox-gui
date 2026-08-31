@@ -26,6 +26,7 @@ modulepath:
 
 analytics: false
 color: true
+save-rerun: false
 EOF
 
 cat > "$BOLT/inventory.yaml" << EOF

@@ -276,6 +276,12 @@ async def run_bolt_command(
     elif not is_rainbow and "--no-tty" not in args:
         args = list(args) + ["--no-tty"]
 
+    # Dedicated consoles leave /etc/puppetlabs/bolt as root:bolt 0750.
+    # Bolt then cannot write .rerun.json; the GUI does not use rerun.
+    # Reported by @miharp (#63).
+    if "--no-save-rerun" not in args:
+        args = list(args) + ["--no-save-rerun"]
+
     bolt_args = ["sudo", "-E", "-u", "bolt", bolt] + args + inventory_flag + project_flag
 
     env = os.environ.copy()

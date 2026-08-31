@@ -151,6 +151,8 @@ function ApplicationTab({ onSwitchToServices }: { onSwitchToServices: () => void
     app_name:            { label: 'Application Name',    description: 'Display name shown in the header and login page', editable: true },
     puppet_server_host:  { label: 'OpenVox Server Host',  description: 'FQDN of the OpenVox Server for API communication', editable: true },
     puppet_server_port:  { label: 'OpenVox Server Port',  description: 'OpenVox Server HTTPS API port (usually 8140)', editable: true, type: 'number' },
+    puppet_ca_host:      { label: 'OpenVox CA Host',      description: 'FQDN of the CA (clustered consoles only; empty means same as OpenVox Server Host)', editable: true },
+    puppet_ca_port:      { label: 'OpenVox CA Port',      description: 'CA HTTPS API port (usually 8140)', editable: true, type: 'number' },
     puppetdb_host:       { label: 'OpenVox DB Host',      description: 'FQDN of the OpenVoxDB server', editable: true },
     puppetdb_port:       { label: 'OpenVox DB Port',      description: 'OpenVoxDB HTTPS API port (usually 8081)', editable: true, type: 'number' },
     debug:               { label: 'Debug Mode',          description: 'Enable verbose debug logging (restart required)', editable: true, type: 'boolean' },
