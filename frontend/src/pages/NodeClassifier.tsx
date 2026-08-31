@@ -83,16 +83,23 @@ function ClassPicker({
   const [manual, setManual] = useState('');
 
   useEffect(() => {
+    const ac = new AbortController();
     setLoaded(false);
-    enc.getAvailableClasses(environment)
-      .then((d) => { setAvailable(d || {}); setLoaded(true); })
+    enc.getAvailableClasses(environment, ac.signal)
+      .then((d) => {
+        if (ac.signal.aborted) return;
+        setAvailable(d || {});
+        setLoaded(true);
+      })
       .catch((e: any) => {
+        if (e?.name === 'AbortError' || ac.signal.aborted) return;
         setAvailable({
           roles: [], profiles: [], modules: [], all: [],
           message: e?.message || 'Failed to load classes',
         });
         setLoaded(true);
       });
+    return () => ac.abort();
   }, [environment]);
 
   // Keep selected values visible even if not in the remote list yet

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.15] - 2026-08-31 (fix — Classification class list Failed to fetch)
+
+### Fixed
+- **Class picker `Failed to fetch`:** `GET /enc/environments` and
+  `/enc/hierarchy` were calling compiler/Bolt discovery on every
+  Classification load (from 3.12.1-dev.14). Two uvicorn workers then
+  sat in those walks, Apache dropped `GET /enc/available-classes`, and
+  the browser showed only "Failed to fetch". List/hierarchy are cheap
+  DB reads again. Live r10k filtering stays on the UI + Refresh /
+  post-r10k sync. Environment and class discovery are cached 90s and
+  single-flighted. Bolt class fallback is 25s. Network errors show a
+  real message instead of the raw TypeError.
+
 ## [3.12.1-dev.14] - 2026-08-31 (fix — drop pruned ENC environments)
 
 ### Fixed

@@ -13,7 +13,7 @@ import yaml
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
-from ..services.enc import enc_service, filter_enc_names_to_live
+from ..services.enc import enc_service
 from ..services.puppetdb import puppetdb_service
 from ..dependencies import require_role, READ_ROLES
 
@@ -113,10 +113,6 @@ async def get_hierarchy(db: AsyncSession = Depends(get_db)):
     common = await enc_service.get_common(db)
     envs = await enc_service.list_environments(db)
     groups = await enc_service.list_groups(db)
-    live_names = await _live_environment_names()
-    if live_names:
-        live = set(live_names)
-        envs = [e for e in envs if e.name in live]
 
     # Return the full set of nodes known to the ENC.
     # We keep classified nodes visible even if they temporarily fall out of
@@ -227,7 +223,7 @@ async def get_available_classes(environment: str = "production"):
                         "--no-tty",
                         "--format", "json",
                     ],
-                    timeout=90,
+                    timeout=25,
                 )
                 data = _extract_bolt_json(bolt.get("stdout") or "")
                 item = {}
@@ -332,11 +328,12 @@ async def _live_environment_names() -> List[str]:
 
 @router.get("/environments")
 async def list_environments(db: AsyncSession = Depends(get_db)):
+    """Cheap ENC DB read. Live r10k filtering is on the Classification UI
+    plus POST /environments/sync — do not call compiler/Bolt here or
+    two uvicorn workers starve GET /available-classes (browser
+    ``Failed to fetch``).
+    """
     envs = await enc_service.list_environments(db)
-    live = await _live_environment_names()
-    keep = set(filter_enc_names_to_live([e.name for e in envs], live))
-    if live:
-        envs = [e for e in envs if e.name in keep]
     return [{"name": e.name, "description": e.description,
              "classes": e.classes or {}, "parameters": e.parameters or {}}
             for e in envs]

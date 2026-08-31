@@ -516,6 +516,7 @@ async def sync_enc_environments_from_compilers() -> Dict[str, List[str]]:
     from .puppetserver import puppetserver_service
     from ..database import async_session
 
+    puppetserver_service.invalidate_environment_cache()
     live = await puppetserver_service.fetch_environments()
     async with async_session() as db:
         result = await enc_service.sync_with_live_environments(db, live or [])

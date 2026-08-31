@@ -84,6 +84,12 @@ class PuppetServerService:
         # For metrics / health queries to Puppet Server (same mTLS certs as PuppetDB)
         self.ps_base_url = f"https://{settings.puppet_server_host}:{settings.puppet_server_port}"
         self._ps_client: Optional[httpx.AsyncClient] = None
+        self._env_cache: List[str] = []
+        self._env_cache_ts: float = 0.0
+        self._env_lock = None
+        self._class_cache: Dict[str, List[str]] = {}
+        self._class_cache_ts: Dict[str, float] = {}
+        self._class_lock = None
 
     def _create_ps_ssl_context(self) -> ssl.SSLContext:
         """Create mTLS context using the Puppet agent's certs (same as PuppetDB)."""
@@ -172,7 +178,44 @@ class PuppetServerService:
         except Exception as e:
             return [], f"{host}: {e}"
 
+    def invalidate_environment_cache(self) -> None:
+        """Drop cached env names after r10k prune/deploy."""
+        self._env_cache = []
+        self._env_cache_ts = 0.0
+        self._class_cache = {}
+        self._class_cache_ts = {}
+
+    def _async_lock(self, attr: str):
+        import asyncio
+        lock = getattr(self, attr)
+        if lock is None:
+            lock = asyncio.Lock()
+            setattr(self, attr, lock)
+        return lock
+
     async def fetch_environments(self) -> List[str]:
+        """Discover environment names (control_repo branches after r10k).
+
+        Results are cached ~90s and single-flighted so Classification
+        page-load (config + ENC list + class picker) does not pile three
+        Bolt walks onto two uvicorn workers and starve available-classes.
+        """
+        import time
+
+        now = time.monotonic()
+        if self._env_cache and (now - self._env_cache_ts) < 90.0:
+            return list(self._env_cache)
+        async with self._async_lock("_env_lock"):
+            now = time.monotonic()
+            if self._env_cache and (now - self._env_cache_ts) < 90.0:
+                return list(self._env_cache)
+            names = await self._fetch_environments_uncached()
+            if names:
+                self._env_cache = list(names)
+                self._env_cache_ts = time.monotonic()
+            return list(names)
+
+    async def _fetch_environments_uncached(self) -> List[str]:
         """Discover environment names (control_repo branches after r10k).
 
         - **single / all-in-one:** local codedir first, then compiler HTTP.
@@ -372,7 +415,38 @@ class PuppetServerService:
 
         Returns (class_names, meta) where meta has source/host/errors for the UI.
         First successful host wins; remaining requests are cancelled.
+        Cached ~90s per environment so picking an env in Classification
+        does not re-hit every compiler on each dropdown open.
         """
+        import time
+
+        env = (environment or "production").strip() or "production"
+        now = time.monotonic()
+        cached = self._class_cache.get(env)
+        if cached and (now - self._class_cache_ts.get(env, 0.0)) < 90.0:
+            return list(cached), {
+                "source": "cache",
+                "host": None,
+                "environment": env,
+            }
+        async with self._async_lock("_class_lock"):
+            now = time.monotonic()
+            cached = self._class_cache.get(env)
+            if cached and (now - self._class_cache_ts.get(env, 0.0)) < 90.0:
+                return list(cached), {
+                    "source": "cache",
+                    "host": None,
+                    "environment": env,
+                }
+            names, meta = await self._fetch_environment_classes_uncached(env)
+            if names:
+                self._class_cache[env] = list(names)
+                self._class_cache_ts[env] = time.monotonic()
+            return names, meta
+
+    async def _fetch_environment_classes_uncached(
+        self, environment: str = "production"
+    ) -> tuple[List[str], Dict[str, Any]]:
         import asyncio
 
         hosts = self._compiler_hosts_for_api()

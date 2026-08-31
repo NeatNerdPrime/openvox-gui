@@ -32,11 +32,25 @@ function getAuthHeaders(): Record<string, string> {
  * call window.location.reload() — that caused VIP multi-console thrash.
  */
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, {
-    credentials: 'same-origin',
-    headers: getAuthHeaders(),
-    ...options,
-  });
+  const { headers: extraHeaders, ...rest } = options || {};
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${url}`, {
+      credentials: 'same-origin',
+      headers: { ...getAuthHeaders(), ...(extraHeaders as Record<string, string> | undefined) },
+      ...rest,
+    });
+  } catch (e: unknown) {
+    const err = e as { name?: string; message?: string };
+    if (err?.name === 'AbortError') throw e;
+    const msg = String(err?.message || e);
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      throw new Error(
+        'Could not reach the GUI API (proxy timeout or the server was busy discovering classes). Try again.',
+      );
+    }
+    throw e instanceof Error ? e : new Error(msg);
+  }
   if (response.status === 401) {
     await handleUnauthorized();
     throw new Error('Session expired. Please log in again.');
@@ -252,8 +266,11 @@ export const deploy = {
 
 export const enc = {
   // Available classes from OpenVox modules
-  getAvailableClasses: (env?: string) =>
-    fetchJSON<any>(`/enc/available-classes${env ? '?environment=' + env : ''}`),
+  getAvailableClasses: (env?: string, signal?: AbortSignal) =>
+    fetchJSON<any>(
+      `/enc/available-classes${env ? `?environment=${encodeURIComponent(env)}` : ''}`,
+      signal ? { signal } : undefined,
+    ),
 
   // Hierarchy overview
   getHierarchy: () => fetchJSON<any>('/enc/hierarchy'),
