@@ -182,7 +182,7 @@ export function DashboardPage() {
     dashboard.getData,
     [pollMs ?? 0],
     {
-      cacheKey: 'openvox_dashboard_data_v2',
+      cacheKey: 'openvox_dashboard_data_v3',
       cacheValidate: (d) => {
         if (d == null || (d as any).node_status == null) return false;
         const nodes = (d as any).nodes;

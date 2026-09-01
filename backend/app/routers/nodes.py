@@ -111,6 +111,10 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
         # Bolt run we already marked success is that run, not a later
         # scheduled failure. A failed report newer than that window wins.
         same_run_window = timedelta(minutes=5)
+        if report_at is None or live_at > report_at:
+            node["report_timestamp"] = (
+                live_at.replace(microsecond=0).isoformat() + "Z"
+            )
         stale_failed = report_status == "failed" and (
             report_at is None or live_at + same_run_window >= report_at
         )

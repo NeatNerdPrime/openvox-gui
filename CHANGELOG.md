@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.5] - 2026-09-01 (fix — Needs attention 8-day ghosts)
+
+### Fixed
+- **Overview Needs attention:** Unchanged + “8 days” after a same-day
+  fleet run came from a stuck ``latest_report?`` on one OpenVoxDB
+  replica (VIP RR) plus a 2000-row unfiltered window. Newest report
+  is now folded from **every** configured PDB member (48h extract).
+  A successful GUI agent run updates ``report_timestamp`` so stale
+  age cannot keep the row. Dashboard session cache key bumped.
+
 ## [3.13.0-rc.4] - 2026-09-01 (fix — Bolt PTY + sudo -n everywhere)
 
 ### Fixed

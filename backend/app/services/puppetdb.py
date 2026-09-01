@@ -557,12 +557,18 @@ class PuppetDBService:
             except Exception as e2:
                 logger.warning("AST latest_report? failed: %s", e2)
 
-        # Recent reports via the AST endpoint (HTTP order_by, not PQL).
-        # Newer receive_time replaces a stuck latest_report? flag.
+        # Last 48h via AST extract (HTTP order_by). Replaces a stuck
+        # latest_report? flag. Unbounded "newest 2000" can miss a node
+        # that reported once while others flooded the window.
         try:
+            from datetime import datetime, timedelta, timezone
+
+            cutoff = (
+                datetime.now(timezone.utc) - timedelta(hours=48)
+            ).strftime("%Y-%m-%dT%H:%M:%S.000Z")
             recent = await self.get_reports_lean(
-                query=None,
-                limit=2000,
+                query=f'[">", "receive_time", "{cutoff}"]',
+                limit=10000,
                 order_by="receive_time",
                 order_dir="desc",
             ) or []
@@ -806,6 +812,10 @@ class PuppetDBService:
         extra = getattr(settings, "puppetdb_peers", None) or ""
         for part in str(extra).replace(",", " ").split():
             _add(part)
+        # Every configured OpenVoxDB member — VIP DNS RR can land on
+        # different replicas; newest receive_time across members wins.
+        for host in cfg.get("puppetdb_nodes") or []:
+            _add(str(host))
         return out
 
     async def _query_host(

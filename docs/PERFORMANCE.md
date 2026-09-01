@@ -37,7 +37,7 @@ What we do now on Dashboard:
 
 | Page | session cache key prefix |
 |------|--------------------------|
-| Dashboard | `openvox_dashboard_data_v2` |
+| Dashboard | `openvox_dashboard_data_v3` |
 | Compliance | `openvox_metrics_compliance_v1_*` |
 | Run Performance | `openvox_metrics_performance_v1_*` |
 | Fact Distribution | `openvox_metrics_fact_overview_v1` |

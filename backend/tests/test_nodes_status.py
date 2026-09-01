@@ -308,7 +308,8 @@ def test_peer_hosts_are_explicit_vips_only():
                 hosts = PuppetDBService._peer_puppetdb_hosts(
                     PuppetDBService.__new__(PuppetDBService)
                 )
-    assert hosts == ["ovdb.extra.example.com"]
+    assert "ovdb.extra.example.com" in hosts
+    assert "ovdb1.site-a.example.com" in hosts
     assert "ovdb.example.com" not in hosts
 
 
