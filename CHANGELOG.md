@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.17] - 2026-09-01 (chore — Dependabot PRs #66–#77)
+
+### Changed
+- Applied green Dependabot bumps: sqlalchemy 2.0.52 (#73), pydantic
+  2.13.5 (#71), pydantic-settings 2.15.0 (#67), prometheus-client
+  0.26.0 (#68), uvicorn 0.52.4 (#70), react-router 8.3.1 (#72),
+  @types/react 19.2.18 (#77), jsdom 30.0.1 (#75),
+  actions/upload-artifact v7 (#69), actions/download-artifact v8 (#66).
+- **Not taken:** @mantine/core and @mantine/hooks 7.17.8 → 9.5.2
+  (#74, #76). Frontend typecheck/build failed; Mantine 9 is a
+  breaking major and must move dropzone + notifications together
+  in a planned upgrade.
+
 ## [3.12.1-dev.16] - 2026-09-01 (fix — Fact Explorer Filter Value)
 
 ### Fixed
