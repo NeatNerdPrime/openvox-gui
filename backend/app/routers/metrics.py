@@ -30,6 +30,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+
+def jmx_scalar(val: Any) -> Optional[float]:
+    """Jolokia gauges arrive as a number *or* ``{Value: n}`` / ``{Count: n}``."""
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, dict):
+        for key in ("Value", "value", "Count", "Mean"):
+            inner = val.get(key)
+            if isinstance(inner, (int, float)) and not isinstance(inner, bool):
+                return float(inner)
+    return None
+
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
 _AUTH = require_role(*READ_ROLES)
@@ -625,6 +641,25 @@ async def get_puppetdb_performance(_user: str = Depends(_AUTH)):
         results[key] = val
 
     await asyncio.gather(*[fetch_metric(k, v) for k, v in metric_names.items()])
+
+    # Fleet size from live nodes (same set as Inventory). JMX num-nodes
+    # is replica-local and Jolokia often returns a bare number, which the
+    # UI used to read as .Value → 0.
+    live_n = 0
+    try:
+        live_n = len(await puppetdb_service.get_live_nodes())
+    except Exception:
+        logger.warning("fleet_nodes from live nodes failed", exc_info=True)
+    jmx_nodes = jmx_scalar(results.get("population_nodes")) or 0
+    jmx_res = jmx_scalar(results.get("population_resources")) or 0
+    jmx_avg = jmx_scalar(results.get("population_avg_resources")) or 0
+    fleet_nodes = int(live_n or jmx_nodes)
+    if not jmx_avg and fleet_nodes and jmx_res:
+        jmx_avg = jmx_res / fleet_nodes
+    results["fleet_nodes"] = fleet_nodes
+    results["fleet_resources"] = int(jmx_res)
+    results["fleet_avg_resources"] = round(float(jmx_avg), 1)
+
     _set_cached("pdb_performance", results)
     return results
 

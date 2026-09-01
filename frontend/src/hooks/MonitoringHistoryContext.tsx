@@ -207,8 +207,12 @@ export function MonitoringHistoryProvider({ children }: { children: ReactNode })
             hash_miss_ms: Number(server.catalog_hash_miss?.Mean) / 1000 || 0,
             gc_young_count: Number(server.gc_young?.CollectionCount) || 0,
             gc_old_count: Number(server.gc_old?.CollectionCount) || 0,
-            nodes: Number(server.population_nodes?.Value) || 0,
-            avg_resources: Number(server.population_avg_resources?.Value) || 0,
+            nodes: Number(server.fleet_nodes)
+              || (typeof server.population_nodes === 'number' ? server.population_nodes : Number(server.population_nodes?.Value))
+              || 0,
+            avg_resources: Number(server.fleet_avg_resources)
+              || (typeof server.population_avg_resources === 'number' ? server.population_avg_resources : Number(server.population_avg_resources?.Value))
+              || 0,
           };
           appendPerfPoint(point);
         }

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.31] - 2026-09-01 (fix — Fleet Population counts + dual axis)
+
+### Fixed
+- **Insights | Monitoring Fleet Population:** node count came from
+  Jolokia ``.Value`` on a gauge that is often a bare number (plotted
+  as 0). Avg resources shared that Y-axis, so ~89 hosts looked like
+  a flat line under 25. Live node count now matches Inventory.
+  Counts stay exact; avg resources is a moving average on its own
+  axis. Bars + line, labeled axes.
+
 ## [3.12.1-dev.30] - 2026-09-01 (fix — one PDB source for Overview graphs)
 
 ### Fixed

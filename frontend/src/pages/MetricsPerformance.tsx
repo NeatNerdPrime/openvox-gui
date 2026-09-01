@@ -11,11 +11,11 @@ import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert, Grid, Paper, Select, Button,
 } from '@mantine/core';
 import {
-  ResponsiveContainer, AreaChart, Area,
+  ResponsiveContainer, AreaChart, Area, ComposedChart, Bar, Line,
   XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend,
 } from 'recharts';
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
-import { CHART_LINE_TYPE, downsampleSeries, smoothTimeSeries } from '../utils/chartDefaults';
+import { CHART_LINE_TYPE, downsampleSeries, movingAverageSeries, smoothTimeSeries } from '../utils/chartDefaults';
 import { effectivePollIntervalMs } from '../utils/accessMode';
 import { useApi } from '../hooks/useApi';
 import { performance as perfApi, metrics } from '../services/api';
@@ -112,7 +112,20 @@ function ChartPanel({ title, expanded, onClick, children, stats }: ChartPanelPro
 const SERVER_HISTORY_KEY = 'openvox_perf_server_history';
 const MAX_SERVER_POINTS = 120;
 
-const HISTORY_VERSION = 3; // Bump when new fields are added to force a reset
+const HISTORY_VERSION = 4; // fleet_nodes + dual-axis population (bare JMX numbers)
+
+const COUNT_KEYS = new Set([
+  'nodes', 'resources', 'queue_depth',
+  'write_active', 'write_idle', 'read_active', 'read_idle',
+  'write_pending', 'read_pending',
+  'gc_young_count', 'gc_old_count',
+]);
+
+function carryForward(next: number, prev: number | undefined): number {
+  if (Number.isFinite(next) && next > 0) return next;
+  if (prev && prev > 0) return prev;
+  return Number.isFinite(next) ? next : 0;
+}
 
 function loadServerHistory(): any[] {
   try {
@@ -214,10 +227,23 @@ export function MetricsPerformancePage({
     point.gc_young_time = Number(server.gc_young?.CollectionTime) || 0;
     point.gc_old_count = Number(server.gc_old?.CollectionCount) || 0;
     point.gc_old_time = Number(server.gc_old?.CollectionTime) || 0;
-    point.nodes = Number(server.population_nodes?.Value) || 0;
-    point.resources = Number(server.population_resources?.Value) || 0;
-    point.avg_resources = Number(server.population_avg_resources?.Value) || 0;
+    const rawNodes = Number(server.fleet_nodes);
+    const rawAvg = Number(server.fleet_avg_resources);
+    const rawRes = Number(server.fleet_resources);
     setServerHistory((prev) => {
+      const last = prev.length ? prev[prev.length - 1] : undefined;
+      point.nodes = carryForward(
+        Number.isFinite(rawNodes) && rawNodes > 0 ? rawNodes : jmxVal(server.population_nodes, 'Value'),
+        last?.nodes,
+      );
+      point.resources = carryForward(
+        Number.isFinite(rawRes) && rawRes > 0 ? rawRes : jmxVal(server.population_resources, 'Value'),
+        last?.resources,
+      );
+      point.avg_resources = carryForward(
+        Number.isFinite(rawAvg) && rawAvg > 0 ? rawAvg : jmxVal(server.population_avg_resources, 'Value'),
+        last?.avg_resources,
+      );
       const updated = [...prev, point];
       const trimmed = updated.length > MAX_SERVER_POINTS ? updated.slice(-MAX_SERVER_POINTS) : updated;
       saveServerHistory(trimmed);
@@ -312,10 +338,18 @@ function MetricsPerformanceContent({
     ),
   );
   // Live JMX series can grow; bind a downsampled + SMA view so 10+ charts stay cheap
-  const serverHistoryChart = useMemo(
-    () => smoothTimeSeries(downsampleSeries(serverHistory, 120)),
-    [serverHistory],
-  );
+  const serverHistoryChart = useMemo(() => {
+    const down = downsampleSeries(serverHistory, 120);
+    if (!down.length) return down;
+    const trendKeys = new Set<string>();
+    for (const row of down) {
+      for (const [k, v] of Object.entries(row)) {
+        if (k === 'time' || k === 'ts' || COUNT_KEYS.has(k)) continue;
+        if (typeof v === 'number' && Number.isFinite(v)) trendKeys.add(k);
+      }
+    }
+    return movingAverageSeries(down, [...trendKeys]);
+  }, [serverHistory]);
   const nodeComparison = (perfData.node_comparison || [])
     .sort((a: any, b: any) => (b.avg_total || 0) - (a.avg_total || 0))
     .slice(0, 10);
@@ -531,20 +565,39 @@ function MetricsPerformanceContent({
     {
       id: 'population', title: 'Fleet Population',
       stats: [
-        { label: 'Nodes', value: `${Number(jmxVal(s.population_nodes, 'Value')) || 0}` },
-        { label: 'Resources', value: `${Number(jmxVal(s.population_resources, 'Value')) || 0}` },
-        { label: 'Avg/Node', value: `${(Number(jmxVal(s.population_avg_resources, 'Value')) || 0).toFixed(0)}` },
+        { label: 'Live nodes', value: `${Number(s.fleet_nodes) || Number(jmxVal(s.population_nodes, 'Value')) || 0}`, color: 'blue' },
+        { label: 'Catalog resources', value: `${Number(s.fleet_resources) || Number(jmxVal(s.population_resources, 'Value')) || 0}`, color: 'violet' },
+        { label: 'Avg / node', value: `${(Number(s.fleet_avg_resources) || Number(jmxVal(s.population_avg_resources, 'Value')) || 0).toFixed(0)}`, color: 'orange' },
       ],
       render: () => (
-        <AreaChart data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-          <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
-          <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} />
-          <ReTooltip {...TOOLTIP_STYLE} />
+        <ComposedChart data={serverHistoryChart} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.35} />
+          <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#64748b' }} />
+          <YAxis
+            yAxisId="nodes"
+            allowDecimals={false}
+            tick={{ fontSize: 9, fill: '#0D6EFD' }}
+            width={36}
+            label={{ value: 'Nodes', angle: -90, position: 'insideLeft', fill: '#0D6EFD', fontSize: 10 }}
+          />
+          <YAxis
+            yAxisId="avg"
+            orientation="right"
+            tick={{ fontSize: 9, fill: '#EC8622' }}
+            width={44}
+            label={{ value: 'Avg resources', angle: 90, position: 'insideRight', fill: '#EC8622', fontSize: 10 }}
+          />
+          <ReTooltip
+            {...TOOLTIP_STYLE}
+            formatter={(v: number, n: string) => [
+              typeof v === 'number' ? (n.includes('Avg') ? v.toFixed(0) : String(Math.round(v))) : v,
+              n,
+            ]}
+          />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="nodes" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Nodes" />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="avg_resources" stroke="#2ecc71" fill="none" strokeWidth={1.5} dot={false} name="Avg Resources/Node" />
-        </AreaChart>
+          <Bar yAxisId="nodes" dataKey="nodes" fill="#0D6EFD" fillOpacity={0.45} stroke="#0D6EFD" name="Live nodes" maxBarSize={18} />
+          <Line yAxisId="avg" type="monotone" dataKey="avg_resources" stroke="#EC8622" strokeWidth={2.5} dot={false} name="Avg resources / node (MA)" />
+        </ComposedChart>
       ),
     },
   ];
