@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.34] - 2026-09-01 (fix — Fleet Population nodes as a line)
+
+### Changed
+- **Fleet Population:** live nodes are a line (exact counts), not bars.
+  Avg resources / node stays a moving-average line on the right axis.
+
 ## [3.12.1-dev.33] - 2026-09-01 (test — overlay + VIP-only peer fixtures)
 
 ### Fixed

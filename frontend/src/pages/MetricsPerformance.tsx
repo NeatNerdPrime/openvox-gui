@@ -11,7 +11,7 @@ import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert, Grid, Paper, Select, Button,
 } from '@mantine/core';
 import {
-  AreaChart, Area, ComposedChart, Bar, Line,
+  AreaChart, Area, ComposedChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend,
 } from 'recharts';
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
@@ -596,7 +596,7 @@ function MetricsPerformanceContent({
             ]}
           />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Bar yAxisId="nodes" dataKey="nodes" fill="#0D6EFD" fillOpacity={0.45} stroke="#0D6EFD" name="Live nodes" maxBarSize={18} />
+          <Line yAxisId="nodes" type="linear" dataKey="nodes" stroke="#0D6EFD" strokeWidth={2.5} dot={false} name="Live nodes" />
           <Line yAxisId="avg" type="monotone" dataKey="avg_resources" stroke="#EC8622" strokeWidth={2.5} dot={false} name="Avg resources / node (MA)" />
         </ComposedChart>
       ),
