@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.23] - 2026-09-01 (fix — Hiera Lookup requiretty)
+
+### Fixed
+- **Data | Hiera Lookup:** clustered `puppet lookup --explain` used
+  `bolt command run --run-as root --no-tty`, so compilers printed
+  `sudo: sorry, you must have a tty to run sudo`. Lookup now uses
+  `sudo -n` on a PTY, same as clustered r10k.
+
 ## [3.12.1-dev.22] - 2026-09-01 (fix — Hiera Data Files empty / internals dump)
 
 ### Fixed

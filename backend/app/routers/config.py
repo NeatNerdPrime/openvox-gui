@@ -1290,17 +1290,23 @@ async def puppet_lookup(
         host = targets[0]
         remote = " ".join(shlex.quote(p) for p in argv)
         from .bolt_runtime import run_bolt_command
-        from .deploy import _extract_bolt_json, _script_body
+        from .deploy import (
+            _CLUSTER_SSH,
+            _extract_bolt_json,
+            _script_body,
+            _sudo_n_bash,
+        )
 
+        # Same as clustered r10k: sudo -n on a PTY. --run-as root --no-tty
+        # dies on CIS requiretty ("sorry, you must have a tty to run sudo").
         bolt = await run_bolt_command(
             [
-                "command", "run", remote,
+                "command", "run", _sudo_n_bash(remote),
                 "--targets", host,
-                "--run-as", "root",
-                "--no-tty",
-                "--format", "json",
+                *_CLUSTER_SSH,
             ],
             timeout=45,
+            tty=True,
         )
         data = _extract_bolt_json(bolt.get("stdout") or "")
         item = {}

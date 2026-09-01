@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.22**
+**OpenVox GUI Version 3.12.1-dev.23**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.22"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.23"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1002,6 +1002,12 @@ empty COMMAND_ERROR), and the UI showed an internals dump about Bolt
 and `code_deploy_targets`. Listing now runs as `bolt@` (no sudo).
 If nothing is in the live codedir yet, the page says files will appear
 after a successful code deploy.
+
+### Problem: Data | Hiera Lookup shows `sudo: sorry, you must have a tty`
+
+Clustered lookup ran `puppet lookup` via Bolt `--run-as root --no-tty`.
+CIS `Defaults requiretty` rejects that. **3.12.1-dev.23** uses `sudo -n`
+on a PTY (same as Code Deployment).
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 
