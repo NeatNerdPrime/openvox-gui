@@ -245,7 +245,11 @@ export function NodesPage() {
   const { data: nodeList, loading: nodesLoading, error: nodesError, refetch, refreshing } = useApi<NodeSummary[]>(
     nodes.list,
     [],
-    { cacheKey: 'openvox_nodes_v1', pollIntervalMs: 20000 },
+    {
+      cacheKey: 'openvox_nodes_v1',
+      cacheValidate: (rows) => Array.isArray(rows) && rows.length > 0,
+      pollIntervalMs: 20000,
+    },
   );
   const navigate = useNavigate();
   const { user } = useAuth();

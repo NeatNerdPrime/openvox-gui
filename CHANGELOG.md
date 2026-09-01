@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.29] - 2026-09-01 (fix — keep last good dashboard on empty PDB)
+
+### Fixed
+- **Overview going empty on refresh:** a flaky PuppetDB read that
+  returned `[]` was cached and written to sessionStorage, so the next
+  paint showed zeros. Dashboard/Nodes now reject empty fleet shells
+  when a good view exists. The TTL cache serves stale-if-error and
+  does not store an empty node list.
+
 ## [3.12.1-dev.28] - 2026-09-01 (fix — lookup isolates PuppetDB; wrap explain)
 
 ### Fixed

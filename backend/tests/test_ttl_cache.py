@@ -52,3 +52,23 @@ async def test_get_or_set_single_flight():
     )
     assert first == second == "value"
     assert calls["n"] == 1
+
+
+async def test_get_or_set_keeps_stale_on_factory_error():
+    ttl_cache.set("dash", {"nodes": [{"certname": "a"}], "node_status": {"total": 1}})
+
+    async def boom():
+        raise RuntimeError("pdb down")
+
+    got = await ttl_cache.get_or_set("dash", ttl=-1, factory=boom)
+    assert got["node_status"]["total"] == 1
+
+
+async def test_get_or_set_does_not_replace_good_with_empty():
+    ttl_cache.set("live", [{"certname": "a"}])
+
+    async def empty():
+        return []
+
+    got = await ttl_cache.get_or_set("live", ttl=-1, factory=empty)
+    assert got == [{"certname": "a"}]

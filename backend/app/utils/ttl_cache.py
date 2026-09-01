@@ -13,8 +13,11 @@ Notes:
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -45,12 +48,31 @@ def invalidate(prefix: str = "") -> int:
     return len(keys)
 
 
+def _is_empty_result(value: Any) -> bool:
+    """True for an empty fleet payload that must not replace a good cache."""
+    if value is None:
+        return True
+    if isinstance(value, list) and len(value) == 0:
+        return True
+    if isinstance(value, dict):
+        nodes = value.get("nodes")
+        if isinstance(nodes, list) and len(nodes) == 0:
+            status = value.get("node_status") or {}
+            if not status.get("total"):
+                return True
+    return False
+
+
 async def get_or_set(
     key: str,
     ttl: float,
     factory: Callable[[], Awaitable[T]],
 ) -> T:
-    """Return cached value or compute it once (single-flight under lock)."""
+    """Return cached value or compute it once (single-flight under lock).
+
+    A failed factory or an empty fleet payload keeps the last good
+    value even after TTL (stale-if-error). Do not cache empty lists.
+    """
     hit = get(key, ttl)
     if hit is not None:
         return hit  # type: ignore[return-value]
@@ -60,6 +82,19 @@ async def get_or_set(
         hit = get(key, ttl)
         if hit is not None:
             return hit  # type: ignore[return-value]
-        value = await factory()
-        set(key, value)
+        stale = _store.get(key)
+        try:
+            value = await factory()
+        except Exception:
+            if stale is not None:
+                logger.warning(
+                    "cache %s factory failed; serving stale", key, exc_info=True
+                )
+                return stale  # type: ignore[return-value]
+            raise
+        if _is_empty_result(value) and stale is not None:
+            logger.warning("cache %s got empty result; keeping stale", key)
+            return stale  # type: ignore[return-value]
+        if not _is_empty_result(value):
+            set(key, value)
         return value

@@ -120,11 +120,16 @@ export function useApi<T>(
     setError(null);
     fetcherRef.current()
       .then((result) => {
+        const validator = cacheValidateRef.current;
+        if (validator && !validator(result) && hasDataRef.current) {
+          // Flaky upstream returned an empty shell — keep last good view.
+          return;
+        }
         hasDataRef.current = true;
         setData(result);
         const key = cacheKeyRef.current;
         if (key) {
-          const ok = !cacheValidateRef.current || cacheValidateRef.current(result);
+          const ok = !validator || validator(result);
           if (ok) writeSessionCache(key, result);
         }
       })

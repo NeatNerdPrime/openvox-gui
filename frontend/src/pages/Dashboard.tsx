@@ -182,7 +182,12 @@ export function DashboardPage() {
     [pollMs ?? 0],
     {
       cacheKey: 'openvox_dashboard_data_v2',
-      cacheValidate: (d) => d != null && (d as any).node_status != null,
+      cacheValidate: (d) => {
+        if (d == null || (d as any).node_status == null) return false;
+        const nodes = (d as any).nodes;
+        const total = (d as any).node_status?.total;
+        return (Array.isArray(nodes) && nodes.length > 0) || Number(total) > 0;
+      },
       pollIntervalMs: pollMs,
     },
   );
