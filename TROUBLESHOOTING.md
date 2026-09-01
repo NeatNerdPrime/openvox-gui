@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.25**
+**OpenVox GUI Version 3.12.1-dev.26**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.25"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.26"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -749,7 +749,7 @@ Live-fleet rules and HAProxy vs DNS RR: [docs/FEATURES.md](docs/FEATURES.md#live
    sudo puppetserver ca sign --certname node.example.com
    ```
 
-4. **Dedicated console (openvox.pdxc-it / openvox.atlc-it):** Sign
+4. **Dedicated console (not the CA host):** Sign
    does **not** run `puppetserver ca` on the console. At click time
    the GUI probes every **Settings → Cluster → CA members** ovca
    with GET `/puppet-ca/v1/certificate_status/<cn>`. The host that
@@ -1012,8 +1012,8 @@ on a PTY (same as Code Deployment).
 ### Problem: Hiera Lookup: `certificate verify failed [certificate revoked for CN=ovdb…]`
 
 The ovdb hosts are usually **still valid**. The message is OpenSSL on
-the **compiler** (e.g. `ovcompiler1.atlc-it`) rejecting the PDB TLS
-cert because **that compiler’s** `crl.pem` lists the presented serial.
+the **compiler** rejecting the PDB TLS cert because **that
+compiler’s** `crl.pem` lists the presented serial.
 
 Typical cause: stale or geo-mismatched CRL after CA replica / cert
 reissue. The PDB node was not “revoked” in the inventory sense.
@@ -1022,9 +1022,9 @@ On the compiler:
 
 ```bash
 grep server_urls /etc/puppetlabs/puppet/puppetdb.conf
-# presented serial
-echo | openssl s_client -connect ovdb1.pdxc-it.corp.int-x.ai:8081 \
-  -servername ovdb1.pdxc-it.corp.int-x.ai 2>/dev/null \
+# presented serial — use the host from server_urls
+echo | openssl s_client -connect puppetdb1.example.com:8081 \
+  -servername puppetdb1.example.com 2>/dev/null \
   | openssl x509 -noout -serial -subject -dates
 # is that serial in the local CRL?
 openssl crl -in /etc/puppetlabs/puppet/ssl/crl.pem -noout -text \

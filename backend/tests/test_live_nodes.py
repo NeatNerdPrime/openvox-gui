@@ -20,12 +20,12 @@ from app.services.puppetdb import PuppetDBService
 async def test_compute_live_nodes_uses_pdb_not_ca():
     svc = PuppetDBService()
     pdb = [
-        {"certname": "ovcompilers.atlc-it.corp.int-x.ai", "deactivated": None},
-        {"certname": "ovcompiler1.atlc-it.corp.int-x.ai", "deactivated": None},
-        {"certname": "ovca.corp.int-x.ai", "deactivated": None},
-        {"certname": "ovdb.corp.int-x.ai", "deactivated": None},
+        {"certname": "ovcompilers.atlc-it.example.com", "deactivated": None},
+        {"certname": "ovcompiler1.atlc-it.example.com", "deactivated": None},
+        {"certname": "ovca.example.com", "deactivated": None},
+        {"certname": "ovdb.example.com", "deactivated": None},
     ]
-    excluded = {"ovca.corp.int-x.ai", "ovdb.corp.int-x.ai"}
+    excluded = {"ovca.example.com", "ovdb.example.com"}
 
     with patch.object(svc, "get_nodes", new=AsyncMock(return_value=pdb)):
         with patch(
@@ -39,10 +39,10 @@ async def test_compute_live_nodes_uses_pdb_not_ca():
                 live = await svc._compute_live_nodes()
 
     names = {n["certname"] for n in live}
-    assert "ovcompilers.atlc-it.corp.int-x.ai" in names
-    assert "ovcompiler1.atlc-it.corp.int-x.ai" in names
-    assert "ovca.corp.int-x.ai" not in names
-    assert "ovdb.corp.int-x.ai" not in names
+    assert "ovcompilers.atlc-it.example.com" in names
+    assert "ovcompiler1.atlc-it.example.com" in names
+    assert "ovca.example.com" not in names
+    assert "ovdb.example.com" not in names
 
 
 def test_downgrade_stale_failed_after_eight_hours():

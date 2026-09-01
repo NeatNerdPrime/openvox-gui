@@ -58,14 +58,14 @@ def test_get_report_falls_back_to_prefix():
 
 
 def test_cert_aliases_fqdn_and_short():
-    assert _cert_aliases("ovcompiler1.pdxc-it.corp.int-x.ai") == [
-        "ovcompiler1.pdxc-it.corp.int-x.ai",
+    assert _cert_aliases("ovcompiler1.pdxc-it.example.com") == [
+        "ovcompiler1.pdxc-it.example.com",
         "ovcompiler1",
     ]
     assert _cert_aliases("ovcompiler1") == ["ovcompiler1"]
     assert _cert_aliases("") == []
     assert _cert_aliases("  OVCA1.PDXC-IT.CORP.INT-X.AI  ") == [
-        "ovca1.pdxc-it.corp.int-x.ai",
+        "ovca1.pdxc-it.example.com",
         "ovca1",
     ]
 
@@ -80,17 +80,17 @@ def test_pick_report_unique_short_name():
     by_exact = {
         "ovcompiler1": {"status": "unchanged", "receive_time": "2"},
     }
-    assert _pick_report_for_node("ovcompiler1.pdxc-it.corp.int-x.ai", by_exact)["status"] == "unchanged"
+    assert _pick_report_for_node("ovcompiler1.pdxc-it.example.com", by_exact)["status"] == "unchanged"
 
 
 def test_pick_report_does_not_cross_sites():
     """ovca1.pdxc and ovca1.atlc must not share each other's latest report."""
     by_exact = {
-        "ovca1.pdxc-it.corp.int-x.ai": {"status": "unchanged", "receive_time": "1"},
-        "ovca1.atlc-it.corp.int-x.ai": {"status": "failed", "receive_time": "9"},
+        "ovca1.pdxc-it.example.com": {"status": "unchanged", "receive_time": "1"},
+        "ovca1.atlc-it.example.com": {"status": "failed", "receive_time": "9"},
     }
-    pdxc = _pick_report_for_node("ovca1.pdxc-it.corp.int-x.ai", by_exact)
-    atlc = _pick_report_for_node("ovca1.atlc-it.corp.int-x.ai", by_exact)
+    pdxc = _pick_report_for_node("ovca1.pdxc-it.example.com", by_exact)
+    atlc = _pick_report_for_node("ovca1.atlc-it.example.com", by_exact)
     assert pdxc["status"] == "unchanged"
     assert atlc["status"] == "failed"
 
@@ -100,7 +100,7 @@ def test_overlay_picks_newer_short_name_report():
 
     nodes = [
         {
-            "certname": "ovcompiler1.pdxc-it.corp.int-x.ai",
+            "certname": "ovcompiler1.pdxc-it.example.com",
             "latest_report_status": "failed",
             "report_timestamp": "2026-08-01T00:00:00Z",
         }
@@ -136,7 +136,7 @@ def test_fold_newest_report_prefers_later_success():
     _fold_newest_report(
         out,
         {
-            "certname": "ovca1.pdxc-it.corp.int-x.ai",
+            "certname": "ovca1.pdxc-it.example.com",
             "status": "failed",
             "receive_time": "2026-08-13T17:00:00Z",
         },
@@ -144,12 +144,12 @@ def test_fold_newest_report_prefers_later_success():
     _fold_newest_report(
         out,
         {
-            "certname": "ovca1.pdxc-it.corp.int-x.ai",
+            "certname": "ovca1.pdxc-it.example.com",
             "status": "unchanged",
             "receive_time": "2026-08-13T18:00:00Z",
         },
     )
-    assert out["ovca1.pdxc-it.corp.int-x.ai"]["status"] == "unchanged"
+    assert out["ovca1.pdxc-it.example.com"]["status"] == "unchanged"
 
 
 def test_fold_newest_report_keeps_sites_apart():
@@ -157,7 +157,7 @@ def test_fold_newest_report_keeps_sites_apart():
     _fold_newest_report(
         out,
         {
-            "certname": "ovca1.pdxc-it.corp.int-x.ai",
+            "certname": "ovca1.pdxc-it.example.com",
             "status": "unchanged",
             "receive_time": "1",
         },
@@ -165,13 +165,13 @@ def test_fold_newest_report_keeps_sites_apart():
     _fold_newest_report(
         out,
         {
-            "certname": "ovca1.atlc-it.corp.int-x.ai",
+            "certname": "ovca1.atlc-it.example.com",
             "status": "failed",
             "receive_time": "9",
         },
     )
-    assert out["ovca1.pdxc-it.corp.int-x.ai"]["status"] == "unchanged"
-    assert out["ovca1.atlc-it.corp.int-x.ai"]["status"] == "failed"
+    assert out["ovca1.pdxc-it.example.com"]["status"] == "unchanged"
+    assert out["ovca1.atlc-it.example.com"]["status"] == "failed"
 
 
 def test_get_latest_reports_merges_recent_over_stuck_flag():
@@ -183,7 +183,7 @@ def test_get_latest_reports_merges_recent_over_stuck_flag():
     async def fake_pql(query, limit=5000):
         return [
             {
-                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "certname": "ovca1.pdxc-it.example.com",
                 "status": "failed",
                 "receive_time": "2026-08-13T17:00:00Z",
                 "hash": "old-failed",
@@ -193,7 +193,7 @@ def test_get_latest_reports_merges_recent_over_stuck_flag():
     async def fake_get_reports(**kwargs):
         return [
             {
-                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "certname": "ovca1.pdxc-it.example.com",
                 "status": "unchanged",
                 "receive_time": "2026-08-13T18:05:00Z",
                 "hash": "new-ok",
@@ -205,7 +205,7 @@ def test_get_latest_reports_merges_recent_over_stuck_flag():
     svc._peer_puppetdb_hosts = lambda: []  # type: ignore[method-assign]
 
     latest = asyncio.run(PuppetDBService.get_latest_reports_by_certname(svc))
-    row = latest["ovca1.pdxc-it.corp.int-x.ai"]
+    row = latest["ovca1.pdxc-it.example.com"]
     assert row["status"] == "unchanged"
     assert row["hash"] == "new-ok"
 
@@ -222,12 +222,12 @@ def test_get_newest_report_no_pql_order_by():
         seen["order_by"] = order_by
         return [
             {
-                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "certname": "ovca1.pdxc-it.example.com",
                 "status": "failed",
                 "receive_time": "2026-08-13T17:00:00Z",
             },
             {
-                "certname": "ovca1.pdxc-it.corp.int-x.ai",
+                "certname": "ovca1.pdxc-it.example.com",
                 "status": "unchanged",
                 "receive_time": "2026-08-13T18:00:00Z",
             },
@@ -237,7 +237,7 @@ def test_get_newest_report_no_pql_order_by():
     svc._peer_puppetdb_hosts = lambda: []  # type: ignore[method-assign]
     row = asyncio.run(
         PuppetDBService.get_newest_report_for_certname(
-            svc, "ovca1.pdxc-it.corp.int-x.ai"
+            svc, "ovca1.pdxc-it.example.com"
         )
     )
     assert "order by" not in (seen.get("query") or "").lower()
@@ -333,7 +333,7 @@ def test_apply_live_run_flips_stale_failed():
     db.execute = AsyncMock(return_value=result)
 
     node = {
-        "certname": "ovcompiler1.pdxc-it.corp.int-x.ai",
+        "certname": "ovcompiler1.pdxc-it.example.com",
         "latest_report_status": "failed",
         "report_timestamp": (datetime.utcnow() - timedelta(hours=2)).isoformat() + "Z",
     }

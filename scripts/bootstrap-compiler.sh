@@ -21,7 +21,7 @@
 #
 # Usage (from a console, after bolt@ works):
 #   sudo -u bolt bolt script run /opt/openvox-gui/scripts/bootstrap-compiler.sh \
-#     --targets ovcompiler2.pdxc-it.corp.int-x.ai,ovcompiler1.atlc-it.corp.int-x.ai \
+#     --targets compiler2.example.com,compiler1.example.com \
 #     --run-as root --no-tty --project /etc/puppetlabs/bolt
 ###############################################################################
 set -euo pipefail
@@ -114,7 +114,7 @@ fi
 if [ ! -f /etc/puppetlabs/r10k/r10k.yaml ]; then
   echo "bootstrap-compiler.sh: WARNING: /etc/puppetlabs/r10k/r10k.yaml is missing."
   echo "  Copy the working file from ovcompiler1.pdxc (same control-repo URL):"
-  echo "    scp ovcompiler1.pdxc-it.corp.int-x.ai:/etc/puppetlabs/r10k/r10k.yaml /etc/puppetlabs/r10k/r10k.yaml"
+  echo "    scp compiler1.example.com:/etc/puppetlabs/r10k/r10k.yaml /etc/puppetlabs/r10k/r10k.yaml"
   echo "  Then re-run or just Stage. Do not invent a remote URL here."
 else
   echo "bootstrap-compiler.sh: yaml=/etc/puppetlabs/r10k/r10k.yaml"

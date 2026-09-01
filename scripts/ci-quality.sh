@@ -49,7 +49,10 @@ python3 - <<'PY'
 import os, re, sys
 # Corporate / lab identifiers that must not appear in product source.
 # CHANGELOG + AGENTS.md are allowed to mention the lab host (ops canon).
-bad = re.compile(r"artifactory\.twitter\.biz|\.pdxc-it\.twitter\.biz")
+bad = re.compile(
+    r"artifactory\.twitter\.biz|\.pdxc-it\.twitter\.biz|"
+    r"int-x\.ai|corp\.int-x"
+)
 skip_dirs = {".git", "node_modules", "dist", "venv", "__pycache__", ".venv-pip-audit", "data"}
 skip_names = {"CHANGELOG.md", "AGENTS.md"}
 scan_roots = ("backend/app", "frontend/src", "ovox/ovox", "scripts", "bolt-plugin")

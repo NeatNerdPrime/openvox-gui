@@ -59,7 +59,7 @@ def test_normalize_puppet_agent_adds_env():
     assert cmd2.startswith("sudo ") and esc2
     fail_json = json.dumps({
         "items": [{
-            "target": "openvox.atlc-it.corp.int-x.ai",
+            "target": "openvox.atlc-it.example.com",
             "status": "failure",
             "value": {"exit_code": 1, "stdout": "", "stderr": "sudo: a password is required"},
         }],

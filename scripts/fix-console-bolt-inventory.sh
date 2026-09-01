@@ -62,5 +62,5 @@ echo
 echo "Next:"
 echo "  cd /tmp"
 echo "  sudo -u bolt env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \\"
-echo "    NO_PROXY=localhost,127.0.0.1,ovdb.corp.int-x.ai \\"
+echo "    NO_PROXY=localhost,127.0.0.1,ovdb.example.com \\"
 echo "    /opt/puppetlabs/bolt/bin/bolt inventory show --project /etc/puppetlabs/bolt"

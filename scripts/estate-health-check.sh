@@ -29,7 +29,7 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
-PDB_HOST="${OPENVOX_GUI_PUPPETDB_HOST:-ovdb.corp.int-x.ai}"
+PDB_HOST="${OPENVOX_GUI_PUPPETDB_HOST:-ovdb.example.com}"
 PDB_PORT="${OPENVOX_GUI_PUPPETDB_PORT:-8081}"
 CERT="${OPENVOX_GUI_PUPPET_SSL_CERT:-/etc/puppetlabs/puppet/ssl/certs/$(hostname -f).pem}"
 KEY="${OPENVOX_GUI_PUPPET_SSL_KEY:-/etc/puppetlabs/puppet/ssl/private_keys/$(hostname -f).pem}"

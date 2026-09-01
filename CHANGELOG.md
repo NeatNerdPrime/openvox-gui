@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.26] - 2026-09-01 (docs — no internal DNS in product docs)
+
+### Changed
+- Replaced estate FQDNs in docs, Settings placeholders, script
+  examples, and comments with `example.com`. Leak scan now rejects
+  the former internal DNS suffix.
+
 ## [3.12.1-dev.25] - 2026-09-01 (docs — ovdb “revoked” is a local CRL check)
 
 ### Fixed
@@ -180,8 +187,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.12.1-dev.9] - 2026-08-26 (fix — sign CSR on the live Promoted ovca)
 
 ### Fixed
-- **Certificate Sign** from either console (openvox.pdxc-it /
-  openvox.atlc-it) now discovers the Promoted CA **at click time**.
+- **Certificate Sign** from either dedicated console now discovers
+  the Promoted CA **at click time**.
   Every Settings → Cluster `ca_nodes` member is probed in parallel
   (`GET /puppet-ca/v1/certificate_status/<cn>`); the host that has
   `state=requested` receives the PUT. The VIP is last-resort only

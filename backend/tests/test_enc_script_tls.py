@@ -18,6 +18,6 @@ def _load_enc():
 def test_ssl_context_verify_off(monkeypatch):
     enc = _load_enc()
     monkeypatch.setenv("OPENVOX_GUI_ENC_TLS_VERIFY", "0")
-    ctx = enc._ssl_context("https://openvox.corp.int-x.ai:4567")
+    ctx = enc._ssl_context("https://openvox.example.com:4567")
     assert ctx.verify_mode == ssl.CERT_NONE
     assert ctx.check_hostname is False

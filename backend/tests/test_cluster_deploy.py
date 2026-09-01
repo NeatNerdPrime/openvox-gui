@@ -300,7 +300,7 @@ def test_flatten_bolt_json_surfaces_script_stderr():
     payload = {
         "items": [
             {
-                "target": "ovcompiler1.pdxc-it.corp.int-x.ai",
+                "target": "ovcompiler1.pdxc-it.example.com",
                 "status": "failure",
                 "value": {
                     "exit_code": 126,
@@ -313,7 +313,7 @@ def test_flatten_bolt_json_surfaces_script_stderr():
     }
     result = {"returncode": 2, "stdout": json.dumps(payload), "stderr": ""}
     rc, lines, hosts = d._flatten_bolt_json(
-        result, ["ovcompiler1.pdxc-it.corp.int-x.ai"]
+        result, ["ovcompiler1.pdxc-it.example.com"]
     )
     assert rc == 2
     assert hosts[0]["exit_code"] == 126
@@ -395,7 +395,7 @@ def test_flatten_bolt_json_surfaces_tmpdir_error():
     payload = {
         "items": [
             {
-                "target": "ovcompiler1.pdxc-it.corp.int-x.ai",
+                "target": "ovcompiler1.pdxc-it.example.com",
                 "action": "script",
                 "status": "failure",
                 "value": {
@@ -411,7 +411,7 @@ def test_flatten_bolt_json_surfaces_tmpdir_error():
     }
     result = {"returncode": 2, "stdout": json.dumps(payload), "stderr": ""}
     rc, lines, hosts = d._flatten_bolt_json(
-        result, ["ovcompiler1.pdxc-it.corp.int-x.ai"]
+        result, ["ovcompiler1.pdxc-it.example.com"]
     )
     assert rc == 2
     assert hosts[0]["success"] is False

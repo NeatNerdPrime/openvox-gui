@@ -23,8 +23,8 @@ Environment variables (must be set for the **puppetserver** process):
       EnvironmentFile on puppetserver — shell exports alone are not enough.
       Multi-console without shared Postgres: put the console that holds
       classification FIRST (split SQLite is not failover).
-      Example (ATLC has ENC data, PDXC may be empty):
-        https://openvox.atlc-it.corp.int-x.ai:4567,https://openvox.pdxc-it.corp.int-x.ai:4567
+      Example (primary console first if SQLite is not shared):
+        https://console-a.example.com:4567,https://console-b.example.com:4567
       Default if unset: https://localhost:4567
     OPENVOX_GUI_ENC_CA - CA bundle (default: puppet localcacert, then
       /etc/puppetlabs/puppet/ssl/certs/ca.pem). Used to verify the GUI.

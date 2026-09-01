@@ -1101,7 +1101,7 @@ async def _run_on_targets(
                 hint = (
                     "r10k is installed but /etc/puppetlabs/r10k/r10k.yaml is "
                     "missing on one or more compilers. Copy the working file "
-                    "from ovcompiler1.pdxc-it.corp.int-x.ai, or: "
+                    "from a working compiler, or: "
                     "sudo /opt/openvox-gui/scripts/bootstrap-compiler.sh "
                     "--yaml /path/to/r10k.yaml"
                 )

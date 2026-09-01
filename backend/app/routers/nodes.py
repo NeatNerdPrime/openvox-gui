@@ -87,7 +87,7 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
         key = str(node.get("certname") or "").strip().lower()
         live_at = latest_ok.get(key)
         if not live_at:
-            # Same host, other spelling (ovca1.pdxc-it… vs ovca1.pdxc-it.corp.int-x.ai)
+            # Same host, other spelling (ovca1.pdxc-it… vs ovca1.pdxc-it.example.com)
             for hk, ts in latest_ok.items():
                 if key == hk or (key.startswith(hk + ".") and hk.count(".") >= 1):
                     live_at = ts

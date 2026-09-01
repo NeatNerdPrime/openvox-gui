@@ -58,10 +58,8 @@ def _hostname_bypasses_proxy(hostname: str) -> bool:
         elif h == p or h.endswith("." + p):
             return True
 
-    # Built-in internal estate suffixes (xAI / lab). Still honor env first above.
+    # Extra suffixes: set NO_PROXY / no_proxy. Do not hard-code site DNS.
     internal_suffixes = (
-        ".corp.int-x.ai",
-        ".int-x.ai",
         ".twitter.biz",
         ".twttr.net",
         ".questy.org",

@@ -700,7 +700,7 @@ function ClusterTab() {
                 minRows={3}
                 value={compilers}
                 onChange={(e) => setCompilers(e.currentTarget.value)}
-                placeholder="ovcompiler1.pdxc-it.corp.int-x.ai"
+                placeholder="compiler1.example.com"
               />
               <Textarea
                 label="OpenVoxDB / PuppetDB node FQDNs"
@@ -708,7 +708,7 @@ function ClusterTab() {
                 minRows={3}
                 value={puppetdbNodes}
                 onChange={(e) => setPuppetdbNodes(e.currentTarget.value)}
-                placeholder="ovdb1.pdxc-it.corp.int-x.ai"
+                placeholder="puppetdb1.example.com"
               />
               <Textarea
                 label="CA cluster member FQDNs"
@@ -716,15 +716,15 @@ function ClusterTab() {
                 minRows={2}
                 value={caNodes}
                 onChange={(e) => setCaNodes(e.currentTarget.value)}
-                placeholder={"ovca1.pdxc-it.corp.int-x.ai\novca2.pdxc-it.corp.int-x.ai"}
+                placeholder={"ca1.example.com\nca2.example.com"}
               />
               <Textarea
                 label="CA VIP FQDNs (optional)"
-                description="e.g. ovca.pdxc-it.corp.int-x.ai, ovca.corp.int-x.ai — health on :8140. Also hidden from Overview | Nodes (not agents)."
+                description="e.g. ca.site.example.com, ca.example.com — health on :8140. Also hidden from Overview | Nodes (not agents)."
                 minRows={2}
                 value={caVips}
                 onChange={(e) => setCaVips(e.currentTarget.value)}
-                placeholder="ovca.corp.int-x.ai"
+                placeholder="ovca.example.com"
               />
               <Textarea
                 label="Infrastructure VIP FQDNs (compiler / PDB LBs)"
@@ -732,15 +732,15 @@ function ClusterTab() {
                 minRows={2}
                 value={infraVips}
                 onChange={(e) => setInfraVips(e.currentTarget.value)}
-                placeholder={"ovcompilers.pdxc-it.corp.int-x.ai\novcompilers.atlc-it.corp.int-x.ai"}
+                placeholder={"compilers.site-a.example.com\ncompilers.site-b.example.com"}
               />
               <Textarea
                 label="DNS RR names (no VM — hide from Nodes)"
-                description="Names that exist only in DNS, e.g. ovdb.corp.int-x.ai. Hidden from live fleet. Not ovcompilers.*."
+                description="Names that exist only in DNS, e.g. ovdb.example.com. Hidden from live fleet. Not ovcompilers.*."
                 minRows={2}
                 value={dnsRrVips}
                 onChange={(e) => setDnsRrVips(e.currentTarget.value)}
-                placeholder="ovdb.corp.int-x.ai"
+                placeholder="ovdb.example.com"
               />
               <Textarea
                 label="Extra fleet exclusions (optional)"
@@ -782,11 +782,11 @@ function ClusterTab() {
               />
               <Textarea
                 label="GUI console FQDNs (optional, one per line)"
-                description="Individual console nodes (openvox.pdxc…, openvox.atlc…). Direct access keeps full poll rates."
+                description="Individual console nodes. Direct access keeps full poll rates."
                 minRows={2}
                 value={consoles}
                 onChange={(e) => setConsoles(e.currentTarget.value)}
-                placeholder={"openvox.pdxc-it.corp.int-x.ai\nopenvox.atlc-it.corp.int-x.ai"}
+                placeholder={"console-a.example.com\nconsole-b.example.com"}
               />
               <Textarea
                 label="Console VIP / public LB hostnames"
@@ -794,7 +794,7 @@ function ClusterTab() {
                 minRows={2}
                 value={vipHosts}
                 onChange={(e) => setVipHosts(e.currentTarget.value)}
-                placeholder="openvox.corp.int-x.ai"
+                placeholder="openvox.example.com"
               />
               <Textarea
                 label="ENC API base URLs for compilers (optional)"
@@ -802,7 +802,7 @@ function ClusterTab() {
                 minRows={2}
                 value={encUrls}
                 onChange={(e) => setEncUrls(e.currentTarget.value)}
-                placeholder="https://openvox.corp.int-x.ai:4567"
+                placeholder="https://openvox.example.com:4567"
               />
               <Divider label="Cluster secrets (encrypted in openvox_gui DB)" labelPosition="left" />
               <Text size="sm" c="dimmed">

@@ -8,17 +8,17 @@ from unittest.mock import AsyncMock, patch
 from app.services import fleet_scope as m
 
 FAKE_NODES = [
-    {"certname": "ovcompiler1.pdxc-it.corp.int-x.ai"},
-    {"certname": "ovcompiler1.atlc-it.corp.int-x.ai"},
-    {"certname": "agent1.pdxc-it.corp.int-x.ai"},
-    {"certname": "openvox.pdxc-it.corp.int-x.ai"},
+    {"certname": "ovcompiler1.pdxc-it.example.com"},
+    {"certname": "ovcompiler1.atlc-it.example.com"},
+    {"certname": "agent1.pdxc-it.example.com"},
+    {"certname": "openvox.pdxc-it.example.com"},
 ]
 
 FAKE_FACTS = [
-    {"certname": "ovcompiler1.pdxc-it.corp.int-x.ai", "name": "location", "value": "PDXC"},
-    {"certname": "ovcompiler1.atlc-it.corp.int-x.ai", "name": "location", "value": "ATLC"},
-    {"certname": "agent1.pdxc-it.corp.int-x.ai", "name": "location", "value": "PDXC"},
-    {"certname": "openvox.pdxc-it.corp.int-x.ai", "name": "location", "value": "PDXC"},
+    {"certname": "ovcompiler1.pdxc-it.example.com", "name": "location", "value": "PDXC"},
+    {"certname": "ovcompiler1.atlc-it.example.com", "name": "location", "value": "ATLC"},
+    {"certname": "agent1.pdxc-it.example.com", "name": "location", "value": "PDXC"},
+    {"certname": "openvox.pdxc-it.example.com", "name": "location", "value": "PDXC"},
 ]
 
 
@@ -46,7 +46,7 @@ def test_resolve_location():
     with patch.object(m, "puppetdb_service", _fake_pdb()):
         r = asyncio.run(m.resolve_scope("location:ATLC"))
     assert r.total == 1
-    assert "ovcompiler1.atlc-it.corp.int-x.ai" in r.certnames
+    assert "ovcompiler1.atlc-it.example.com" in r.certnames
 
 
 def test_resolve_pack_compilers():
@@ -60,7 +60,7 @@ def test_resolve_pack_consoles():
     with patch.object(m, "puppetdb_service", _fake_pdb()):
         r = asyncio.run(m.resolve_scope("pack:consoles"))
     assert r.total == 1
-    assert "openvox.pdxc-it.corp.int-x.ai" in r.certnames
+    assert "openvox.pdxc-it.example.com" in r.certnames
 
 
 def test_list_scopes_includes_locations():

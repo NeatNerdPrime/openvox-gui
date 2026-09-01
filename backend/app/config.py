@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     puppet_server_port: int = 8140
     # Dedicated CA VIP/FQDN for clustered estates (console is not the CA).
     # Empty = use puppet_server_host (co-located / small install).
-    # Multi-DC example: ovca.corp.int-x.ai  (NOT ovcompilers.*)
+    # Multi-DC example: ovca.example.com  (NOT ovcompilers.*)
     puppet_ca_host: str = ""
     puppet_ca_port: int = 8140
     puppet_ssl_cert: str = "/etc/puppetlabs/puppet/ssl/certs/localhost.pem"
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     # When the request Host matches one of these, the API reports
     # access_mode=vip so the SPA can soften polling and avoid reload storms.
     # Also mergeable via cluster_config.json "vip_hosts".
-    # Example: openvox.corp.int-x.ai,openvox.pdxc-it.corp.int-x.ai
+    # Example: console.example.com,console-a.example.com
     vip_hosts: Optional[str] = None
     # VIP poll floor (ms) advertised to the SPA — minimum auto-refresh interval
     # when access_mode=vip. Direct node FQDNs keep their page defaults.
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     node_fresh_hours: float = 24.0
     # Comma/space-separated certnames to hide from live fleet (HAProxy/DNS VIPs).
     # Merged with cluster_config ca_vips / infra_vips / vip_hosts / fleet_exclude.
-    # Example: ovcompilers.pdxc-it.corp.int-x.ai,ovcompilers.atlc-it.corp.int-x.ai
+    # Example: compilers.site-a.example.com,compilers.site-b.example.com
     fleet_exclude: Optional[str] = None
 
     # ── Filesystem paths ──────────────────────────────────────
