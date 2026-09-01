@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.23**
+**OpenVox GUI Version 3.12.1-dev.24**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.23"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.24"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1008,6 +1008,21 @@ after a successful code deploy.
 Clustered lookup ran `puppet lookup` via Bolt `--run-as root --no-tty`.
 CIS `Defaults requiretty` rejects that. **3.12.1-dev.23** uses `sudo -n`
 on a PTY (same as Code Deployment).
+
+### Problem: Hiera Lookup: `certificate revoked` for ovdb*.pdxc-it
+
+`puppet lookup` on a compiler uses `facts_terminus = puppetdb` and
+`/etc/puppetlabs/puppet/puppetdb.conf`. ATLC compilers still listing
+`ovdb1/2.pdxc-it` fail when those HTTPS certs are revoked.
+
+**GUI (3.12.1-dev.24):** lookup uses `--facts` (local facter, or this
+console's PuppetDB for a selected node) and does not use the compiler
+termini.
+
+**Compilers (catalogs still need this):** set
+`server_urls = https://ovdb.corp.int-x.ai:8081` (or ATLC ovdb) via
+`profiles::openvox::openvox_compiler`, then investigate why the PDXC
+ovdb certs were revoked.
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 

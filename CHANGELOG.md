@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.24] - 2026-09-01 (fix — Hiera Lookup skips compiler PuppetDB)
+
+### Fixed
+- **Hiera Lookup `certificate revoked` on ovdb1/2.pdxc-it:**
+  `puppet lookup` on the compiler uses the PuppetDB facts terminus.
+  ATLC compilers still list revoked PDXC ovdb certs in puppetdb.conf.
+  Clustered lookup now feeds `--facts` from local facter (or this
+  console's PuppetDB when a node is selected) and does not call the
+  compiler's `server_urls`.
+
 ## [3.12.1-dev.23] - 2026-09-01 (fix — Hiera Lookup requiretty)
 
 ### Fixed

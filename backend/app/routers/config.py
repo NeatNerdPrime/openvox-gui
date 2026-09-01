@@ -1261,6 +1261,38 @@ def _lookup_argv(request: PuppetLookupRequest) -> List[str]:
     return cmd
 
 
+def _lookup_clustered_shell(
+    request: PuppetLookupRequest,
+    facts_b64: Optional[str] = None,
+) -> str:
+    """puppet lookup using a facts file so the compiler does not query PuppetDB.
+
+    Compilers with storeconfigs/puppetdb as the facts terminus call
+    puppetdb.conf server_urls for every lookup. ATLC hosts still listing
+    revoked PDXC ovdb certs then fail. Local facter or GUI-fetched facts
+    plus ``--facts`` skip that path.
+    """
+    import shlex
+
+    key = shlex.quote(request.key.strip())
+    extra = ""
+    if request.environment and request.environment.strip():
+        extra += f" --environment {shlex.quote(request.environment.strip())}"
+    if facts_b64:
+        load = (
+            f"printf '%s' {shlex.quote(facts_b64)} | base64 -d > \"$FACTFILE\""
+        )
+    else:
+        load = "/opt/puppetlabs/bin/facter --json > \"$FACTFILE\""
+    return (
+        "set -euo pipefail; "
+        "FACTFILE=$(mktemp /tmp/ovox-lookup.XXXXXX.json); "
+        "trap 'rm -f \"$FACTFILE\"' EXIT; "
+        f"{load}; "
+        f"/opt/puppetlabs/bin/puppet lookup --explain {key}{extra} --facts \"$FACTFILE\""
+    )
+
+
 @router.post("/lookup")
 async def puppet_lookup(
     request: PuppetLookupRequest,
@@ -1288,7 +1320,41 @@ async def puppet_lookup(
                 detail="Clustered mode has no code_deploy_targets for lookup.",
             )
         host = targets[0]
-        remote = " ".join(shlex.quote(p) for p in argv)
+        facts_b64 = None
+        facts_note = "local facter (not PuppetDB)"
+        node = (request.node or "").strip()
+        if node:
+            try:
+                from ..services.puppetdb import puppetdb_service
+                import base64
+
+                rows = await puppetdb_service.get_node_facts(node)
+                blob: Dict[str, Any] = {}
+                for row in rows or []:
+                    if isinstance(row, dict) and row.get("name"):
+                        blob[str(row["name"])] = row.get("value")
+                if blob:
+                    facts_b64 = base64.b64encode(
+                        json.dumps(blob).encode("utf-8")
+                    ).decode("ascii")
+                    facts_note = f"facts for {node} from this console's PuppetDB"
+            except Exception as e:
+                logger.warning("lookup facts from GUI PuppetDB failed: %s", e)
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        f"Could not load facts for {node} from PuppetDB. "
+                        "The compiler's puppetdb.conf is not used for this "
+                        "lookup. Check Settings → PuppetDB / cluster ovdb."
+                    ),
+                ) from e
+            if not facts_b64:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No facts in PuppetDB for {node}.",
+                )
+
+        remote = _lookup_clustered_shell(request, facts_b64=facts_b64)
         from .bolt_runtime import run_bolt_command
         from .deploy import (
             _CLUSTER_SSH,
@@ -1297,8 +1363,6 @@ async def puppet_lookup(
             _sudo_n_bash,
         )
 
-        # Same as clustered r10k: sudo -n on a PTY. --run-as root --no-tty
-        # dies on CIS requiretty ("sorry, you must have a tty to run sudo").
         bolt = await run_bolt_command(
             [
                 "command", "run", _sudo_n_bash(remote),
@@ -1318,7 +1382,11 @@ async def puppet_lookup(
         rc = value.get("exit_code")
         if rc is None:
             rc = bolt.get("returncode")
-        header = f"# puppet lookup on {host} (live codedir)\n# {' '.join(argv)}\n\n"
+        header = (
+            f"# puppet lookup on {host} (live codedir)\n"
+            f"# facts: {facts_note}\n"
+            f"# {argv[0]} lookup --explain {request.key.strip()} --facts <file>\n\n"
+        )
         return {
             "key": request.key,
             "node": request.node,
