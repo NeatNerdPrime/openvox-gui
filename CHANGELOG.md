@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.7] - 2026-09-01 (fix — Node Detail ENC vs catalog classes)
+
+### Fixed
+- **Node Detail showed one class** while Classification listed the
+  full ENC merge. Detail used a PQL ``resources[title]`` query with
+  ``order by`` *inside* the filter (OpenVoxDB often returns a partial
+  set). Catalog classes now use an AST extract. The page also shows
+  **ENC classes** (same Common + Environment + Groups + Node merge).
+
 ## [3.13.0-rc.6] - 2026-09-01 (fix — maintenance page hides deploy command)
 
 ### Fixed

@@ -411,6 +411,15 @@ async def get_node_detail(certname: str, db: AsyncSession = Depends(get_db)):
             puppetdb_service.get_node_resource_count(certname),
         )
 
+        enc_classes: list = []
+        try:
+            classified = await enc_service.classify_node(certname, db)
+            enc_classes = sorted(
+                (classified.get("classes") or {}).keys()
+            )
+        except Exception as e:
+            logger.warning("ENC classes for %s: %s", certname, e)
+
         facts = {}
         for f in facts_raw or []:
             if isinstance(f, dict) and "name" in f:
@@ -424,6 +433,7 @@ async def get_node_detail(certname: str, db: AsyncSession = Depends(get_db)):
             catalog_timestamp=node.get("catalog_timestamp"),
             report_environment=node.get("report_environment"),
             classes=list(classes or []),
+            enc_classes=enc_classes,
             resources_count=int(resources_count or 0),
             status_source=node.get("status_source"),
             node_index_status=node.get("node_index_status"),

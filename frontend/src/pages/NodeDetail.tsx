@@ -395,12 +395,27 @@ export function NodeDetailPage() {
 
         <Grid.Col span={{ base: 12, md: isRobots ? 9 : 8 }}>
           <Card withBorder shadow="sm" padding="md">
-            <Text fw={700} mb="sm">Applied Classes ({node.classes?.length ?? 0})</Text>
+            <Text fw={700} mb="sm">
+              ENC classes ({(node.enc_classes || []).length})
+            </Text>
+            <Text size="xs" c="dimmed" mb="xs">Same merge as Classification (Common + Environment + Groups + Node)</Text>
+            <Group gap="xs" mb="md">
+              {(node.enc_classes || []).map((cls: string) => (
+                <Badge key={cls} variant="light" color="grape" size="sm">{cls}</Badge>
+              ))}
+              {(!node.enc_classes || node.enc_classes.length === 0) && (
+                <Text c="dimmed" size="sm">No ENC classes</Text>
+              )}
+            </Group>
+            <Text fw={700} mb="sm">
+              Last catalog ({node.classes?.length ?? 0})
+            </Text>
+            <Text size="xs" c="dimmed" mb="xs">Class resources from the last compiled catalog</Text>
             <Group gap="xs">
               {(node.classes || []).map((cls: string) => (
                 <Badge key={cls} variant="light" size="sm">{cls}</Badge>
               ))}
-              {(!node.classes || node.classes.length === 0) && <Text c="dimmed" size="sm">No classes applied</Text>}
+              {(!node.classes || node.classes.length === 0) && <Text c="dimmed" size="sm">No classes in last catalog</Text>}
             </Group>
           </Card>
         </Grid.Col>

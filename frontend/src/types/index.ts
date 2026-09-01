@@ -99,6 +99,7 @@ export interface NodeDetail {
   catalog_timestamp: string | null;
   report_environment: string | null;
   classes: string[];
+  enc_classes?: string[];
   resources_count: number;
   status_source?: string | null;
   node_index_status?: string | null;

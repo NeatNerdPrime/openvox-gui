@@ -391,36 +391,46 @@ class PuppetDBService:
         return await self._query(f"nodes/{certname}/resources")
 
     async def get_node_applied_classes(self, certname: str) -> List[str]:
-        """Class titles only (not the full catalog) — used by Node Detail."""
-        safe = certname.replace("\\", "\\\\").replace('"', '\\"')
+        """Class titles from the last catalog (not ENC layers)."""
+        import json
+
+        ast = json.dumps([
+            "extract", ["title"],
+            ["and", ["=", "type", "Class"], ["=", "certname", certname]],
+        ])
+        rows: Any = None
         try:
-            rows = await self._query(
-                "",
-                params={
-                    "query": (
-                        f'resources[title]{{type = "Class" and certname = "{safe}" '
-                        f'order by title}}'
-                    )
-                },
-            )
+            rows = await self._query("resources", query=ast)
         except Exception:
-            # Fallback: full resources (slower) if PQL extract fails
-            resources = await self.get_node_resources(certname) or []
-            return sorted(
-                {
-                    r.get("title")
-                    for r in resources
-                    if r.get("type") == "Class"
-                    and r.get("title") not in ("main", "Settings")
-                    and r.get("title")
-                }
-            )
+            try:
+                safe = certname.replace("\\", "\\\\").replace('"', '\\"')
+                rows = await self._query(
+                    "",
+                    params={
+                        "query": (
+                            f'resources[title] {{ type = "Class" and '
+                            f'certname = "{safe}" }}'
+                        )
+                    },
+                )
+            except Exception:
+                resources = await self.get_node_resources(certname) or []
+                return sorted(
+                    {
+                        r.get("title")
+                        for r in resources
+                        if r.get("type") == "Class"
+                        and r.get("title") not in ("main", "Settings")
+                        and r.get("title")
+                    }
+                )
         titles = []
-        for r in rows or []:
-            t = r.get("title") if isinstance(r, dict) else None
-            if t and t not in ("main", "Settings"):
-                titles.append(t)
-        return titles
+        if isinstance(rows, list):
+            for r in rows:
+                t = r.get("title") if isinstance(r, dict) else None
+                if t and t not in ("main", "Settings"):
+                    titles.append(t)
+        return sorted(set(titles))
 
     async def get_node_resource_count(self, certname: str) -> int:
         """Catalog size without downloading every resource document."""

@@ -71,6 +71,7 @@ class NodeDetail(BaseModel):
     catalog_timestamp: Optional[str] = None
     report_environment: Optional[str] = None
     classes: List[str] = []
+    enc_classes: List[str] = []
     resources_count: int = 0
     status_source: Optional[str] = None
     node_index_status: Optional[str] = None
