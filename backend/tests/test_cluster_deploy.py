@@ -263,7 +263,7 @@ def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
     script.write_text("#!/bin/bash\n")
     d.STAGE_ACTIVATE_SCRIPT = str(script)
 
-    async def fake_bolt(args, timeout=120):
+    async def fake_bolt(args, timeout=120, **kwargs):
         if args and args[0] == "command":
             return {"returncode": 0, "stdout": "true", "stderr": ""}
         return {"returncode": 0, "stdout": "stage complete", "stderr": ""}
@@ -278,16 +278,21 @@ def test_run_on_targets_script_run_after_probe_ok(tmp_path: Path):
     assert run.call_count == 2
     probe_argv = run.call_args_list[0].args[0]
     assert probe_argv[:2] == ["command", "run"]
-    assert "install -d" in probe_argv[2]
+    # Probe runs as bolt@ (no --run-as) so CIS requiretty / empty COMMAND_ERROR
+    # from Bolt --run-as + PTY does not hide the real error.
+    assert "mkdir -p" in probe_argv[2]
     assert "/home/bolt/.bolt/tmp" in probe_argv[2]
     assert "MISSING_R10K" in probe_argv[2]
-    assert "--run-as" in probe_argv
+    assert "--run-as" not in probe_argv
+    assert "--tty" in probe_argv
+    assert "--no-tty" not in probe_argv
     script_argv = run.call_args_list[1].args[0]
     assert script_argv[:2] == ["script", "run"]
     assert "stage" in script_argv
     assert "--format" in script_argv
     assert "json" in script_argv
-    assert "--no-tty" in script_argv
+    assert "--tty" in script_argv
+    assert "--no-tty" not in script_argv
 
 
 def test_flatten_bolt_json_surfaces_script_stderr():

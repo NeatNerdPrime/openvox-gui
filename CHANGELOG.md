@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.21] - 2026-09-01 (test — clustered stage probe contract)
+
+### Fixed
+- **CI `test_run_on_targets_script_run_after_probe_ok`:** the stage
+  probe now runs as `bolt@` with `--tty` (no `--run-as`). The unit
+  test still expected `install -d`, `--run-as`, and `--no-tty`.
+
 ## [3.12.1-dev.20] - 2026-09-01 (fix — openvox_enc 401 User no longer exists)
 
 ### Fixed
