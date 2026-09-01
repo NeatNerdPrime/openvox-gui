@@ -909,6 +909,14 @@ class PuppetDBService:
         endpoint = f"facts/{fact_name}" if fact_name else "facts"
         return await self._query(endpoint, query=query)
 
+    async def get_fact_contents(self, path: List[str]) -> List[Dict]:
+        """Structured-fact leaves via /fact-contents (path = ['os', 'family'])."""
+        import json
+
+        query = json.dumps(["=", "path", list(path)])
+        data = await self._query("fact-contents", query=query)
+        return data if isinstance(data, list) else []
+
     async def get_fact_names(self) -> List[str]:
         """Get all known fact names."""
         return await self._query("fact-names")

@@ -15,6 +15,7 @@ import { facts, enc } from '../services/api';
 import { useAppTheme } from '../hooks/ThemeContext';
 import { PrettyJson, isJsonLike } from '../components/PrettyJson';
 import { ExportActions } from '../components/ExportActions';
+import { factValueMatches } from '../utils/factFilter';
 
 /* ═══════════════════════════════════════════════════════════════
    FACT-O-SCOPE 5000 — the giant magnifying glass
@@ -157,7 +158,10 @@ export function FactExplorerPage() {
 
   useEffect(() => { refreshEncGroups(); }, [refreshEncGroups]);
 
-  const handleFactSelect = async (factName: string | null) => {
+  const handleFactSelect = async (
+    factName: string | null,
+    opts?: { keepFilter?: boolean },
+  ) => {
     if (!factName || factName.trim() === '') {
       setSelectedFact(null);
       setFactData(null);
@@ -165,19 +169,22 @@ export function FactExplorerPage() {
       setFactInput('');
       return;
     }
-    
+
+    const keepFilter = opts?.keepFilter === true;
     setSelectedFact(factName);
     setFactInput(factName);
     setFactData(null);
     setFactStructure(null);
     setError(null);
-    setFilter('');
-    setFilterOp('contains');
-    setSortField(null);
-    setSortDir('asc');
-    setRowLimit('');
+    if (!keepFilter) {
+      setFilter('');
+      setFilterOp('contains');
+      setSortField(null);
+      setSortDir('asc');
+      setRowLimit('');
+      setSelectedGroups([]);
+    }
     setShowStructure(false);
-    setSelectedGroups([]);
 
     setLoading(true);
     try {
@@ -214,46 +221,10 @@ export function FactExplorerPage() {
       });
     }
 
-    // 2. Filter
-    rows = rows.filter((f: any) => {
-      if (!filter) return true;
-
-      const valStr = typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value ?? '');
-      const q = filter.trim();
-
-      if (filterOp === 'contains') {
-        const qLower = q.toLowerCase();
-        return (
-          (f.certname || '').toLowerCase().includes(qLower) ||
-          valStr.toLowerCase().includes(qLower)
-        );
-      }
-
-      // Try numeric comparison first
-      const numFilter = parseFloat(q);
-      const numVal = typeof f.value === 'number' ? f.value : parseFloat(valStr);
-
-      if (!isNaN(numFilter) && !isNaN(numVal)) {
-        switch (filterOp) {
-          case '>':  return numVal > numFilter;
-          case '>=': return numVal >= numFilter;
-          case '<':  return numVal < numFilter;
-          case '<=': return numVal <= numFilter;
-          case '=':  return numVal === numFilter;
-          case '!=': return numVal !== numFilter;
-          default:   return true;
-        }
-      }
-
-      // String comparison (case-insensitive + trimmed)
-      const vLower = valStr.toLowerCase().trim();
-      const qLower = q.toLowerCase();
-
-      if (filterOp === '=') return vLower === qLower;
-      if (filterOp === '!=') return vLower !== qLower;
-
-      return false;
-    });
+    // 2. Filter — Query applies this; do not require a second fetch
+    rows = rows.filter((f: any) =>
+      factValueMatches(f.value, f.certname || '', filter, filterOp),
+    );
 
     // 3. Sort
     if (sortField) {
@@ -314,9 +285,10 @@ export function FactExplorerPage() {
 
   // Handle Enter key to submit the typed fact
   const handleFactInputSubmit = () => {
-    if (factInput.trim()) {
-      handleFactSelect(factInput.trim());
-    }
+    const name = factInput.trim();
+    if (!name) return;
+    // Keep operator + Filter Value so Query means "run this search"
+    handleFactSelect(name, { keepFilter: true });
   };
 
   return (
@@ -380,7 +352,7 @@ export function FactExplorerPage() {
                     Clear
                   </Button>
                 )}
-                {selectedFact && results.length > 0 && (
+                {factInput.trim() && (
                   <>
                     <Select
                       label="Operator"
@@ -399,10 +371,16 @@ export function FactExplorerPage() {
                     />
                     <TextInput
                       label="Filter Value"
-                      placeholder={filterOp === 'contains' ? 'Filter by node or value...' : 'e.g. 365'}
+                      placeholder={filterOp === 'contains' ? 'Filter by node or value...' : 'e.g. RedHat'}
                       leftSection={<IconFilter size={14} />}
                       value={filter}
                       onChange={(e) => setFilter(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleFactInputSubmit();
+                        }
+                      }}
                       style={{ width: 200 }}
                     />
                     <NumberInput
@@ -623,6 +601,13 @@ export function FactExplorerPage() {
               Try checking the base fact "{factData.base_fact}" first.
             </Text>
           )}
+        </Alert>
+      )}
+
+      {!loading && selectedFact && results.length > 0 && matchCount === 0 && filter.trim() && (
+        <Alert color="yellow">
+          No nodes match {filterOp} &quot;{filter.trim()}&quot; for fact &quot;{selectedFact}&quot;.
+          {results.length} node{results.length === 1 ? '' : 's'} have this fact — try contains, or a leaf value (e.g. RedHat for os.family).
         </Alert>
       )}
     </Stack>

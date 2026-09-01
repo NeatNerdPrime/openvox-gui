@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.16] - 2026-09-01 (fix — Fact Explorer Filter Value)
+
+### Fixed
+- **Fact Explorer Query + Filter Value returned no rows.** Query
+  re-fetched the fact and cleared the filter, so operator + value
+  never applied. `=` compared the entire structured JSON blob, so
+  `os` / `os.family` = `RedHat` matched nothing; `parseFloat` also
+  treated IPs as the number 10. Query now keeps the filter. Matching
+  uses leaf values. Nested facts parse JSON strings and try
+  PuppetDB `fact-contents`.
+
 ## [3.12.1-dev.15] - 2026-08-31 (fix — Classification class list Failed to fetch)
 
 ### Fixed

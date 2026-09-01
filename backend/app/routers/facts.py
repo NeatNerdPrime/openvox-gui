@@ -9,20 +9,35 @@ from ..services.puppetdb import puppetdb_service
 router = APIRouter(prefix="/api/facts", tags=["facts"])
 
 
+def _coerce_fact_value(obj: Any) -> Any:
+    """PuppetDB sometimes stores structured facts as JSON strings."""
+    if not isinstance(obj, str):
+        return obj
+    text = obj.strip()
+    if not text or text[0] not in "{[":
+        return obj
+    try:
+        import json
+
+        return json.loads(text)
+    except (ValueError, TypeError):
+        return obj
+
+
 def get_nested_value(obj: Any, path: str) -> Any:
     """
     Get a nested value from an object using dot notation.
     e.g., get_nested_value({"os": {"family": "RedHat"}}, "os.family") -> "RedHat"
     """
     if not path:
-        return obj
-    
+        return _coerce_fact_value(obj)
+
     keys = path.split('.')
-    current = obj
-    
+    current = _coerce_fact_value(obj)
+
     for key in keys:
+        current = _coerce_fact_value(current)
         if isinstance(current, dict):
-            # Try both the key directly and as an integer for array indices
             if key in current:
                 current = current[key]
             elif key.isdigit() and isinstance(current, (list, tuple)):
@@ -41,7 +56,7 @@ def get_nested_value(obj: Any, path: str) -> Any:
                 return None
         else:
             return None
-    
+
     return current
 
 
@@ -96,25 +111,36 @@ async def get_fact_values(fact_path: str):
         base_fact = parts[0]
         nested_path = '.'.join(parts[1:]) if len(parts) > 1 else None
         
-        # Get the base fact from PuppetDB
-        facts = await puppetdb_service.get_facts(fact_name=base_fact)
-        
         results = []
-        for f in facts:
-            value = f.get("value")
-            
-            # If we have a nested path, extract the nested value
-            if nested_path:
-                value = get_nested_value(value, nested_path)
-                # Skip nodes that don't have this nested value
-                if value is None:
-                    continue
-            
-            results.append({
-                "certname": f.get("certname", ""),
-                "value": value,
-                "environment": f.get("environment", ""),
-            })
+        if nested_path:
+            # fact-contents path is the full dotted path as an array
+            try:
+                contents = await puppetdb_service.get_fact_contents(
+                    [base_fact] + nested_path.split(".")
+                )
+            except Exception:
+                contents = []
+            if contents:
+                for f in contents:
+                    results.append({
+                        "certname": f.get("certname", ""),
+                        "value": f.get("value"),
+                        "environment": f.get("environment", ""),
+                    })
+
+        if not results:
+            facts = await puppetdb_service.get_facts(fact_name=base_fact)
+            for f in facts:
+                value = f.get("value")
+                if nested_path:
+                    value = get_nested_value(value, nested_path)
+                    if value is None:
+                        continue
+                results.append({
+                    "certname": f.get("certname", ""),
+                    "value": value,
+                    "environment": f.get("environment", ""),
+                })
         
         return {
             "fact_path": fact_path,

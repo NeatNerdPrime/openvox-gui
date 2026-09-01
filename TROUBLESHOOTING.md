@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.15**
+**OpenVox GUI Version 3.12.1-dev.16**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.15"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.16"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -635,6 +635,14 @@ Use `sudo puppet config print ssldir`.
    grep facts_terminus /etc/puppetlabs/puppet/puppet.conf
    # Should be "puppetdb"
    ```
+
+### Problem: Fact Explorer Filter Value + Query returns no matches
+
+On builds before **3.12.1-dev.16**, Query re-fetched the fact and cleared
+Filter Value, and `=` compared the whole structured JSON (so `os` =
+`RedHat` never matched). Upgrade, then: Fact Name `os.family` (or `os`),
+operator `=`, Filter Value `RedHat`, Query. Matching uses leaf values
+and does not treat IP addresses as the number 10.
 
 ---
 
