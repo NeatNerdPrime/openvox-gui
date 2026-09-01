@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.19**
+**OpenVox GUI Version 3.12.1-dev.20**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.19"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.20"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1067,6 +1067,12 @@ Failed to save result to /etc/puppetlabs/bolt/.rerun.json: Permission denied @ r
 **Cause:** CIS/RHEL often sets `Defaults requiretty` in `/etc/sudoers` *after* `#includedir /etc/sudoers.d`. Later generic Defaults override `Defaults:bolt !requiretty`. The GUI used `--no-tty`, so sudo still demanded a PTY.
 
 **Fix:** Upgrade to **3.12.1-dev.19** or later. Deploy Now probes as `bolt@` (no `--run-as`) and runs r10k with `sudo -n` on a PTY. `--run-as root` + TTY was returning empty COMMAND_ERROR, which the GUI showed as “cannot prepare as bolt@/root” with no sudo text.
+
+### Problem: Code Deployment / Bolt: `API returned HTTP 401: User no longer exists`
+
+**Cause:** `openvox_enc` sends `/etc/puppetlabs/bolt/.bolt_token`. That is a **service token** whose `username` (often `bolt`) is not a GUI User Manager account. `require_role` treated it as a deleted human login and returned 401, so inventory never resolved.
+
+**Fix:** Upgrade to **3.12.1-dev.20**. Service tokens no longer need a `users` row. Bolt inventory is always `openvox_enc` → ENC → live fleet (PuppetDB), not a static compiler list.
 
 If it still fails, the new log includes raw Bolt stdout/stderr. On a compiler:
 

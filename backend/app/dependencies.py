@@ -38,6 +38,29 @@ VALID_USER_ROLES_SET: FrozenSet[str] = frozenset(VALID_USER_ROLES)
 READ_ROLES: Tuple[str, ...] = ("admin", "operator", "certops", "viewer")
 
 # Revoke / clean agent certificates (not CSR sign — that stays admin/operator).
+
+# Service tokens and the local openvox_enc principal are first-class.
+# They must not require a matching row in ``users`` (the bolt token is
+# often issued for username ``bolt``, which is an OS account, not a GUI
+# login). Looking that up produced HTTP 401 "User no longer exists" and
+# Bolt inventory failed before any r10k command ran.
+_MACHINE_TOKEN_TYPES = frozenset({"service", "local-loopback"})
+_MACHINE_USER_IDS = frozenset({
+    "anonymous",
+    "service",
+    "bolt-inventory-local",
+    "internal-report-generator",
+})
+
+
+def is_machine_principal(user: dict) -> bool:
+    """True when auth is a service token / local plugin, not a GUI login."""
+    if not user:
+        return False
+    if user.get("token_type") in _MACHINE_TOKEN_TYPES:
+        return True
+    uid = str(user.get("user_id") or "")
+    return uid in _MACHINE_USER_IDS
 CERT_MUTATE_ROLES: Tuple[str, ...] = ("admin", "operator", "certops")
 
 
@@ -107,7 +130,7 @@ def require_role(*allowed_roles: str):
             raise HTTPException(status_code=401, detail="Not authenticated")
         role = user.get("role", "viewer")
         uid = user.get("user_id")
-        if uid and uid not in ("anonymous", "service"):
+        if uid and not is_machine_principal(user):
             try:
                 async with async_session() as session:
                     result = await session.execute(

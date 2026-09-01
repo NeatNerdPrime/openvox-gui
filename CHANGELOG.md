@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.20] - 2026-09-01 (fix — openvox_enc 401 User no longer exists)
+
+### Fixed
+- **Bolt inventory 401 `User no longer exists`:** `.bolt_token` is a
+  service token (often username `bolt`, the OS account). `require_role`
+  looked that name up in `users` and rejected it, so `openvox_enc`
+  could not load ENC/PuppetDB inventory and every clustered deploy
+  died in the prep probe. Service tokens and the local ENC principal
+  no longer need a GUI login row.
+- **Bolt inventory is always `openvox_enc`.** Generated inventories
+  no longer inject a static compiler FQDN list. Targets come from
+  `GET /api/enc/inventory/bolt` (ENC ∩ live fleet).
+
 ## [3.12.1-dev.19] - 2026-09-01 (fix — clustered r10k empty bolt@/root probe)
 
 ### Fixed
