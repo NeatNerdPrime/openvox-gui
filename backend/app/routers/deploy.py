@@ -539,6 +539,17 @@ _TMPDIR_HINT = (
 # OpenBolt `mkdir -m 700 $tmpdir/<uuid>` (no -p). Created as root before script run.
 # Also fail-fast if r10k / r10k.yaml is missing — otherwise one compiler
 # runs a 5-minute deploy while the others die and the GUI just spins.
+# Compilers often have CIS `Defaults requiretty` *after* includedir, which
+# overrides `Defaults:bolt !requiretty` in sudoers.d. Allocate a PTY so
+# `--run-as root` sudo succeeds either way (same as Certificate Sign).
+_CLUSTER_RUN_AS_ROOT = (
+    "--run-as", "root",
+    "--tty",
+    "--no-host-key-check",
+    "--format", "json",
+)
+
+
 _PREP_BOLT_TMPDIR = (
     "install -d -o bolt -g bolt -m 700 "
     "/home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp && "
@@ -857,14 +868,13 @@ async def _run_live_r10k_on_targets(
         probe_args = [
             "command", "run", _PREP_BOLT_TMPDIR,
             "--targets", ",".join(targets),
-            "--run-as", "root",
-            "--no-tty",
+            *_CLUSTER_RUN_AS_ROOT,
             "--connect-timeout", "8",
-            "--no-host-key-check",
-            "--format", "json",
         ]
         try:
-            probe = await run_bolt_command(probe_args, timeout=_CLUSTER_SSH_PROBE_TIMEOUT)
+            probe = await run_bolt_command(
+                probe_args, timeout=_CLUSTER_SSH_PROBE_TIMEOUT, tty=True,
+            )
         except Exception as e:
             logger.error("clustered-live SSH probe raised: %s", e, exc_info=True)
             return _cluster_result(
@@ -893,7 +903,18 @@ async def _run_live_r10k_on_targets(
                     "or bootstrap-compiler.sh"
                 )
             else:
-                hint = "OpenBolt cannot prepare code-deploy targets as bolt@/root."
+                blob_l = blob.lower()
+                if "must have a tty" in blob_l or "requiretty" in blob_l:
+                    hint = (
+                        "bolt@ can SSH, but sudo on the compilers still wants a TTY. "
+                        "Defaults:bolt !requiretty in sudoers.d loses to a later "
+                        "global Defaults requiretty in /etc/sudoers (CIS). "
+                        "This deploy now requests a PTY; if you still see this, "
+                        "put Defaults:bolt !requiretty *after* Defaults requiretty "
+                        "(visudo) or comment out the global requiretty."
+                    )
+                else:
+                    hint = "OpenBolt cannot prepare code-deploy targets as bolt@/root."
             return _cluster_result(
                 "clustered-live",
                 environment,
@@ -911,14 +932,11 @@ async def _run_live_r10k_on_targets(
         cmd_args = [
             "command", "run", remote_cmd,
             "--targets", ",".join(targets),
-            "--run-as", "root",
-            "--no-tty",
+            *_CLUSTER_RUN_AS_ROOT,
             "--connect-timeout", "15",
-            "--no-host-key-check",
-            "--format", "json",
         ]
         try:
-            result = await run_bolt_command(cmd_args, timeout=timeout)
+            result = await run_bolt_command(cmd_args, timeout=timeout, tty=True)
         except Exception as e:
             logger.error("clustered-live bolt command raised: %s", e, exc_info=True)
             return _cluster_result(
@@ -1019,14 +1037,13 @@ async def _run_on_targets(
         probe_args = [
             "command", "run", _PREP_BOLT_TMPDIR,
             "--targets", ",".join(targets),
-            "--run-as", "root",
-            "--no-tty",
+            *_CLUSTER_RUN_AS_ROOT,
             "--connect-timeout", "8",
-            "--no-host-key-check",
-            "--format", "json",
         ]
         try:
-            probe = await run_bolt_command(probe_args, timeout=_CLUSTER_SSH_PROBE_TIMEOUT)
+            probe = await run_bolt_command(
+                probe_args, timeout=_CLUSTER_SSH_PROBE_TIMEOUT, tty=True,
+            )
         except Exception as e:
             logger.error("cluster %s SSH probe raised: %s", mode, e, exc_info=True)
             return _cluster_result(
@@ -1063,12 +1080,11 @@ async def _run_on_targets(
                 blob_l = blob.lower()
                 if "must have a tty" in blob_l or "requiretty" in blob_l:
                     hint = (
-                        "bolt@ can SSH, but sudo on the compilers requires a TTY "
-                        "(Defaults requiretty). Stage uses --no-tty. "
-                        "profiles::base::sudo adds Defaults:bolt !requiretty "
-                        "when bolt_user is classified. Until Puppet applies: "
-                        "add 'Defaults:bolt !requiretty' to /etc/sudoers.d/bolt "
-                        "on each compiler (visudo -cf)."
+                        "bolt@ can SSH, but sudo still wants a TTY. "
+                        "Defaults:bolt !requiretty in sudoers.d loses to a later "
+                        "global Defaults requiretty in /etc/sudoers (CIS). "
+                        "This path now requests a PTY; if you still see this, "
+                        "put Defaults:bolt !requiretty after Defaults requiretty."
                     )
                 else:
                     hint = (
@@ -1094,14 +1110,11 @@ async def _run_on_targets(
             "script", "run", str(script),
             *env_args,
             "--targets", ",".join(targets),
-            "--run-as", "root",
-            "--no-tty",
+            *_CLUSTER_RUN_AS_ROOT,
             "--connect-timeout", "15",
-            "--no-host-key-check",
-            "--format", "json",
         ]
         try:
-            result = await run_bolt_command(script_args, timeout=timeout)
+            result = await run_bolt_command(script_args, timeout=timeout, tty=True)
         except Exception as e:
             logger.error("cluster %s bolt script run raised: %s", mode, e, exc_info=True)
             return _cluster_result(
@@ -1116,14 +1129,11 @@ async def _run_on_targets(
             log_args = [
                 "command", "run", "cat /var/tmp/r10k-stage-activate.log",
                 "--targets", ",".join(targets),
-                "--run-as", "root",
-                "--no-tty",
+                *_CLUSTER_RUN_AS_ROOT,
                 "--connect-timeout", "8",
-                "--no-host-key-check",
-                "--format", "json",
             ]
             try:
-                fetched = await run_bolt_command(log_args, timeout=25)
+                fetched = await run_bolt_command(log_args, timeout=25, tty=True)
                 _, log_lines, _ = _flatten_bolt_json(
                     fetched, targets, via="stage-log"
                 )

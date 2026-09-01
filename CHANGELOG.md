@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.18] - 2026-09-01 (fix — clustered r10k sudo requiretty)
+
+### Fixed
+- **Code Deployment `sudo: you must have a tty`:** clustered Deploy Now
+  and Stage/Activate used `--no-tty`. Compilers with CIS
+  `Defaults requiretty` after `#includedir` ignore
+  `Defaults:bolt !requiretty` in sudoers.d. Those Bolt runs now
+  allocate a PTY (`--tty` + tty inventory), same as Certificate Sign.
+
 ## [3.12.1-dev.17] - 2026-09-01 (chore — Dependabot PRs #66–#77)
 
 ### Changed

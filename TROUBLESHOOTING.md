@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.17**
+**OpenVox GUI Version 3.12.1-dev.18**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.17"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.18"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1059,6 +1059,14 @@ Failed to save result to /etc/puppetlabs/bolt/.rerun.json: Permission denied @ r
 **Cause:** On a dedicated console, `/etc/puppetlabs/bolt` is `root:bolt 0750`. The GUI runs `sudo -u bolt … --project /etc/puppetlabs/bolt`, so Bolt can read the project but cannot create `.rerun.json`. The GUI does not use that file. Reported by [@miharp](https://github.com/miharp) in [#63](https://github.com/cvquesty/openvox-gui/issues/63).
 
 **Fix:** Upgrade to **3.12.1-dev.13** or later. `bolt_runtime.py` now passes `--no-save-rerun`. New `bolt-project.yaml` templates also set `save-rerun: false`.
+
+### Problem: Code Deployment fails with `sudo: sorry, you must have a tty to run sudo`
+
+**Symptom:** Classification & Code → Code Deployment (clustered) lists every compiler FAIL. The bolt sudoers file already has `Defaults:bolt !requiretty`.
+
+**Cause:** CIS/RHEL often sets `Defaults requiretty` in `/etc/sudoers` *after* `#includedir /etc/sudoers.d`. Later generic Defaults override `Defaults:bolt !requiretty`. The GUI used `--no-tty`, so sudo still demanded a PTY.
+
+**Fix:** Upgrade to **3.12.1-dev.18** or later (Deploy Now and Stage/Activate request a TTY, same as Certificate Sign). Optional on compilers: move `Defaults:bolt !requiretty` below the global `requiretty`, or comment the global line.
 
 ### Problem: One click on Run Command runs the shell command three times on targets
 
