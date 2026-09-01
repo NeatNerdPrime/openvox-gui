@@ -98,8 +98,7 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
                 "message": info.get("message") or "The OpenVox GUI is currently under maintenance.",
                 "started_at": info.get("started_at"),
                 "eta": info.get("eta"),
-                "activated_by": info.get("activated_by"),
-                "detail": "This service is intentionally unavailable. Use the ovox CLI or contact an administrator to disable maintenance mode.",
+                "detail": "This service is temporarily unavailable. Please try again shortly.",
             },
             headers={
                 "Retry-After": "300",  # Hint: try again in 5 minutes

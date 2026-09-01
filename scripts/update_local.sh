@@ -388,7 +388,7 @@ enable_maintenance_page() {
   "started_at": "$(date -Iseconds)",
   "message": "${msg}",
   "eta": "${eta}",
-  "activated_by": "update_local.sh"
+  "activated_by": "administrator"
 }
 EOF
     chmod 644 "${MAINT_JSON}" 2>/dev/null || true
@@ -408,7 +408,7 @@ disable_maintenance_page() {
 trap 'disable_maintenance_page' EXIT ERR INT TERM
 
 # Raise maintenance page as early as possible (before we touch the running service or files)
-enable_maintenance_page "Running update_local.sh for ${REPO_BRANCH}" "25 minutes"
+enable_maintenance_page "The OpenVox GUI is being updated. Please try again in a few minutes." "25 minutes"
 
 # Always backup the data directory (local ENC, users, history, reports, etc.)
 # before code changes. This is our automatic failback if the GUI DB goes empty.

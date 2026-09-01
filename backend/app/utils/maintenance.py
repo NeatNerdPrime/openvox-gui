@@ -239,15 +239,10 @@ def get_maintenance_html_fallback(info: Optional[Dict[str, Any]] = None) -> str:
         """
 
     started_html = ""
-    if started_display or activated_by:
-        parts = []
-        if started_display:
-            parts.append(f"<span>Started <strong>{started_display}</strong></span>")
-        if activated_by and activated_by != "unknown":
-            parts.append(f"<span>by <strong>{activated_by}</strong></span>")
+    if started_display:
         started_html = f"""
         <div class="mt-2 text-xs text-slate-500">
-          {" • ".join(parts)}
+          Started <strong>{started_display}</strong>
         </div>
         """
 

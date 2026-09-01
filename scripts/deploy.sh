@@ -111,7 +111,7 @@ HTMLEOF
   "started_at": "$(date -Iseconds)",
   "message": "${msg}",
   "eta": "${eta}",
-  "activated_by": "deploy.sh"
+  "activated_by": "administrator"
 }
 EOF
     chmod 644 "${MAINT_JSON}" 2>/dev/null || true
@@ -147,7 +147,7 @@ echo "  Target: ${INSTALL_DIR}"
 
 # Raise the maintenance page immediately so web users see the branded static page
 # (via Apache) instead of errors while we replace files and service restart.
-enable_maintenance_page "Running deploy.sh from ${REPO_DIR}" "20 minutes"
+enable_maintenance_page "The OpenVox GUI is being updated. Please try again in a few minutes." "20 minutes"
 
 # Always take a timestamped backup of the data directory (ENC, users, history, etc.)
 # before any code change or restart. This gives us an automatic failback if the
