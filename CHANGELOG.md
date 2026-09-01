@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.33] - 2026-09-01 (test — overlay + VIP-only peer fixtures)
+
+### Fixed
+- **CI:** `get_latest_reports_by_certname` now uses lean extract;
+  tests mocked the old `get_reports`. Peer list is explicit VIPs
+  only; the fixture no longer expects inferred member names.
+
 ## [3.12.1-dev.32] - 2026-09-01 (perf — lean reports, one PDB VIP, less poll)
 
 ### Changed

@@ -201,7 +201,7 @@ def test_get_latest_reports_merges_recent_over_stuck_flag():
         ]
 
     svc.pql = fake_pql  # type: ignore[method-assign]
-    svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+    svc.get_reports_lean = fake_get_reports  # type: ignore[method-assign]
     svc._peer_puppetdb_hosts = lambda: []  # type: ignore[method-assign]
 
     latest = asyncio.run(PuppetDBService.get_latest_reports_by_certname(svc))
@@ -275,7 +275,7 @@ def test_get_latest_reports_merges_newer_peer_row():
         }
 
     svc.pql = fake_pql  # type: ignore[method-assign]
-    svc.get_reports = fake_get_reports  # type: ignore[method-assign]
+    svc.get_reports_lean = fake_get_reports  # type: ignore[method-assign]
     svc._peer_puppetdb_hosts = lambda: ["ovdb.site-b.example.com"]  # type: ignore[method-assign]
     svc._latest_reports_from_host = fake_from_host  # type: ignore[method-assign]
 
@@ -285,7 +285,7 @@ def test_get_latest_reports_merges_newer_peer_row():
     assert row["_openvoxdb_source"] == "ovdb.site-b.example.com"
 
 
-def test_peer_hosts_include_console_site_ovdb():
+def test_peer_hosts_are_explicit_vips_only():
     from unittest.mock import patch
     from app.services.puppetdb import PuppetDBService, settings
 
@@ -308,10 +308,7 @@ def test_peer_hosts_include_console_site_ovdb():
                 hosts = PuppetDBService._peer_puppetdb_hosts(
                     PuppetDBService.__new__(PuppetDBService)
                 )
-    assert "ovdb.extra.example.com" in hosts
-    assert "ovdb1.site-a.example.com" in hosts
-    assert "ovdb.site-a.example.com" in hosts
-    assert "ovdb.site-b.example.com" in hosts
+    assert hosts == ["ovdb.extra.example.com"]
     assert "ovdb.example.com" not in hosts
 
 
