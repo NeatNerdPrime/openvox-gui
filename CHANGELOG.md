@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.27] - 2026-09-01 (test — cert alias uppercase uses example.com)
+
+### Fixed
+- **CI `test_cert_aliases_fqdn_and_short`:** hostname sanitization
+  updated the expected FQDN to `example.com` but left the uppercase
+  input on the old domain.
+
 ## [3.12.1-dev.26] - 2026-09-01 (docs — no internal DNS in product docs)
 
 ### Changed

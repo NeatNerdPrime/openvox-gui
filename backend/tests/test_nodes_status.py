@@ -64,7 +64,7 @@ def test_cert_aliases_fqdn_and_short():
     ]
     assert _cert_aliases("ovcompiler1") == ["ovcompiler1"]
     assert _cert_aliases("") == []
-    assert _cert_aliases("  OVCA1.PDXC-IT.CORP.INT-X.AI  ") == [
+    assert _cert_aliases("  OVCA1.PDXC-IT.EXAMPLE.COM  ") == [
         "ovca1.pdxc-it.example.com",
         "ovca1",
     ]
