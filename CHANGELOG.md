@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.2] - 2026-09-01 (fix — mirror Sync now is not a timeout failure)
+
+### Fixed
+- **Agent Install | Sync now:** the GUI waited on the HTTP request
+  for the whole yum/apt pull. After ~60s the proxy dropped the
+  connection and the page said failed, while the script still wrote
+  ``Sync completed successfully``. Sync now starts in the background;
+  the page follows the log and reports ``.last-sync``.
+
 ## [3.13.0-rc.1] - 2026-09-01 (rc — clustered ops, lean PDB, Monitoring)
 
 First release candidate for 3.13.0. Promotes the 3.12.1-dev train

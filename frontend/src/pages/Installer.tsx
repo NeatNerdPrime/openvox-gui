@@ -289,19 +289,30 @@ export function InstallerPage() {
     setSyncLog([]);
     try {
       const res = await installer.triggerSync();
-      setSyncLog(res.output);
+      setSyncLog(res.output || []);
       notifications.show({
-        title: res.success ? 'Sync complete' : 'Sync finished with errors',
-        message: res.success
-          ? 'Mirror is up to date'
-          : `Exit code ${res.exit_code} -- check the log for details`,
-        color: res.success ? 'green' : 'orange',
+        title: res.started === false && res.in_progress
+          ? 'Sync already running'
+          : 'Sync started',
+        message: 'Watch the Sync Log tab. A full pull can take several minutes.',
+        color: 'blue',
       });
-      // Switch to the Sync Log tab so the captured output is immediately
-      // visible (most useful UX after a manual sync).
       setActiveTab('synclog');
       setMirrorReady(false);
+      let last: Awaited<ReturnType<typeof installer.getInfo>> | null = null;
+      for (let i = 0; i < 240; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        last = await installer.getInfo();
+        if (!last.sync_in_progress) break;
+      }
       await refresh();
+      const result = last?.last_sync_result || '';
+      const ok = result.startsWith('success');
+      notifications.show({
+        title: ok ? 'Sync complete' : (last?.sync_in_progress ? 'Sync still running' : 'Sync finished'),
+        message: result || 'See the Sync Log tab',
+        color: ok ? 'green' : 'orange',
+      });
     } catch (e: any) {
       notifications.show({
         title: 'Sync failed to start',

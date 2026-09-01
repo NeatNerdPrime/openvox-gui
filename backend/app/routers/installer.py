@@ -524,12 +524,19 @@ async def _require_installer_ip_allowlist(request: Request | None) -> None:
 
 
 class SyncResult(BaseModel):
-    """Returned by /api/installer/sync.  Includes the captured tail of
-    stdout/stderr for inline display in the GUI."""
+    """Returned by /api/installer/sync.
+
+    Sync is started in the background. A full yum+apt pull takes many
+    minutes; waiting on this request made Apache/the browser time out
+    and the GUI report failure while the script still wrote
+    ``Sync completed successfully``.
+    """
     success:   bool
     exit_code: int
     output:    list[str]
     triggered_by: str
+    started: bool = False
+    in_progress: bool = False
 
 
 @router.post("/sync", response_model=SyncResult)
@@ -537,36 +544,24 @@ async def trigger_sync(
     request: Request,
     user: str = Depends(require_role("admin", "operator")),
 ) -> SyncResult:
-    """Run the sync-openvox-repo.sh script synchronously.
-
-    Triggered by the "Sync now" button on the Installer page.  Honours
-    the on-disk lock file so it can't collide with an in-flight cron
-    invocation.
-
-    The script can run for a long time on first sync (full apt + yum
-    mirror).  We give it a generous 2-hour timeout, matching the
-    systemd unit.
-    """
+    """Start sync-openvox-repo.sh in the background and return immediately."""
     if not SYNC_SCRIPT.exists():
         raise HTTPException(
             status_code=500,
             detail=f"Sync script missing at {SYNC_SCRIPT}.  Was openvox-gui installed correctly?",
         )
 
-    # Enforce the same lock semantics as the script itself, so we can
-    # return a useful 409 immediately instead of waiting for the
-    # subprocess to fail.
     holder = _sync_lock_held()
     if holder is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"A sync is already running (PID {holder}).  Please wait for it to finish.",
+        return SyncResult(
+            success=True,
+            exit_code=0,
+            output=[f"A sync is already running (PID {holder}). Watch the Sync Log tab."],
+            triggered_by=user,
+            started=False,
+            in_progress=True,
         )
 
-    # The script lives outside the install dir's writable area and is
-    # owned by root, so we shell out via sudo.  The sudoers rules
-    # installed by install.sh grant the openvox-gui service user
-    # NOPASSWD access to exactly this command path with --quiet.
     cmd = ["sudo", "-n", str(SYNC_SCRIPT), "--quiet"]
     logger.info("User %s triggered repo sync: %s", user, " ".join(cmd))
 
@@ -583,40 +578,28 @@ async def trigger_sync(
     else:
         logger.warning("Repo sync: no HTTP proxy found in settings or .env")
 
-    loop = asyncio.get_event_loop()
-    def _run() -> tuple[int, str, str]:
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=2 * 60 * 60,
-                env=child_env,
-            )
-            return proc.returncode, proc.stdout, proc.stderr
-        except subprocess.TimeoutExpired:
-            return -1, "", "Sync script timed out after 2 hours"
-        except Exception as exc:
-            return -1, "", f"Failed to launch sync script: {exc}"
-
-    rc, stdout, stderr = await loop.run_in_executor(None, _run)
-    output_lines = []
-    if stdout:
-        output_lines.extend(stdout.strip().splitlines())
-    if stderr:
-        output_lines.extend(stderr.strip().splitlines())
-    # Cap the response to the last 200 lines so a noisy sync doesn't
-    # flood the browser.
-    if len(output_lines) > 200:
-        output_lines = ["[... output truncated ...]"] + output_lines[-200:]
-
-    _invalidate_platform_cache()
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=child_env,
+            start_new_session=True,
+        )
+    except Exception as exc:
+        logger.error("Failed to launch sync script: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to launch sync script: {exc}",
+        ) from exc
 
     return SyncResult(
-        success      = (rc == 0),
-        exit_code    = rc,
-        output       = output_lines,
-        triggered_by = user,
+        success=True,
+        exit_code=0,
+        output=["Sync started in the background. Watch the Sync Log tab."],
+        triggered_by=user,
+        started=True,
+        in_progress=True,
     )
 
 

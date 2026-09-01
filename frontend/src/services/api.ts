@@ -811,6 +811,8 @@ export interface InstallerSyncResult {
   exit_code: number;
   output: string[];
   triggered_by: string;
+  started?: boolean;
+  in_progress?: boolean;
 }
 
 export interface InstallerDiskInfo {
