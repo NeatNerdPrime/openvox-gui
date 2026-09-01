@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.28] - 2026-09-01 (fix — lookup isolates PuppetDB; wrap explain)
+
+### Fixed
+- **Hiera Lookup still hit PuppetDB after `--facts`:** compilers
+  have `routes.yaml` facts terminus puppetdb + storeconfigs, so
+  lookup still queried `server_urls` and ran `replace_facts`.
+  Clustered lookup now uses a throwaway `--confdir` with
+  `storeconfigs = false` and `facts_terminus = facter`.
+- **Explain Output overflow:** long lines now wrap inside the pane
+  (`pre-wrap`); the area still scrolls vertically.
+
 ## [3.12.1-dev.27] - 2026-09-01 (test — cert alias uppercase uses example.com)
 
 ### Fixed

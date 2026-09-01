@@ -1265,12 +1265,11 @@ def _lookup_clustered_shell(
     request: PuppetLookupRequest,
     facts_b64: Optional[str] = None,
 ) -> str:
-    """puppet lookup using a facts file so the compiler does not query PuppetDB.
+    """puppet lookup that must not use the compiler's PuppetDB termini.
 
-    Compilers with storeconfigs/puppetdb as the facts terminus call
-    puppetdb.conf server_urls for every lookup. ATLC hosts still listing
-    revoked PDXC ovdb certs then fail. Local facter or GUI-fetched facts
-    plus ``--facts`` skip that path.
+    ``--facts`` alone is not enough: routes.yaml + storeconfigs still
+    query and ``replace_facts`` on server_urls (CRL / TLS errors).
+    Use a throwaway --confdir with storeconfigs off and facter facts.
     """
     import shlex
 
@@ -1286,10 +1285,24 @@ def _lookup_clustered_shell(
         load = "/opt/puppetlabs/bin/facter --json > \"$FACTFILE\""
     return (
         "set -euo pipefail; "
-        "FACTFILE=$(mktemp /tmp/ovox-lookup.XXXXXX.json); "
-        "trap 'rm -f \"$FACTFILE\"' EXIT; "
+        "WORKDIR=$(mktemp -d /tmp/ovox-lookup.XXXXXX); "
+        "FACTFILE=$WORKDIR/facts.json; "
+        "trap 'rm -rf \"$WORKDIR\"' EXIT; "
         f"{load}; "
-        f"/opt/puppetlabs/bin/puppet lookup --explain {key}{extra} --facts \"$FACTFILE\""
+        "printf '%s\\n' "
+        "'[main]' "
+        "'codedir = /etc/puppetlabs/code' "
+        "'environmentpath = /etc/puppetlabs/code/environments' "
+        "'storeconfigs = false' "
+        "'facts_terminus = facter' "
+        "\"route_file = $WORKDIR/routes.yaml\" "
+        "\"vardir = $WORKDIR/var\" "
+        "> \"$WORKDIR/puppet.conf\"; "
+        "printf '%s\\n' '---' '{}' > \"$WORKDIR/routes.yaml\"; "
+        "mkdir -p \"$WORKDIR/var\"; "
+        "/opt/puppetlabs/bin/puppet lookup --explain "
+        f"{key}{extra} --facts \"$FACTFILE\" "
+        "--confdir \"$WORKDIR\" --config \"$WORKDIR/puppet.conf\""
     )
 
 

@@ -11,6 +11,9 @@ def test_lookup_shell_uses_facter_and_facts_flag():
     assert "--facts" in shell
     assert "--node" not in shell
     assert "--environment staging" in shell
+    assert "storeconfigs = false" in shell
+    assert "facts_terminus = facter" in shell
+    assert "--confdir" in shell
 
 
 def test_lookup_shell_accepts_preloaded_facts():

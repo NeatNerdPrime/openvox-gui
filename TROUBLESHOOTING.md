@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.27**
+**OpenVox GUI Version 3.12.1-dev.28**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.27"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.28"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1035,9 +1035,10 @@ Refresh the compiler CRL from the CA (`puppetserver ca` / agent SSL
 bootstrap, or the CA geo replica), then retry. Catalog compiles use
 the same `puppetdb.conf` + CRL.
 
-**GUI (3.12.1-dev.24+):** Hiera Lookup uses `--facts` and does not
-call the compiler’s PuppetDB termini, so this page can still explain
-keys while CRL/trust is fixed.
+**GUI (3.12.1-dev.28+):** Hiera Lookup uses a throwaway `--confdir`
+(`storeconfigs = false`, `facts_terminus = facter`) plus `--facts`.
+`--facts` alone is not enough: compiler `routes.yaml` still queried
+PuppetDB and ran `replace_facts`.
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 

@@ -618,13 +618,15 @@ export function LookupTrace() {
             </Button>
           )}
         </Group>
-        <ScrollArea style={{ height: 450 }}>
+        <ScrollArea style={{ height: 450 }} type="auto" offsetScrollbars>
           {output ? (
             <Box
               style={{
-                fontFamily: 'monospace',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                 fontSize: 13,
-                whiteSpace: 'pre',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word',
                 backgroundColor: 'var(--mantine-color-dark-8)',
                 color: 'var(--mantine-color-dark-0)',
                 padding: 12,
