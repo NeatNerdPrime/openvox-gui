@@ -308,7 +308,7 @@ export function MonitoringDashboardPage() {
         <Stack gap="xl">
           {selected.map((s) => (
             <SectionFrame
-              key={`${s.id}-${windowHours}`}
+              key={s.id}
               title={s.label}
               detailPath={s.detailPath}
               onOpenDetail={(p) => navigate(p)}

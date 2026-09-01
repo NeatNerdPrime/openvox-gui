@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.32] - 2026-09-01 (perf — lean reports, one PDB VIP, less poll)
+
+### Changed
+- **Architect review (EA / UX / Sr Dev):** live-fleet overlay no longer
+  downloads full report documents or fans out to every cluster member.
+  Peers are **explicit VIP list only**. Jolokia population/JMX is one
+  bulk POST. Compliance uses lean extract. Live-run SQL is last 24h.
+  Dashboard does not re-apply Bolt overlay. Monitoring wallboard no
+  longer remounts on window change. Charts measure width (no blank
+  Recharts). Insights trickle skips pages that already poll.
+
 ## [3.12.1-dev.31] - 2026-09-01 (fix — Fleet Population counts + dual axis)
 
 ### Fixed

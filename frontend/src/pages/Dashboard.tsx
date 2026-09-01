@@ -3,7 +3,7 @@
  * 
  * Component documentation to be expanded.
  */
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Title, Grid, Card, Text, Group, RingProgress, Stack, Center,
   Badge, Tooltip, Table, ActionIcon, Select, Switch, Button,
@@ -23,35 +23,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ExportActions } from '../components/ExportActions';
 import { STATUS_HEX, statusMantine } from '../utils/statusTheme';
 import { isNeedsAttention } from '../utils/needsAttention';
-
-/** Recharts ResponsiveContainer often paints 0×320 until a window resize. */
-function MeasuredArea({
-  height,
-  children,
-}: {
-  height: number;
-  children: (width: number) => ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const apply = () => {
-      const w = Math.floor(el.getBoundingClientRect().width);
-      if (w > 0) setWidth(w);
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return (
-    <div ref={ref} style={{ width: '100%', minWidth: 0, height }}>
-      {width > 0 ? children(width) : null}
-    </div>
-  );
-}
+import { MeasuredArea } from '../components/MeasuredChart';
 
 const ATTENTION_EXPORT_COLS = [
   'certname',
@@ -215,7 +187,12 @@ export function DashboardPage() {
         if (d == null || (d as any).node_status == null) return false;
         const nodes = (d as any).nodes;
         const total = (d as any).node_status?.total;
-        return (Array.isArray(nodes) && nodes.length > 0) || Number(total) > 0;
+        const hasNodes = (Array.isArray(nodes) && nodes.length > 0) || Number(total) > 0;
+        const trends = (d as any).node_trends;
+        if (hasNodes && Array.isArray(trends) && trends.length === 0) {
+          return false;
+        }
+        return hasNodes;
       },
       pollIntervalMs: pollMs,
     },

@@ -68,7 +68,7 @@ export function useApi<T>(
     cacheKey,
     cacheValidate,
     pollIntervalMs,
-    refetchOnFocus = true,
+    refetchOnFocus = !pollIntervalMs,
   } = options;
 
   // Resolve seed on first render only (explicit initialData or session cache).

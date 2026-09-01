@@ -224,7 +224,7 @@ class PuppetDBService:
         async def _build() -> List[Dict]:
             return await self._compute_live_nodes()
 
-        cached = await cache_get_or_set("live_nodes:v1", 15.0, _build)
+        cached = await cache_get_or_set("live_nodes:v1", 45.0, _build)
         return deepcopy(cached) if cached is not None else []
 
     async def _compute_live_nodes(self) -> List[Dict]:
@@ -560,7 +560,8 @@ class PuppetDBService:
         # Recent reports via the AST endpoint (HTTP order_by, not PQL).
         # Newer receive_time replaces a stuck latest_report? flag.
         try:
-            recent = await self.get_reports(
+            recent = await self.get_reports_lean(
+                query=None,
                 limit=2000,
                 order_by="receive_time",
                 order_dir="desc",
@@ -703,6 +704,67 @@ class PuppetDBService:
         }
         return await self._query("reports", query=query, params=params)
 
+    _LEAN_REPORT_FIELDS = (
+        '["certname", "status", "noop", "receive_time", "hash", '
+        '"producer", "cached_catalog_status", "start_time", "end_time", '
+        '"corrective_change"]'
+    )
+
+    async def get_reports_lean(
+        self,
+        query: Optional[str] = None,
+        limit: int = 2000,
+        offset: int = 0,
+        order_by: str = "receive_time",
+        order_dir: str = "desc",
+    ) -> List[Dict]:
+        """Projected report rows — no metrics/logs/events payloads."""
+        if query:
+            ast = f'["extract", {self._LEAN_REPORT_FIELDS}, {query}]'
+        else:
+            ast = f'["extract", {self._LEAN_REPORT_FIELDS}]'
+        params = {
+            "limit": str(limit),
+            "offset": str(offset),
+            "order_by": f'[{{"field": "{order_by}", "order": "{order_dir}"}}]',
+        }
+        return await self._query("reports", query=ast, params=params)
+
+    async def get_pdb_metrics_bulk(self, names: Dict[str, str]) -> Dict[str, Any]:
+        """One Jolokia POST for many mbeans. Fallback: per-bean GET."""
+        out: Dict[str, Any] = {k: None for k in names}
+        if not names:
+            return out
+        try:
+            client = await self._get_client()
+            body = [{"type": "read", "mbean": mbean} for mbean in names.values()]
+            resp = await client.post("/metrics/v2/read", json=body)
+            if resp.status_code == 200:
+                payload = resp.json()
+                rows = payload if isinstance(payload, list) else (
+                    payload.get("value") if isinstance(payload, dict) else None
+                )
+                by_mbean: Dict[str, Any] = {}
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        req = row.get("request") or {}
+                        mbean = req.get("mbean")
+                        if mbean:
+                            by_mbean[str(mbean)] = row.get("value", row)
+                for key, mbean in names.items():
+                    if mbean in by_mbean:
+                        out[key] = by_mbean[mbean]
+                if any(v is not None for v in out.values()):
+                    return out
+        except Exception as e:
+            logger.warning("Jolokia bulk read failed: %s", e)
+        async def _one(key: str, mbean: str) -> None:
+            out[key] = (await self.get_pdb_metrics(mbean)).get("value")
+        await asyncio.gather(*[_one(k, m) for k, m in names.items()])
+        return out
+
     async def get_report(self, report_hash: str) -> Dict:
         """Get a single report by hash (exact, then unique prefix).
 
@@ -744,15 +806,6 @@ class PuppetDBService:
         extra = getattr(settings, "puppetdb_peers", None) or ""
         for part in str(extra).replace(",", " ").split():
             _add(part)
-        for host in cfg.get("puppetdb_nodes") or []:
-            _add(str(host))
-        for host in cfg.get("dns_rr_vips") or []:
-            _add(str(host))
-        # openvox.<site>… console → ovdb.<site>… VIP (same estate pattern)
-        for console in cfg.get("consoles") or []:
-            name = str(console).strip().lower()
-            if name.startswith("openvox."):
-                _add("ovdb." + name.split(".", 1)[1])
         return out
 
     async def _query_host(

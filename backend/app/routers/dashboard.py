@@ -19,7 +19,6 @@ from ..database import async_session
 from ..models.session import ActiveSession
 from ..services.fleet_insights import compute_status_counts, compute_trends
 from ..utils.ttl_cache import get_or_set as cache_get_or_set
-from .nodes import apply_live_run_status
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +83,6 @@ async def _build_dashboard_data() -> Dict[str, Any]:
         puppetdb_service.get_live_nodes(),  # active PDB (SSoT w/ Inventory / ENC)
         _fetch_trend_reports(cutoff),
     )
-
-    # Same display status as Overview | Nodes: newest report, then a
-    # newer successful GUI/Bolt puppet agent run.
-    try:
-        async with async_session() as db:
-            await apply_live_run_status(raw_nodes, db)
-    except Exception as e:
-        logger.warning("dashboard live-run overlay failed: %s", e)
 
     # Ring + trends are PuppetDB only (same VIP / same tables on every
     # console). Do not fold this console's Bolt execution_history into

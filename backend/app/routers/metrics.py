@@ -121,19 +121,12 @@ async def get_compliance(
     # Prefer live fleet membership, then restrict to scope.
     # Monitoring "Failed" is the newest OpenVoxDB report status (same
     # as Overview / Node Detail), not "any fail in the lookback window."
-    from ..database import async_session
-    from ..routers.nodes import apply_live_run_status
     from ..services.fleet_insights import partition_display_nodes
 
     try:
         all_nodes = await puppetdb_service.get_live_nodes()
     except Exception:
         all_nodes = await puppetdb_service.get_nodes()
-    try:
-        async with async_session() as db:
-            await apply_live_run_status(all_nodes, db)
-    except Exception as e:
-        logger.warning("compliance live-run overlay failed: %s", e)
     nodes = filter_nodes_by_scope(all_nodes, scope_result)
     parts = partition_display_nodes(nodes)
     compliant = parts["compliant"]
@@ -145,8 +138,8 @@ async def get_compliance(
     # Rolling census trend for this scope (sum of series ≈ scoped fleet size)
     since = (datetime.now(timezone.utc) - timedelta(hours=float(hours))).isoformat()
     try:
-        reports = await puppetdb_service.get_reports(
-            query=f'[">" , "receive_time" , "{since}"]',
+        reports = await puppetdb_service.get_reports_lean(
+            query=f'[">", "receive_time", "{since}"]',
             limit=10000,
         )
         reports = filter_reports_by_scope(reports, scope_result)
@@ -632,27 +625,17 @@ async def get_puppetdb_performance(_user: str = Depends(_AUTH)):
         "population_avg_resources": "puppetlabs.puppetdb.population:name=avg-resources-per-node",
     }
 
-    import asyncio
-    results: Dict[str, Any] = {}
+    results = await puppetdb_service.get_pdb_metrics_bulk(metric_names)
 
-    async def fetch_metric(key: str, mbean: str):
-        data = await puppetdb_service.get_pdb_metrics(mbean)
-        val = data.get("value", data) if isinstance(data, dict) else data
-        results[key] = val
-
-    await asyncio.gather(*[fetch_metric(k, v) for k, v in metric_names.items()])
-
-    # Fleet size from live nodes (same set as Inventory). JMX num-nodes
-    # is replica-local and Jolokia often returns a bare number, which the
-    # UI used to read as .Value → 0.
-    live_n = 0
-    try:
-        live_n = len(await puppetdb_service.get_live_nodes())
-    except Exception:
-        logger.warning("fleet_nodes from live nodes failed", exc_info=True)
     jmx_nodes = jmx_scalar(results.get("population_nodes")) or 0
     jmx_res = jmx_scalar(results.get("population_resources")) or 0
     jmx_avg = jmx_scalar(results.get("population_avg_resources")) or 0
+    live_n = 0
+    if not jmx_nodes:
+        try:
+            live_n = len(await puppetdb_service.get_live_nodes())
+        except Exception:
+            logger.warning("fleet_nodes from live nodes failed", exc_info=True)
     fleet_nodes = int(live_n or jmx_nodes)
     if not jmx_avg and fleet_nodes and jmx_res:
         jmx_avg = jmx_res / fleet_nodes

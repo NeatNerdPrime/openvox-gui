@@ -6,16 +6,17 @@
  * Combines agent-side metrics (from PuppetDB reports) with server-side
  * metrics (from PuppetDB Jolokia/JMX).
  */
-import { useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert, Grid, Paper, Select, Button,
 } from '@mantine/core';
 import {
-  ResponsiveContainer, AreaChart, Area, ComposedChart, Bar, Line,
+  AreaChart, Area, ComposedChart, Bar, Line,
   XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend,
 } from 'recharts';
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { CHART_LINE_TYPE, downsampleSeries, movingAverageSeries, smoothTimeSeries } from '../utils/chartDefaults';
+import { MeasuredArea } from '../components/MeasuredChart';
 import { effectivePollIntervalMs } from '../utils/accessMode';
 import { useApi } from '../hooks/useApi';
 import { performance as perfApi, metrics } from '../services/api';
@@ -102,9 +103,16 @@ function ChartPanel({ title, expanded, onClick, children, stats }: ChartPanelPro
           ))}
         </Group>
       )}
-      <ResponsiveContainer width="100%" height={height}>
-        {children as any}
-      </ResponsiveContainer>
+      <MeasuredArea height={height}>
+        {(w) =>
+          isValidElement(children)
+            ? cloneElement(children as ReactElement<{ width?: number; height?: number }>, {
+                width: w,
+                height,
+              })
+            : children
+        }
+      </MeasuredArea>
     </Card>
   );
 }
@@ -194,6 +202,7 @@ export function MetricsPerformancePage({
     {
       cacheKey: `openvox_metrics_performance_v2_${hoursNum}_${sq}`,
       cacheValidate: (d) => d != null && (d as any).perf != null,
+      pollIntervalMs: effectivePollIntervalMs(parseInt(refreshRate, 10) * 1000) ?? undefined,
     },
   );
 
@@ -251,14 +260,6 @@ export function MetricsPerformancePage({
     });
     setLastRefresh(new Date());
   }, [serverData]);
-
-  // Auto-refresh at configurable rate (VIP floor via effectivePollIntervalMs)
-  useEffect(() => {
-    const rate = effectivePollIntervalMs(parseInt(refreshRate, 10) * 1000) ?? 0;
-    if (rate <= 0) return;
-    const interval = setInterval(() => refetch(), rate);
-    return () => clearInterval(interval);
-  }, [refetch, refreshRate]);
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => prev === id ? null : id);

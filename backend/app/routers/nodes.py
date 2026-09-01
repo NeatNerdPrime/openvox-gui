@@ -52,10 +52,12 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
     if not nodes:
         return
     try:
+        cutoff = datetime.utcnow() - timedelta(hours=24)
         result = await db.execute(
             select(ExecutionHistory)
             .where(ExecutionHistory.status == "success")
             .where(ExecutionHistory.command_name.ilike("%puppet agent%"))
+            .where(ExecutionHistory.executed_at >= cutoff)
             .order_by(desc(ExecutionHistory.executed_at))
         )
         rows = list(result.scalars().all())
