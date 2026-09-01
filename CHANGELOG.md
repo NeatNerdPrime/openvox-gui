@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.1] - 2026-09-01 (rc — clustered ops, lean PDB, Monitoring)
+
+First release candidate for 3.13.0. Promotes the 3.12.1-dev train
+(dev.1–dev.34). Not a GitHub Release.
+
+### Highlights
+- Clustered Code Deploy / Hiera / Agent Install no longer depend on
+  compiler sudo TTY or the compiler's PuppetDB termini.
+- ENC menus list live r10k environments; Bolt inventory is
+  `openvox_enc` (service tokens are not GUI logins).
+- Overview + Monitoring: one PuppetDB VIP, last-good dashboard,
+  lean report extract, Fleet Population as dual-axis lines.
+- Fact Explorer filter actually applies. Dependabot #66–#77 (except
+  Mantine 9). Issues #63–#65 (@miharp).
+
 ## [3.12.1-dev.34] - 2026-09-01 (fix — Fleet Population nodes as a line)
 
 ### Changed
