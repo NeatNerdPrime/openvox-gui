@@ -269,12 +269,9 @@ export function HieraViewer() {
   if (envs.length === 0) {
     return (
       <Stack>
-        {sourceNote && <Alert color="blue">{sourceNote}</Alert>}
         <Alert color="yellow">
-          No Hiera data found. Dedicated consoles read the live codedir on a
-          compiler via Bolt — they do not use /etc/puppetlabs/puppet/hiera.yaml
-          and they do not check out the control repo. Stage code first, or set
-          code_deploy_targets under Settings → Cluster.
+          {sourceNote
+            || 'No Hiera YAML is available yet. After a successful code deploy, environment files appear here (read-only).'}
         </Alert>
       </Stack>
     );

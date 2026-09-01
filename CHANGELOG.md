@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.22] - 2026-09-01 (fix — Hiera Data Files empty / internals dump)
+
+### Fixed
+- **Data | Hiera Data Files:** clustered listing used
+  `bolt script run --run-as root --no-tty`, so CIS compilers never
+  returned YAML and the page showed a Bolt/codedir/control-repo
+  lecture. Listing now runs as `bolt@` (read-only, no sudo). Empty
+  state is one sentence: files appear here after a successful code
+  deploy. No 502 with sudoers internals.
+
 ## [3.12.1-dev.21] - 2026-09-01 (test — clustered stage probe contract)
 
 ### Fixed

@@ -1150,59 +1150,65 @@ async def list_hiera_files():
                 "host": None,
                 "environments": [],
                 "message": (
-                    "Clustered mode has no code_deploy_targets. "
-                    "Set compilers under Settings → Cluster."
+                    "No Hiera YAML is available yet. After a successful "
+                    "code deploy, environment files appear here (read-only)."
                 ),
             }
         host = targets[0]
         if not _HIERA_LIST_SCRIPT.is_file():
-            raise HTTPException(
-                status_code=500,
-                detail=f"Missing {_HIERA_LIST_SCRIPT}. Run update_local.sh.",
-            )
+            return {
+                "source": "none",
+                "host": host,
+                "environments": [],
+                "message": (
+                    "No Hiera YAML is available yet. After a successful "
+                    "code deploy, environment files appear here (read-only)."
+                ),
+            }
         from .bolt_runtime import run_bolt_command
 
+        # Read-only: bolt@ can read the live codedir. Do not --run-as root
+        # (CIS requiretty + empty COMMAND_ERROR hid the file list).
         bolt = await run_bolt_command(
             [
                 "script", "run", str(_HIERA_LIST_SCRIPT),
                 "--targets", host,
-                "--run-as", "root",
-                "--no-tty",
+                "--tty",
                 "--format", "json",
             ],
             timeout=60,
+            tty=True,
         )
         parsed = _hiera_from_bolt_item(bolt)
         envs = parsed.get("environments") if isinstance(parsed, dict) else None
         if not isinstance(envs, list):
-            rc = bolt.get("returncode")
-            err = (bolt.get("stderr") or bolt.get("stdout") or "")[:800]
-            err_l = err.lower()
-            if "must have a tty" in err_l or "requiretty" in err_l:
-                hint = (
-                    f"Could not list Hiera on {host}: bolt@ sudo needs a TTY "
-                    "(Defaults requiretty). Dedicated consoles Bolt to the "
-                    "first compiler with --no-tty. Add "
-                    "'Defaults:bolt !requiretty' to /etc/sudoers.d/bolt on "
-                    "that compiler (same as Stage). visudo -cf, then reload."
-                )
-                raise HTTPException(status_code=502, detail=hint)
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    f"Could not list Hiera on {host} (bolt rc={rc}). "
-                    f"{err or 'No JSON from hiera-list-remote.py'}"
-                ),
+            logger.warning(
+                "Hiera list via Bolt on %s failed rc=%s",
+                host, bolt.get("returncode"),
             )
+            if local_envs:
+                return {
+                    "source": "local",
+                    "host": socket.gethostname(),
+                    "codedir": "/etc/puppetlabs/code/environments",
+                    "environments": local_envs,
+                    "message": None,
+                }
+            return {
+                "source": "none",
+                "host": host,
+                "environments": [],
+                "message": (
+                    "No Hiera YAML is available yet. After a successful "
+                    "code deploy, environment files appear here (read-only)."
+                ),
+            }
         return {
             "source": "compiler",
             "host": host,
             "codedir": parsed.get("codedir") or "/etc/puppetlabs/code/environments",
             "environments": envs,
-            "message": (
-                f"Read-only view of live codedir on {host}. "
-                "Edit in the control repo, then Stage / Activate."
-            ),
+            "message": None,
         }
 
     return {

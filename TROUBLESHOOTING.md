@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.21**
+**OpenVox GUI Version 3.12.1-dev.22**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.21"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.22"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -990,13 +990,18 @@ to the browser).
      | sudo tee /etc/profile.d/https_proxy.sh
    ```
 
-### Problem: Data | Hiera Data Files shows a stock / empty hiera.yaml
+### Problem: Data | Hiera Data Files is empty
 
-Dedicated consoles do not have the control repo. The unused file is
-`/etc/puppetlabs/puppet/hiera.yaml`. After 3.11.0-alpha.55 the page
-reads `/etc/puppetlabs/code/environments` on the first
-`code_deploy_targets` compiler via Bolt. Stage that environment first.
-Do not `git clone` the control repo onto the GUI host.
+The page is a **read-only** view of live environment YAML
+(`hiera.yaml`, `data/`, `hieradata/`) on a compiler. It does not use
+`/etc/puppetlabs/puppet/hiera.yaml` on the console.
+
+Before **3.12.1-dev.22** the GUI listed files with `bolt script run
+--run-as root --no-tty`. That failed on CIS requiretty (or returned
+empty COMMAND_ERROR), and the UI showed an internals dump about Bolt
+and `code_deploy_targets`. Listing now runs as `bolt@` (no sudo).
+If nothing is in the live codedir yet, the page says files will appear
+after a successful code deploy.
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 
