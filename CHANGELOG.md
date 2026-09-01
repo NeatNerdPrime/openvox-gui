@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.3] - 2026-09-01 (sec — postcss-selector-parser CVE-2026-9358)
+
+### Security
+- **Dependabot #54 / GHSA-w9m9-85wc-3x92:** pin
+  ``postcss-selector-parser`` to ``^7.1.3`` (lockfile 7.1.5). Fixes
+  uncontrolled AST recursion DoS in 7.1.0–7.1.2.
+
 ## [3.13.0-rc.2] - 2026-09-01 (fix — mirror Sync now is not a timeout failure)
 
 ### Fixed
