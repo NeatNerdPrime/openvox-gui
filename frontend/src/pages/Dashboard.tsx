@@ -3,7 +3,7 @@
  * 
  * Component documentation to be expanded.
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import {
   Title, Grid, Card, Text, Group, RingProgress, Stack, Center,
   Badge, Tooltip, Table, ActionIcon, Select, Switch, Button,
@@ -11,7 +11,7 @@ import {
 import { IconEye, IconChevronUp, IconChevronDown, IconSelector } from '@tabler/icons-react';
 import { useNavigate } from 'react-router';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend,
 } from 'recharts';
 import { useApi } from '../hooks/useApi';
 import { dashboard } from '../services/api';
@@ -23,6 +23,35 @@ import { PageHeader } from '../components/PageHeader';
 import { ExportActions } from '../components/ExportActions';
 import { STATUS_HEX, statusMantine } from '../utils/statusTheme';
 import { isNeedsAttention } from '../utils/needsAttention';
+
+/** Recharts ResponsiveContainer often paints 0×320 until a window resize. */
+function MeasuredArea({
+  height,
+  children,
+}: {
+  height: number;
+  children: (width: number) => ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const apply = () => {
+      const w = Math.floor(el.getBoundingClientRect().width);
+      if (w > 0) setWidth(w);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={ref} style={{ width: '100%', minWidth: 0, height }}>
+      {width > 0 ? children(width) : null}
+    </div>
+  );
+}
 
 const ATTENTION_EXPORT_COLS = [
   'certname',
@@ -363,9 +392,16 @@ export function DashboardPage() {
           <Card withBorder shadow="sm" padding="lg">
             <Title order={4} mb="md">Active Node Status Trends</Title>
             <Text size="xs" c="dimmed" mb="xs">Click a series in the legend or chart area → filtered Nodes list (sruiux2 P1-2 lite)</Text>
-            {/* height 320 + monotone (not natural) — cheaper first paint than 400/natural */}
-            <ResponsiveContainer width="100%" height={320}>
+            {nodeTrends.length === 0 ? (
+              <Center h={320}>
+                <Text size="sm" c="dimmed">No report history in the last 48 hours yet.</Text>
+              </Center>
+            ) : (
+            <MeasuredArea height={320}>
+              {(width) => (
               <AreaChart
+                width={width}
+                height={320}
                 data={nodeTrends}
                 margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
               >
@@ -414,7 +450,9 @@ export function DashboardPage() {
                 <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="failed" stroke="#e74c3c" fill="url(#gFailed)" strokeWidth={2} dot={false} style={{ cursor: 'pointer' }} onClick={() => navigate('/nodes?status=failed')} />
                 <Area isAnimationActive={false} animationDuration={0} type="monotone" dataKey="noop" stroke="#3498db" fill="url(#gNoop)" strokeWidth={1.5} dot={false} style={{ cursor: 'pointer' }} onClick={() => navigate('/nodes?status=noop')} />
               </AreaChart>
-            </ResponsiveContainer>
+              )}
+            </MeasuredArea>
+            )}
           </Card>
         </Grid.Col>
       </Grid>

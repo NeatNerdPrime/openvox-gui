@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.29**
+**OpenVox GUI Version 3.12.1-dev.30**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.29"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.30"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1497,6 +1497,13 @@ These commands run privileged operations (reading configs, restarting services).
 - Check on the server: `sudo journalctl -u puppet -n 50 --output short-iso` and `sudo journalctl -t puppet-agent -n 50 --output short-iso`.
 
 ## Live fleet / ENC / Inventory membership
+
+### Problem: Two consoles show different Overview graphs
+
+Ring and trends read **only** the PuppetDB host in Settings /
+`OPENVOX_GUI_PUPPETDB_HOST` (the VIP). They do not use this
+console's local Bolt history. Set the **same** VIP on every
+console. A site-local member will make the graphs disagree.
 
 ### Problem: Classification still lists a pruned control_repo branch (e.g. `kea_cutover`)
 

@@ -84,6 +84,8 @@ async def apply_live_run_status(nodes: List[dict], db: AsyncSession) -> None:
         return
 
     for node in nodes:
+        if "pdb_latest_report_status" not in node:
+            node["pdb_latest_report_status"] = node.get("latest_report_status")
         key = str(node.get("certname") or "").strip().lower()
         live_at = latest_ok.get(key)
         if not live_at:

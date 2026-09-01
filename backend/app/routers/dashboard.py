@@ -56,17 +56,23 @@ async def _fetch_trend_reports(cutoff: str) -> List[Any]:
         "order_by": '[{"field": "receive_time", "order": "asc"}]',
     }
     try:
-        return await puppetdb_service._query("reports", query=lean_query, params=params)
+        return await puppetdb_service._query(
+            "reports", query=lean_query, params=params
+        ) or []
     except Exception as e:
         logger.warning(
             "dashboard lean report extract failed (%s); falling back to full reports",
             e,
         )
-        return await puppetdb_service._query(
-            "reports",
-            query=f'[">", "receive_time", "{cutoff}"]',
-            params=params,
-        )
+        try:
+            return await puppetdb_service._query(
+                "reports",
+                query=f'[">", "receive_time", "{cutoff}"]',
+                params=params,
+            ) or []
+        except Exception as e2:
+            logger.warning("dashboard full report fallback failed: %s", e2)
+            return []
 
 
 async def _build_dashboard_data() -> Dict[str, Any]:
@@ -87,8 +93,18 @@ async def _build_dashboard_data() -> Dict[str, Any]:
     except Exception as e:
         logger.warning("dashboard live-run overlay failed: %s", e)
 
-    status_counts = compute_status_counts(raw_nodes)
-    trends = compute_trends(raw_nodes, reports)
+    # Ring + trends are PuppetDB only (same VIP / same tables on every
+    # console). Do not fold this console's Bolt execution_history into
+    # the graphs — that store is per-GUI and made the two sites disagree.
+    pdb_nodes = []
+    for n in raw_nodes:
+        row = dict(n)
+        if row.get("pdb_latest_report_status") is not None:
+            row["latest_report_status"] = row["pdb_latest_report_status"]
+            row.pop("latest_report_noop", None)
+        pdb_nodes.append(row)
+    status_counts = compute_status_counts(pdb_nodes)
+    trends = compute_trends(pdb_nodes, reports)
 
     # Derive environments from the node data we already have
     envs = sorted(

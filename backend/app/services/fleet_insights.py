@@ -136,7 +136,17 @@ def compute_trends(nodes: List[Dict], reports: List[Any]) -> List[Dict]:
         cn = n.get("certname", "")
         if not cn:
             continue
-        node_state[cn] = display_status(n)
+        # PDB report status only — not GUI live-run overlay — so every
+        # console graphs the same history.
+        if n.get("latest_report_noop") and not n.get("pdb_latest_report_status"):
+            node_state[cn] = "noop"
+        else:
+            raw = (
+                n.get("pdb_latest_report_status")
+                or n.get("latest_report_status")
+                or ""
+            )
+            node_state[cn] = (raw or "unreported").strip().lower() or "unreported"
 
     bucket_reports: Dict[str, list] = defaultdict(list)
     for report in reports:
@@ -146,7 +156,14 @@ def compute_trends(nodes: List[Dict], reports: List[Any]) -> List[Dict]:
 
     all_buckets = sorted(bucket_reports.keys())
     if not all_buckets:
-        return []
+        counts = {"unchanged": 0, "changed": 0, "failed": 0, "noop": 0, "unreported": 0}
+        for status in node_state.values():
+            if status in counts:
+                counts[status] += 1
+            else:
+                counts["unreported"] += 1
+        now_h = datetime.utcnow().strftime("%Y-%m-%dT%H")
+        return [{"timestamp": now_h, "hour": now_h, **counts}]
 
     result = []
     for bucket in all_buckets:

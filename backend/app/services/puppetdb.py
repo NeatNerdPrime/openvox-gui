@@ -267,6 +267,10 @@ class PuppetDBService:
             logger.debug("report freshness annotation skipped", exc_info=True)
         # Same live-run overlay Dashboard / Nodes / Monitoring already apply
         # so Heatmap, Environments, and Inventory cannot disagree.
+        # Keep PDB status so Overview graphs stay identical across consoles.
+        for n in live:
+            if "pdb_latest_report_status" not in n:
+                n["pdb_latest_report_status"] = n.get("latest_report_status")
         try:
             from ..database import async_session
             from ..routers.nodes import apply_live_run_status

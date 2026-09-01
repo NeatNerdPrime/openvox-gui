@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.30] - 2026-09-01 (fix — one PDB source for Overview graphs)
+
+### Fixed
+- **Active Node Status Trends blank until a resize:** Recharts
+  `ResponsiveContainer` often measured 0 width. The chart now
+  measures the card and draws at that width.
+- **Consoles disagreed on the graphs:** ring + trends now use only
+  PuppetDB `reports` / `latest_report_status` from the configured
+  PuppetDB host (the VIP). This console's Bolt `execution_history`
+  no longer changes the picture. Both GUIs must set the same
+  `OPENVOX_GUI_PUPPETDB_HOST`.
+
 ## [3.12.1-dev.29] - 2026-09-01 (fix — keep last good dashboard on empty PDB)
 
 ### Fixed
