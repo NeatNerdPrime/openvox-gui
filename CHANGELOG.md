@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.8] - 2026-09-01 (fix — hide /var/run from node disk glance)
+
+### Fixed
+- **Node Detail health glance:** ``/var/run``, ``/run``, and other
+  tmpfs/proc-style mounts no longer appear as 100% full disks.
+
 ## [3.13.0-rc.7] - 2026-09-01 (fix — Node Detail ENC vs catalog classes)
 
 ### Fixed

@@ -30,6 +30,27 @@ def _as_dict(val: Any) -> Dict[str, Any]:
     return val if isinstance(val, dict) else {}
 
 
+_PSEUDO_FS = frozenset({
+    "tmpfs", "devtmpfs", "ramfs", "overlay", "overlay2", "squashfs",
+    "proc", "sysfs", "cgroup", "cgroup2", "nsfs", "rpc_pipefs",
+    "fusectl", "debugfs", "tracefs", "securityfs", "pstore", "bpf",
+    "configfs", "autofs", "mqueue", "devpts", "hugetlbfs",
+})
+
+
+def _skip_glance_mount(path: str, filesystem: str) -> bool:
+    """Drop /run, /var/run, and other proc-style mounts (often 100% tmpfs)."""
+    p = (path or "").rstrip("/") or "/"
+    fs = (filesystem or "").lower()
+    if fs in _PSEUDO_FS:
+        return True
+    if p in ("/run", "/var/run", "/var/lock", "/run/lock", "/dev/shm"):
+        return True
+    if p.startswith("/run/") or p.startswith("/var/run/") or p.startswith("/sys") or p.startswith("/proc") or p.startswith("/dev"):
+        return True
+    return False
+
+
 def _first_number(*vals: Any) -> Optional[float]:
     for v in vals:
         if v is None or v == "":
@@ -185,9 +206,8 @@ def facts_to_glance(facts: Dict[str, Any]) -> Dict[str, Any]:
     for path, info in mps.items():
         if not isinstance(info, dict):
             continue
-        # skip pseudo fs
         fs = str(info.get("filesystem") or info.get("device") or "")
-        if path.startswith("/sys") or path.startswith("/proc") or path.startswith("/dev"):
+        if _skip_glance_mount(str(path), fs):
             continue
         avail_b = _first_number(info.get("available_bytes"))
         size_b = _first_number(info.get("size_bytes"))

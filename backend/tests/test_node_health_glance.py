@@ -1,7 +1,11 @@
 """Unit tests for Node Detail health-glance fact normalization."""
 from __future__ import annotations
 
-from app.services.node_health_glance import facts_to_glance, _fact_saturation_hint
+from app.services.node_health_glance import (
+    facts_to_glance,
+    _fact_saturation_hint,
+    _skip_glance_mount,
+)
 
 
 def test_facts_to_glance_structured_memory_and_mounts():
@@ -35,6 +39,17 @@ def test_facts_to_glance_structured_memory_and_mounts():
                 "capacity": "95%",
                 "filesystem": "xfs",
             },
+            "/var/run": {
+                "size": "1.00 GiB",
+                "available": "0",
+                "capacity": "100%",
+                "filesystem": "tmpfs",
+            },
+            "/run": {
+                "size": "1.00 GiB",
+                "capacity": "100%",
+                "filesystem": "tmpfs",
+            },
         },
         "load_averages": {"1m": 0.42, "5m": 0.55, "15m": 0.60},
         "os": {"name": "RedHat", "release": {"full": "9.4"}},
@@ -47,6 +62,7 @@ def test_facts_to_glance_structured_memory_and_mounts():
     assert g["cpu"]["count"] == 8
     assert g["load"]["load1"] == 0.42
     assert any(m["path"] == "/" for m in g["mounts"])
+    assert all(m["path"] not in ("/var/run", "/run") for m in g["mounts"])
     sat = _fact_saturation_hint(g)
     assert sat["level"] in ("yellow", "red")  # /var at 95%
 
@@ -63,3 +79,10 @@ def test_facts_to_glance_legacy_scalars():
     assert g["memory"]["used_pct"] is not None
     assert g["uptime"]["display"] == "3 days"
     assert g["cpu"]["count"] == 2
+
+
+def test_skip_glance_mount_var_run_and_tmpfs():
+    assert _skip_glance_mount("/var/run", "tmpfs")
+    assert _skip_glance_mount("/run/user/0", "tmpfs")
+    assert not _skip_glance_mount("/var", "xfs")
+    assert not _skip_glance_mount("/", "ext4")
