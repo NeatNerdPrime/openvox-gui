@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.12.1-dev.19] - 2026-09-01 (fix — clustered r10k empty bolt@/root probe)
+
+### Fixed
+- **Code Deployment “cannot prepare as bolt@/root” with no sudo text:**
+  `--run-as root` plus a PTY makes OpenBolt return COMMAND_ERROR and
+  empty stdout/stderr. The prep probe now runs as `bolt@` (no
+  `--run-as`). Live r10k uses `sudo -n` in the remote shell on a PTY.
+  Failed probes dump the last Bolt stdout/stderr lines.
+
 ## [3.12.1-dev.18] - 2026-09-01 (fix — clustered r10k sudo requiretty)
 
 ### Fixed

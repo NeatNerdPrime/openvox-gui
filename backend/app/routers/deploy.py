@@ -4,6 +4,7 @@ Code Deployment API - Interface with r10k for Puppet code deployment.
 import json
 import logging
 import re
+import shlex
 import socket
 import subprocess
 from pathlib import Path
@@ -541,13 +542,32 @@ _TMPDIR_HINT = (
 # runs a 5-minute deploy while the others die and the GUI just spins.
 # Compilers often have CIS `Defaults requiretty` *after* includedir, which
 # overrides `Defaults:bolt !requiretty` in sudoers.d. Allocate a PTY so
-# `--run-as root` sudo succeeds either way (same as Certificate Sign).
-_CLUSTER_RUN_AS_ROOT = (
-    "--run-as", "root",
+# sudo succeeds. Do **not** use Bolt `--run-as root` with a PTY: OpenBolt
+# then returns COMMAND_ERROR with empty stdout/stderr and the GUI only
+# shows "cannot prepare as bolt@/root". Escalate with `sudo -n` in the
+# remote shell instead; SSH user stays `bolt`.
+_CLUSTER_SSH = (
     "--tty",
     "--no-host-key-check",
     "--format", "json",
 )
+
+
+def _sudo_n_bash(cmd: str) -> str:
+    """Root via sudo -n on a PTY — avoids Bolt --run-as empty COMMAND_ERROR."""
+    return "sudo -n /bin/bash -lc " + shlex.quote(cmd)
+
+
+def _bolt_raw_tail(result: Dict[str, Any], limit: int = 24) -> List[str]:
+    """Last lines of Bolt stdout/stderr when JSON items have no body."""
+    out: List[str] = []
+    for key in ("stderr", "stdout"):
+        text = _strip_ctrl(str(result.get(key) or "")).strip()
+        if not text:
+            continue
+        out.append(f"── bolt {key} ──")
+        out.extend(text.splitlines()[-limit:])
+    return out
 
 
 _PREP_BOLT_TMPDIR = (
@@ -559,6 +579,17 @@ _PREP_BOLT_TMPDIR = (
     "if [ ! -f /etc/puppetlabs/r10k/r10k.yaml ]; then "
     "echo MISSING_R10K_YAML host=$(hostname -f) r10k=$R10K; exit 3; fi && "
     "echo OK host=$(hostname -f) r10k=$R10K yaml=/etc/puppetlabs/r10k/r10k.yaml"
+)
+
+# Same checks as _PREP_BOLT_TMPDIR but as the bolt user (no sudo / --run-as).
+_PREP_AS_BOLT = (
+    "mkdir -p /home/bolt/.bolt/tmp && chmod 700 /home/bolt/.bolt /home/bolt/.bolt/tmp; "
+    "if [ -x /opt/puppetlabs/puppet/bin/r10k ]; then R10K=/opt/puppetlabs/puppet/bin/r10k; "
+    "elif command -v r10k >/dev/null 2>&1; then R10K=$(command -v r10k); "
+    "else echo MISSING_R10K host=$(hostname -f); exit 2; fi; "
+    "if [ ! -r /etc/puppetlabs/r10k/r10k.yaml ]; then "
+    "echo MISSING_R10K_YAML host=$(hostname -f) r10k=$R10K; exit 3; fi; "
+    "echo OK host=$(hostname -f) user=$(id -un) r10k=$R10K yaml=/etc/puppetlabs/r10k/r10k.yaml"
 )
 
 
@@ -866,9 +897,9 @@ async def _run_live_r10k_on_targets(
 
     if bolt and targets and not targets_are_local:
         probe_args = [
-            "command", "run", _PREP_BOLT_TMPDIR,
+            "command", "run", _PREP_AS_BOLT,
             "--targets", ",".join(targets),
-            *_CLUSTER_RUN_AS_ROOT,
+            *_CLUSTER_SSH,
             "--connect-timeout", "8",
         ]
         try:
@@ -914,14 +945,21 @@ async def _run_live_r10k_on_targets(
                         "(visudo) or comment out the global requiretty."
                     )
                 else:
-                    hint = "OpenBolt cannot prepare code-deploy targets as bolt@/root."
+                    hint = (
+                        "Prep probe failed (SSH as bolt@, no --run-as). "
+                        "This is not r10k itself — it only checks that bolt can "
+                        "log in, write /home/bolt/.bolt/tmp, and see r10k + "
+                        "r10k.yaml. Empty output usually means Bolt --run-as "
+                        "returned COMMAND_ERROR; this path no longer uses --run-as."
+                    )
+            extra = [ln for ln in probe_out if ln] or _bolt_raw_tail(probe)
             return _cluster_result(
                 "clustered-live",
                 environment,
                 targets,
                 False,
                 probe_rc or 1,
-                header + [hint, ""] + [ln for ln in probe_out if ln],
+                header + [hint, ""] + extra,
                 probe_hosts
                 or [
                     {"host": t, "success": False, "via": "bolt-probe", "exit_code": probe_rc}
@@ -930,9 +968,9 @@ async def _run_live_r10k_on_targets(
             )
 
         cmd_args = [
-            "command", "run", remote_cmd,
+            "command", "run", _sudo_n_bash(remote_cmd),
             "--targets", ",".join(targets),
-            *_CLUSTER_RUN_AS_ROOT,
+            *_CLUSTER_SSH,
             "--connect-timeout", "15",
         ]
         try:
@@ -1035,9 +1073,9 @@ async def _run_on_targets(
         # inventory tmpdir is /home/bolt/.bolt/tmp — which does not exist
         # until bolt_user (or this install) creates it.
         probe_args = [
-            "command", "run", _PREP_BOLT_TMPDIR,
+            "command", "run", _PREP_AS_BOLT,
             "--targets", ",".join(targets),
-            *_CLUSTER_RUN_AS_ROOT,
+            *_CLUSTER_SSH,
             "--connect-timeout", "8",
         ]
         try:
@@ -1110,7 +1148,8 @@ async def _run_on_targets(
             "script", "run", str(script),
             *env_args,
             "--targets", ",".join(targets),
-            *_CLUSTER_RUN_AS_ROOT,
+            *_CLUSTER_SSH,
+            "--run-as", "root",
             "--connect-timeout", "15",
         ]
         try:
@@ -1127,9 +1166,9 @@ async def _run_on_targets(
         # stdout/stderr. If the helper logged to disk, pull that.
         if rc != 0 and not any("r10k-stage-activate.sh:" in (ln or "") for ln in out):
             log_args = [
-                "command", "run", "cat /var/tmp/r10k-stage-activate.log",
+                "command", "run", _sudo_n_bash("cat /var/tmp/r10k-stage-activate.log"),
                 "--targets", ",".join(targets),
-                *_CLUSTER_RUN_AS_ROOT,
+                *_CLUSTER_SSH,
                 "--connect-timeout", "8",
             ]
             try:

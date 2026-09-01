@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.18**
+**OpenVox GUI Version 3.12.1-dev.19**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.18"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.19"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1066,7 +1066,16 @@ Failed to save result to /etc/puppetlabs/bolt/.rerun.json: Permission denied @ r
 
 **Cause:** CIS/RHEL often sets `Defaults requiretty` in `/etc/sudoers` *after* `#includedir /etc/sudoers.d`. Later generic Defaults override `Defaults:bolt !requiretty`. The GUI used `--no-tty`, so sudo still demanded a PTY.
 
-**Fix:** Upgrade to **3.12.1-dev.18** or later (Deploy Now and Stage/Activate request a TTY, same as Certificate Sign). Optional on compilers: move `Defaults:bolt !requiretty` below the global `requiretty`, or comment the global line.
+**Fix:** Upgrade to **3.12.1-dev.19** or later. Deploy Now probes as `bolt@` (no `--run-as`) and runs r10k with `sudo -n` on a PTY. `--run-as root` + TTY was returning empty COMMAND_ERROR, which the GUI showed as “cannot prepare as bolt@/root” with no sudo text.
+
+If it still fails, the new log includes raw Bolt stdout/stderr. On a compiler:
+
+```bash
+sudo -n -u bolt ssh -o BatchMode=yes localhost true
+sudo grep -n requiretty /etc/sudoers /etc/sudoers.d/*
+ls -ld /home/bolt /home/bolt/.bolt /home/bolt/.bolt/tmp
+test -x /opt/puppetlabs/puppet/bin/r10k && test -r /etc/puppetlabs/r10k/r10k.yaml
+```
 
 ### Problem: One click on Run Command runs the shell command three times on targets
 
