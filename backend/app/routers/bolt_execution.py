@@ -209,7 +209,7 @@ async def run_command(
         normalized = bolt_orch.normalize_command_for_gui(req.command)
         # Approved safe prefixes always escalate (P0); else heuristic / explicit run_as.
         if _is_approved_safe_command(req.command) or _is_approved_safe_command(normalized):
-            command, escalate = "sudo " + normalized, True
+            command, escalate = "sudo -n " + normalized, True
         else:
             command, escalate = bolt_orch.apply_escalation(normalized, req.run_as)
 

@@ -56,7 +56,7 @@ def test_normalize_puppet_agent_adds_env():
     cmd, esc = apply_escalation("whoami", None)
     assert cmd == "whoami" and esc is False
     cmd2, esc2 = apply_escalation("systemctl restart x", None)
-    assert cmd2.startswith("sudo ") and esc2
+    assert cmd2.startswith("sudo -n ") and esc2
     fail_json = json.dumps({
         "items": [{
             "target": "openvox.atlc-it.example.com",

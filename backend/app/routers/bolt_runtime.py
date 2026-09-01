@@ -214,27 +214,49 @@ def sanitize_bolt_inventory(
             return dest
 
 
+def _rewrite_command_run_as(args: List[str]) -> List[str]:
+    """CIS requiretty: ``command run --run-as root`` fails without a PTY
+    and ``--run-as`` + PTY often returns empty COMMAND_ERROR. Escalate
+    with ``sudo -n`` in the remote shell instead.
+    """
+    if len(args) < 3 or args[0] != "command" or args[1] != "run":
+        return args
+    if "--run-as" not in args:
+        return args
+    out = list(args)
+    cmd = out[2]
+    ra = out.index("--run-as")
+    user = out[ra + 1] if ra + 1 < len(out) else "root"
+    del out[ra:ra + 2]
+    if user == "root" and not str(cmd).lstrip().startswith("sudo"):
+        import shlex
+        out[2] = "sudo -n /bin/bash -lc " + shlex.quote(str(cmd))
+    return out
+
+
 async def run_bolt_command(
     args: List[str],
     timeout: int = 120,
     *,
-    tty: bool = False,
+    tty: bool = True,
 ) -> Dict[str, Any]:
     bolt = find_bolt()
     if not bolt:
         return {"returncode": -1, "stdout": "", "stderr": "OpenBolt is not installed"}
 
+    args = _rewrite_command_run_as(list(args))
+
     inv_path = "/etc/puppetlabs/bolt/inventory.yaml"
     try:
-        if tty:
-            inv_path = write_estate_bolt_inventory(
-                dest="/opt/openvox-gui/data/bolt-inventory.ca.yaml",
-                tty=True,
-            )
-        else:
-            inv_path = sanitize_bolt_inventory()
+        inv_path = write_estate_bolt_inventory(
+            dest="/opt/openvox-gui/data/bolt-inventory.ca.yaml",
+            tty=True,
+        )
     except Exception:
-        pass
+        try:
+            inv_path = sanitize_bolt_inventory()
+        except Exception:
+            pass
 
     inventory_flag = ["-i", inv_path]
     project_flag = ["--project", "/etc/puppetlabs/bolt"]
@@ -242,14 +264,12 @@ async def run_bolt_command(
     is_rainbow = "--format" in args and "rainbow" in args
     if is_rainbow and "--color" not in args:
         args = list(args) + ["--color"]
-    # Human/json: no TTY so Bolt does not emit CR spinner frames (\\|/- noise).
-    # CA mutate needs a PTY — ovca sudoers often has requiretty.
-    if tty:
-        args = [a for a in args if a != "--no-tty"]
-        if "--tty" not in args:
-            args = list(args) + ["--tty"]
-    elif not is_rainbow and "--no-tty" not in args:
-        args = list(args) + ["--no-tty"]
+    # CIS requiretty: always allocate a PTY. Inventory tty:true so
+    # --tty is not overridden. Spinner noise is stripped in
+    # clean_bolt_console_text.
+    args = [a for a in args if a != "--no-tty"]
+    if "--tty" not in args:
+        args = list(args) + ["--tty"]
 
     # Dedicated consoles leave /etc/puppetlabs/bolt as root:bolt 0750.
     # Bolt then cannot write .rerun.json; the GUI does not use rerun.

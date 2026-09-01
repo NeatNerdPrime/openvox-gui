@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.4] - 2026-09-01 (fix — Bolt PTY + sudo -n everywhere)
+
+### Fixed
+- **Run OpenVox / all Bolt command runs:** CIS ``requiretty`` failed
+  ``sudo`` because the runtime defaulted to ``--no-tty``. Every Bolt
+  invocation now allocates a PTY (inventory ``tty: true``). Privileged
+  ``command run`` uses ``sudo -n`` instead of ``--run-as root``.
+
 ## [3.13.0-rc.3] - 2026-09-01 (sec — postcss-selector-parser CVE-2026-9358)
 
 ### Security

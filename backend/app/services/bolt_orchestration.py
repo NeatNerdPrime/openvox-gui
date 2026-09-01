@@ -360,10 +360,11 @@ def apply_escalation(normalized_command: str, run_as: Optional[str]) -> tuple[st
     """
     Return (command_to_run, escalate_flag).
 
-    Root path uses a ``sudo `` prefix so the bolt OS user exercises target sudoers.
+    Root path uses ``sudo -n`` so CIS requiretty + passwordless sudoers
+    work on a PTY (plain ``sudo`` waits for a password and dies).
     """
     escalate = bool(run_as) or command_needs_root(normalized_command)
-    command = ("sudo " + normalized_command) if escalate else normalized_command
+    command = ("sudo -n " + normalized_command) if escalate else normalized_command
     return command, escalate
 
 

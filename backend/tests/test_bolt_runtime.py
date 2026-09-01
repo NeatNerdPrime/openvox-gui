@@ -20,8 +20,8 @@ async def test_run_bolt_command_passes_no_save_rerun():
         patch.object(bolt_runtime, "find_bolt", return_value="/opt/puppetlabs/bolt/bin/bolt"),
         patch.object(
             bolt_runtime,
-            "sanitize_bolt_inventory",
-            return_value="/etc/puppetlabs/bolt/inventory.yaml",
+            "write_estate_bolt_inventory",
+            return_value="/opt/openvox-gui/data/bolt-inventory.ca.yaml",
         ),
         patch.object(bolt_runtime, "run_sudo", new=fake_sudo),
     ):
@@ -33,6 +33,8 @@ async def test_run_bolt_command_passes_no_save_rerun():
     assert "--no-save-rerun" in captured["args"]
     assert captured["args"].count("--no-save-rerun") == 1
     assert "--project" in captured["args"]
+    assert "--tty" in captured["args"]
+    assert "--no-tty" not in captured["args"]
 
 
 @pytest.mark.asyncio
@@ -47,8 +49,8 @@ async def test_run_bolt_command_does_not_duplicate_no_save_rerun():
         patch.object(bolt_runtime, "find_bolt", return_value="/opt/puppetlabs/bolt/bin/bolt"),
         patch.object(
             bolt_runtime,
-            "sanitize_bolt_inventory",
-            return_value="/etc/puppetlabs/bolt/inventory.yaml",
+            "write_estate_bolt_inventory",
+            return_value="/opt/openvox-gui/data/bolt-inventory.ca.yaml",
         ),
         patch.object(bolt_runtime, "run_sudo", new=fake_sudo),
     ):
@@ -83,3 +85,12 @@ async def test_run_bolt_command_tty_uses_pty_not_no_tty():
 
     assert "--tty" in captured["args"]
     assert "--no-tty" not in captured["args"]
+
+
+def test_rewrite_command_run_as_uses_sudo_n():
+    out = bolt_runtime._rewrite_command_run_as(
+        ["command", "run", "journalctl -n 20", "--targets", "web01", "--run-as", "root"]
+    )
+    assert "--run-as" not in out
+    assert out[2].startswith("sudo -n /bin/bash -lc ")
+    assert "journalctl" in out[2]
