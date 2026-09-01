@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.12.1-dev.24**
+**OpenVox GUI Version 3.12.1-dev.25**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.12.1-dev.24"}
+   # Should return: {"status":"ok","version":"3.12.1-dev.25"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1009,20 +1009,35 @@ Clustered lookup ran `puppet lookup` via Bolt `--run-as root --no-tty`.
 CIS `Defaults requiretty` rejects that. **3.12.1-dev.23** uses `sudo -n`
 on a PTY (same as Code Deployment).
 
-### Problem: Hiera Lookup: `certificate revoked` for ovdb*.pdxc-it
+### Problem: Hiera Lookup: `certificate verify failed [certificate revoked for CN=ovdb…]`
 
-`puppet lookup` on a compiler uses `facts_terminus = puppetdb` and
-`/etc/puppetlabs/puppet/puppetdb.conf`. ATLC compilers still listing
-`ovdb1/2.pdxc-it` fail when those HTTPS certs are revoked.
+The ovdb hosts are usually **still valid**. The message is OpenSSL on
+the **compiler** (e.g. `ovcompiler1.atlc-it`) rejecting the PDB TLS
+cert because **that compiler’s** `crl.pem` lists the presented serial.
 
-**GUI (3.12.1-dev.24):** lookup uses `--facts` (local facter, or this
-console's PuppetDB for a selected node) and does not use the compiler
-termini.
+Typical cause: stale or geo-mismatched CRL after CA replica / cert
+reissue. The PDB node was not “revoked” in the inventory sense.
 
-**Compilers (catalogs still need this):** set
-`server_urls = https://ovdb.corp.int-x.ai:8081` (or ATLC ovdb) via
-`profiles::openvox::openvox_compiler`, then investigate why the PDXC
-ovdb certs were revoked.
+On the compiler:
+
+```bash
+grep server_urls /etc/puppetlabs/puppet/puppetdb.conf
+# presented serial
+echo | openssl s_client -connect ovdb1.pdxc-it.corp.int-x.ai:8081 \
+  -servername ovdb1.pdxc-it.corp.int-x.ai 2>/dev/null \
+  | openssl x509 -noout -serial -subject -dates
+# is that serial in the local CRL?
+openssl crl -in /etc/puppetlabs/puppet/ssl/crl.pem -noout -text \
+  | grep -A2 'Serial Number'
+```
+
+Refresh the compiler CRL from the CA (`puppetserver ca` / agent SSL
+bootstrap, or the CA geo replica), then retry. Catalog compiles use
+the same `puppetdb.conf` + CRL.
+
+**GUI (3.12.1-dev.24+):** Hiera Lookup uses `--facts` and does not
+call the compiler’s PuppetDB termini, so this page can still explain
+keys while CRL/trust is fixed.
 
 ### Problem: Overview | Nodes play button shows `API Error 500`
 
