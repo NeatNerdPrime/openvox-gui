@@ -46,6 +46,10 @@ import AnsiToHtml from 'ansi-to-html';
 import { ExecutionHistory } from '../components/ExecutionHistory';
 import { PrettyJson } from '../components/PrettyJson';
 import { cleanCliOutput } from '../utils/cleanCliOutput';
+import {
+  parseBoltJsonPayload,
+  formatBoltItemsAsHuman,
+} from '../utils/boltOutput';
 
 /* ── ANSI color converter (singleton) ──────────────────────── */
 const ansiConverter = new AnsiToHtml({
@@ -73,41 +77,7 @@ function resultsFromSingleRun(result: any) {
   return { human: result, json: result, rainbow: result };
 }
 
-type BoltItem = {
-  target?: string;
-  action?: string;
-  object?: string;
-  status?: string;
-  value?: {
-    stdout?: string;
-    stderr?: string;
-    merged_output?: string;
-    exit_code?: number;
-    _error?: { msg?: string; kind?: string };
-  };
-};
 
-function parseBoltJsonPayload(outputText: string): { items: BoltItem[]; meta?: any } | null {
-  const text = (outputText || '').trim();
-  if (!text) return null;
-  try {
-    const data = JSON.parse(text);
-    if (data && Array.isArray(data.items)) return { items: data.items, meta: data };
-    if (Array.isArray(data)) return { items: data, meta: { items: data } };
-    return { items: [], meta: data };
-  } catch {
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    if (start < 0 || end <= start) return null;
-    try {
-      const data = JSON.parse(text.slice(start, end + 1));
-      if (data && Array.isArray(data.items)) return { items: data.items, meta: data };
-    } catch {
-      /* ignore */
-    }
-  }
-  return null;
-}
 
 /**
  * Strip terminal control sequences for Human tab (plain readable text).
@@ -117,48 +87,6 @@ function parseBoltJsonPayload(outputText: string): { items: BoltItem[]; meta?: a
  */
 function stripAnsiForDisplay(text: string): string {
   return cleanCliOutput(text);
-}
-
-/** Mimic `bolt command run --format human` multi-target layout from JSON items. */
-function formatBoltItemsAsHuman(items: BoltItem[], meta?: any, fallbackText?: string): string {
-  if (!items.length) {
-    return stripAnsiForDisplay(fallbackText || '').trim();
-  }
-  const blocks: string[] = [];
-  for (const item of items) {
-    const target = item.target || '(unknown target)';
-    const status = (item.status || 'unknown').toLowerCase();
-    const val = item.value || {};
-    const exitCode = val.exit_code;
-    const stdout = stripAnsiForDisplay(val.stdout || val.merged_output || '');
-    const stderr = stripAnsiForDisplay(val.stderr || '');
-    const errMsg = val._error?.msg ? stripAnsiForDisplay(String(val._error.msg)) : '';
-
-    const header = [
-      `Started on ${target}...`,
-      status === 'success' ? `Finished on ${target}:` : `Failed on ${target}:`,
-    ];
-    const body: string[] = [];
-    if (stdout.trim()) body.push(stdout.trimEnd());
-    if (stderr.trim()) body.push(stderr.trimEnd());
-    if (errMsg && !stdout.includes(errMsg) && !stderr.includes(errMsg)) {
-      body.push(errMsg);
-    }
-    if (exitCode !== undefined && exitCode !== null) {
-      body.push(`\n[${target}] exit code: ${exitCode}`);
-    }
-    blocks.push([...header, ...body].join('\n'));
-  }
-  const footer: string[] = [];
-  const ok = items.filter((i) => (i.status || '').toLowerCase() === 'success').length;
-  const fail = items.length - ok;
-  footer.push('');
-  footer.push(
-    `Successful on ${ok} / ${items.length} target(s)` +
-      (fail ? `, failed on ${fail}` : '') +
-      (meta?.elapsed_time != null ? ` (${meta.elapsed_time}s elapsed)` : '')
-  );
-  return blocks.join('\n\n') + '\n' + footer.join('\n');
 }
 
 function lineColorForRainbow(line: string): string {
@@ -208,8 +136,10 @@ function ResultPane({ results }: { results: { human?: any; json?: any; rainbow?:
   const errorText = firstResult.error || '';
   const parsed = parseBoltJsonPayload(outputText);
   const humanText = parsed
-    ? formatBoltItemsAsHuman(parsed.items, parsed.meta, outputText)
-    : (outputText || errorText || '');
+    ? formatBoltItemsAsHuman(parsed.items, parsed.meta)
+    : (outputText.trim().startsWith('{')
+      ? 'Could not parse Bolt result as human text. Use the JSON tab.'
+      : (outputText || errorText || ''));
   const rc = firstResult.returncode;
   const rcOk = rc === 0 || rc === 2;
 

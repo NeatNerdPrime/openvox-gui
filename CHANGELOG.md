@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.9] - 2026-09-02 (fix — Orchestration Human tab is not JSON)
+
+### Fixed
+- **Orchestration Human tab:** Bolt mixed SSH auth lines and a NUL
+  into ``--format json``, parse failed, and Human dumped the raw
+  payload. Items are extracted even from messy stdout and rendered
+  as CLI-style text. JSON stays on the JSON tab.
+
 ## [3.13.0-rc.8] - 2026-09-01 (fix — hide /var/run from node disk glance)
 
 ### Fixed
