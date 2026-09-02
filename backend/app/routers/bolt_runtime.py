@@ -78,7 +78,7 @@ _SSH_CONFIG_BLOCK = """config:
     private-key: /etc/puppetlabs/bolt/id_bolt
     host-key-check: false
     tty: {tty}
-    connect-timeout: 10
+    connect-timeout: 30
     tmpdir: """ + BOLT_REMOTE_TMPDIR + """
 """
 

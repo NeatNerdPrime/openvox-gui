@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.10] - 2026-09-02 (fix — Bolt SSH connect-timeout 30s)
+
+### Changed
+- **Orchestration SSH:** inventory ``connect-timeout`` is 30s (was 10).
+  AUTH_ERROR is still missing ``bolt@`` keys on the target, not timeout.
+
 ## [3.13.0-rc.9] - 2026-09-02 (fix — Orchestration Human tab is not JSON)
 
 ### Fixed
