@@ -681,9 +681,15 @@ setup_apt_repo() {
     info "  match: ${dist} ${arch}"
 
     local listing hrefs deb
+    local curl_time="--connect-timeout 15 --max-time 90"
+    info "  index: ${ver_url}/o/openvox-agent/"
     # shellcheck disable=SC2086
-    listing=$(curl -fsSL ${curl_tls_args} "${ver_url}/o/openvox-agent/" 2>/dev/null \
-        || curl -fsSL ${curl_tls_args} "${ver_url}/" 2>/dev/null || true)
+    listing=$(curl -fsSL ${curl_tls_args} ${curl_time} "${ver_url}/o/openvox-agent/" \
+        || curl -fsSL ${curl_tls_args} ${curl_time} "${ver_url}/" || true)
+    if [ -z "$listing" ]; then
+        fail "Empty package index from ${ver_url} (timeout or 404). Check: curl -vk ${ver_url}/o/openvox-agent/"
+    fi
+    info "  index: got $(printf '%s' "$listing" | wc -c) bytes"
     hrefs=$(printf '%s\n' "$listing" | sed -n 's/.*href="\([^"]*\)".*/\1/p' | grep -vE '^\.\./|^/')
     deb=$(printf '%s\n' "$hrefs" \
         | grep -E 'openvox-agent_.*\.deb$' \
@@ -702,14 +708,15 @@ setup_apt_repo() {
     case "$deb" in
         http*|/*) ;;
         *)
-            if ! curl -fsSIL ${curl_tls_args} "$deb_url" >/dev/null 2>&1; then
+            if ! curl -fsSIL ${curl_tls_args} ${curl_time} "$deb_url" >/dev/null 2>&1; then
                 deb_url="${ver_url}/${deb}"
             fi
             ;;
     esac
     info "  deb  : ${deb_url}"
     # shellcheck disable=SC2086
-    curl -fSL ${curl_tls_args} -o /tmp/openvox-agent.deb "$deb_url" \
+    curl -fSL --connect-timeout 15 --max-time 300 ${curl_tls_args} \
+        -o /tmp/openvox-agent.deb "$deb_url" \
         || fail "Failed to download ${deb_url}"
     DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/openvox-agent.deb \
         || DEBIAN_FRONTEND=noninteractive apt-get install -y -f
