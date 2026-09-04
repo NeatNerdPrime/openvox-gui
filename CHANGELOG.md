@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.19] - 2026-09-04 (fix — apt install finds rsync pool tree)
+
+### Fixed
+- **install.bash:** rsync sync stores debs under
+  ``apt/pool/openvoxN/o/openvox-agent/``. The script only looked at
+  the curl-fallback path ``apt/openvoxN/``, so a healthy rsync
+  mirror looked empty. Both layouts are tried.
+
 ## [3.13.0-rc.18] - 2026-09-04 (fix — apt install.bash hangs on index curl)
 
 ### Fixed
