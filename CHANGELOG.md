@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.13] - 2026-09-04 (fix — CI leak scan on chart tests)
+
+### Fixed
+- **CI leak scan:** chart unit tests used internal FQDNs. Examples
+  are now ``example.com``.
+
 ## [3.13.0-rc.12] - 2026-09-04 (fix — Top 10 Slowest Nodes empty on estate)
 
 ### Fixed
