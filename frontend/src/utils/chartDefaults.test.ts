@@ -1,9 +1,43 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildHourlyNodeSeries,
   defaultMaWindow,
   movingAverageSeries,
+  safeChartKey,
   smoothTimeSeries,
 } from './chartDefaults';
+
+describe('safeChartKey', () => {
+  it('strips dots so Recharts will not treat the key as a nested path', () => {
+    const cn = 'ovca1.pdxc-it.corp.int-x.ai';
+    const key = safeChartKey(cn);
+    expect(key).toMatch(/^k_[A-Za-z0-9_]+$/);
+    expect(key).not.toContain('.');
+    const row = { time: '2026-09-03T12', [key]: 8.5 };
+    expect(row[key]).toBe(8.5);
+  });
+});
+
+describe('buildHourlyNodeSeries', () => {
+  it('averages per hour under safe keys and leaves missing hours null', () => {
+    const rows = buildHourlyNodeSeries(
+      [
+        { time: '2026-09-03T12:10:00', certname: 'web01.corp.int-x.ai', total: 10 },
+        { time: '2026-09-03T12:40:00', certname: 'web01.corp.int-x.ai', total: 20 },
+        { time: '2026-09-03T13:05:00', certname: 'db01.corp.int-x.ai', total: 30 },
+      ],
+      ['web01.corp.int-x.ai', 'db01.corp.int-x.ai'],
+    );
+    const kWeb = safeChartKey('web01.corp.int-x.ai');
+    const kDb = safeChartKey('db01.corp.int-x.ai');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].time).toBe('2026-09-03T12');
+    expect(rows[0][kWeb]).toBe(15);
+    expect(rows[0][kDb]).toBeNull();
+    expect(rows[1][kDb]).toBe(30);
+    expect(rows[1][kWeb]).toBeNull();
+  });
+});
 
 describe('movingAverageSeries', () => {
   it('averages the trailing window and keeps time labels', () => {

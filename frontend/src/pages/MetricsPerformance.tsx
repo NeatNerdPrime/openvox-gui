@@ -15,7 +15,14 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend,
 } from 'recharts';
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
-import { CHART_LINE_TYPE, downsampleSeries, movingAverageSeries, smoothTimeSeries } from '../utils/chartDefaults';
+import {
+  CHART_LINE_TYPE,
+  buildHourlyNodeSeries,
+  downsampleSeries,
+  movingAverageSeries,
+  safeChartKey,
+  smoothTimeSeries,
+} from '../utils/chartDefaults';
 import { MeasuredArea } from '../components/MeasuredChart';
 import { effectivePollIntervalMs } from '../utils/accessMode';
 import { useApi } from '../hooks/useApi';
@@ -356,28 +363,11 @@ function MetricsPerformanceContent({
     .slice(0, 10);
   const stats = perfData.stats || {};
 
-  const top10Names = nodeComparison.map((n: any) => n.certname);
-  const top10Data = useMemo(() => {
-    // Bucket by hour and average per node for smooth display
-    const hourBuckets: Record<string, Record<string, number[]>> = {};
-    for (const run of (perfData.run_time_trends || [])) {
-      if (!top10Names.includes(run.certname)) continue;
-      const hour = (run.time || '').substring(0, 13);
-      if (!hour) continue;
-      if (!hourBuckets[hour]) hourBuckets[hour] = {};
-      if (!hourBuckets[hour][run.certname]) hourBuckets[hour][run.certname] = [];
-      hourBuckets[hour][run.certname].push(run.total);
-    }
-    return Object.entries(hourBuckets)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([hour, nodeRuns]) => {
-        const point: any = { time: hour };
-        for (const [cn, values] of Object.entries(nodeRuns)) {
-          point[cn] = Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(2));
-        }
-        return point;
-      });
-  }, [perfData, top10Names]);
+  const top10Names = nodeComparison.map((n: any) => n.certname as string);
+  const top10Data = useMemo(
+    () => buildHourlyNodeSeries(perfData.run_time_trends || [], top10Names),
+    [perfData, top10Names],
+  );
 
   // Server-side data — safely default all fields to prevent render crashes
   const s: Record<string, any> = {};
@@ -457,12 +447,29 @@ function MetricsPerformanceContent({
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={tickTime} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
-          <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatSeconds(v), n]} />
+          <ReTooltip
+            {...TOOLTIP_STYLE}
+            filterNull
+            formatter={(v: number, n: string) => [
+              typeof v === 'number' && Number.isFinite(v) ? formatSeconds(v) : '—',
+              n,
+            ]}
+          />
           <Legend wrapperStyle={{ fontSize: 9 }} />
           {nodeComparison.map((n: any, i: number) => (
-            <Area isAnimationActive={false} animationDuration={0} key={n.certname} type={CHART_LINE_TYPE} dataKey={n.certname}
-              stroke={COLORS[i % COLORS.length]} fill="none" strokeWidth={1.5}
-              dot={false} connectNulls name={shortName(n.certname)} />
+            <Line
+              isAnimationActive={false}
+              animationDuration={0}
+              key={n.certname}
+              type={CHART_LINE_TYPE}
+              dataKey={safeChartKey(n.certname)}
+              stroke={COLORS[i % COLORS.length]}
+              strokeWidth={2}
+              dot={{ r: 3, strokeWidth: 1 }}
+              activeDot={{ r: 5 }}
+              connectNulls
+              name={shortName(n.certname)}
+            />
           ))}
         </AreaChart>
       ),

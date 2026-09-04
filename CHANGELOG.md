@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.11] - 2026-09-04 (fix — Top 10 Slowest Nodes plot)
+
+### Fixed
+- **Insights | Monitoring | Top 10 Slowest Nodes:** tooltip had
+  values but no lines on production FQDNs. Recharts treats dots in
+  ``dataKey`` as a nested path, so
+  ``ovca1.pdxc-it.corp.int-x.ai`` never plotted. Series now use
+  safe keys, visible dots, and a shared hourly X axis so sparse
+  estate samples still draw.
+
 ## [3.13.0-rc.10] - 2026-09-02 (fix — Bolt SSH connect-timeout 30s)
 
 ### Changed

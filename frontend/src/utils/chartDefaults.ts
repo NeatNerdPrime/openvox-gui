@@ -40,6 +40,57 @@ export function downsampleSeries<T>(points: T[] | null | undefined, max = MAX_CH
 /** Linear interpolation — natural/monotone cubics overshoot noisy ops series. */
 export const CHART_LINE_TYPE = 'linear' as const;
 
+/**
+ * Recharts 2 treats a string dataKey as a lodash path (`a.b` → obj.a.b).
+ * Production certnames are FQDNs, so they must not be used as dataKeys.
+ */
+export function safeChartKey(id: string): string {
+  return `k_${String(id).replace(/[^A-Za-z0-9]+/g, '_')}`;
+}
+
+export type TimedNodeRun = {
+  time?: string;
+  certname?: string;
+  total?: number;
+};
+
+/**
+ * Hourly averages keyed by safeChartKey(certname).
+ * Every hour in the sample is a row so sparse production series still share an X axis.
+ */
+export function buildHourlyNodeSeries(
+  runs: TimedNodeRun[] | null | undefined,
+  certnames: string[],
+): Array<Record<string, string | number | null>> {
+  if (!runs?.length || !certnames.length) return [];
+  const keys = certnames.map(safeChartKey);
+  const nameToKey = new Map(certnames.map((n, i) => [n, keys[i]]));
+  const hours = new Set<string>();
+  const buckets: Record<string, Record<string, number[]>> = {};
+  for (const run of runs) {
+    const hour = (run.time || '').substring(0, 13);
+    if (!hour) continue;
+    hours.add(hour);
+    const key = nameToKey.get(run.certname || '');
+    if (!key) continue;
+    const v = Number(run.total);
+    if (!Number.isFinite(v)) continue;
+    if (!buckets[hour]) buckets[hour] = {};
+    if (!buckets[hour][key]) buckets[hour][key] = [];
+    buckets[hour][key].push(v);
+  }
+  return [...hours].sort().map((hour) => {
+    const point: Record<string, string | number | null> = { time: hour };
+    for (const key of keys) {
+      const vals = buckets[hour]?.[key];
+      point[key] = vals?.length
+        ? Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2))
+        : null;
+    }
+    return point;
+  });
+}
+
 const TIME_KEYS = new Set([
   'time', 'timestamp', 'ts', 'hour', 'label', 'name', 'certname',
 ]);
