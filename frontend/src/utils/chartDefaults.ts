@@ -41,6 +41,98 @@ export function downsampleSeries<T>(points: T[] | null | undefined, max = MAX_CH
 export const CHART_LINE_TYPE = 'linear' as const;
 
 /**
+ * Jolokia/Dropwizard timer Mean is ns, µs, or ms depending on the bean.
+ * Pick the unit from magnitude so Y values are real milliseconds.
+ */
+export function jmxTimerToMs(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // ≥ 1e6 is nanoseconds (1ms). Smaller values are already milliseconds
+  // (including sub-ms). Do not treat 15_000 as µs — that is a 15s mean.
+  if (n >= 1e6) return n / 1e6;
+  return n;
+}
+
+/** Never print 0.00ms for a non-zero duration. */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms === 0) return '0';
+  const a = Math.abs(ms);
+  if (a >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+  if (a >= 10) return `${ms.toFixed(1)}ms`;
+  if (a >= 1) return `${ms.toFixed(2)}ms`;
+  if (a >= 0.01) return `${ms.toFixed(2)}ms`;
+  if (a >= 0.001) return `${(ms * 1000).toFixed(1)}µs`;
+  return `${(ms * 1000).toFixed(2)}µs`;
+}
+
+export function durationTickFormatter(maxMs: number): (v: number) => string {
+  const max = Math.max(0, maxMs);
+  if (max >= 1000) return (v) => `${(v / 1000).toFixed(1)}s`;
+  if (max >= 10) return (v) => `${v.toFixed(0)}ms`;
+  if (max >= 1) return (v) => `${v.toFixed(1)}ms`;
+  if (max >= 0.01) return (v) => `${v.toFixed(2)}ms`;
+  return (v) => `${(v * 1000).toFixed(0)}µs`;
+}
+
+export function seriesMaxes(
+  rows: Array<Record<string, unknown>> | null | undefined,
+  keys: string[],
+): Record<string, number> {
+  const maxes: Record<string, number> = {};
+  for (const k of keys) maxes[k] = 0;
+  if (!rows?.length) return maxes;
+  for (const row of rows) {
+    for (const k of keys) {
+      const v = Number(row[k]);
+      if (Number.isFinite(v) && v > maxes[k]) maxes[k] = v;
+    }
+  }
+  return maxes;
+}
+
+/** Overlay series whose peaks differ by more than this factor get 0–100% scaling. */
+export const DURATION_NORMALIZE_RATIO = 8;
+
+export function shouldNormalizeDurations(maxes: Record<string, number>): boolean {
+  const peaks = Object.values(maxes).filter((v) => v > 0);
+  if (peaks.length < 2) return false;
+  return Math.max(...peaks) / Math.min(...peaks) > DURATION_NORMALIZE_RATIO;
+}
+
+export type DurationOverlay = {
+  rows: Array<Record<string, unknown>>;
+  maxes: Record<string, number>;
+  normalized: boolean;
+};
+
+/**
+ * Attach __raw ms and optionally scale each key to 0–100 of its own max
+ * so a µs facts line is visible next to a ms report line.
+ */
+export function prepareDurationOverlay(
+  rows: Array<Record<string, unknown>> | null | undefined,
+  keys: string[],
+): DurationOverlay {
+  const maxes = seriesMaxes(rows, keys);
+  const normalized = shouldNormalizeDurations(maxes);
+  if (!rows?.length) return { rows: [], maxes, normalized };
+  const out = rows.map((row) => {
+    const next: Record<string, unknown> = { ...row };
+    for (const k of keys) {
+      const v = Number(row[k]);
+      const raw = Number.isFinite(v) ? v : 0;
+      next[`${k}__raw`] = raw;
+      if (normalized) {
+        const m = maxes[k];
+        next[k] = m > 0 ? (raw / m) * 100 : 0;
+      }
+    }
+    return next;
+  });
+  return { rows: out, maxes, normalized };
+}
+
+/**
  * Recharts 2 treats a string dataKey as a lodash path (`a.b` → obj.a.b).
  * Production certnames are FQDNs, so they must not be used as dataKeys.
  */

@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   buildHourlyNodeSeries,
   defaultMaWindow,
+  durationTickFormatter,
+  formatDuration,
+  jmxTimerToMs,
   movingAverageSeries,
+  prepareDurationOverlay,
   safeChartKey,
   smoothTimeSeries,
 } from './chartDefaults';
@@ -57,6 +61,50 @@ describe('buildHourlyNodeSeries', () => {
       [cn],
     );
     expect(rows[0][safeChartKey(cn)]).toBe(42.5);
+  });
+});
+
+describe('jmxTimerToMs', () => {
+  it('maps ns and µs to milliseconds and leaves ms alone', () => {
+    expect(jmxTimerToMs(5_000_000)).toBe(5);
+    expect(jmxTimerToMs(12.5)).toBe(12.5);
+    expect(jmxTimerToMs(0.004)).toBe(0.004);
+    expect(jmxTimerToMs(0)).toBe(0);
+  });
+});
+
+describe('formatDuration', () => {
+  it('does not print 0.00ms for a non-zero value', () => {
+    expect(formatDuration(0)).toBe('0');
+    expect(formatDuration(0.004)).not.toBe('0.00ms');
+    expect(formatDuration(0.004)).toMatch(/µs$/);
+    expect(formatDuration(12.34)).toBe('12.3ms');
+  });
+});
+
+describe('durationTickFormatter', () => {
+  it('uses µs when the domain is sub-millisecond', () => {
+    const fmt = durationTickFormatter(0.008);
+    expect(fmt(0.004)).toBe('4µs');
+    expect(fmt(0.008)).toBe('8µs');
+  });
+});
+
+describe('prepareDurationOverlay', () => {
+  it('normalizes when series peaks differ by more than 8x', () => {
+    const { rows, normalized, maxes } = prepareDurationOverlay(
+      [
+        { time: 'a', store_report_ms: 8, store_facts_ms: 0.2, store_catalog_ms: 0 },
+        { time: 'b', store_report_ms: 4, store_facts_ms: 0.1, store_catalog_ms: 0 },
+      ],
+      ['store_report_ms', 'store_facts_ms', 'store_catalog_ms'],
+    );
+    expect(normalized).toBe(true);
+    expect(maxes.store_report_ms).toBe(8);
+    expect(rows[0].store_report_ms).toBe(100);
+    expect(rows[0].store_facts_ms).toBe(100);
+    expect(rows[0].store_report_ms__raw).toBe(8);
+    expect(rows[1].store_report_ms).toBe(50);
   });
 });
 

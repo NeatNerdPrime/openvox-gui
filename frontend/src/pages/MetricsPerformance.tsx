@@ -17,8 +17,12 @@ import {
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
 import {
   CHART_LINE_TYPE,
+  durationTickFormatter,
   downsampleSeries,
+  formatDuration,
+  jmxTimerToMs,
   movingAverageSeries,
+  prepareDurationOverlay,
   smoothTimeSeries,
 } from '../utils/chartDefaults';
 import { MeasuredArea } from '../components/MeasuredChart';
@@ -48,13 +52,66 @@ const formatSeconds = (v: number) => {
   if (v >= 60) return `${(v / 60).toFixed(1)}m`;
   return `${v.toFixed(1)}s`;
 };
-const formatMs = (v: number) => {
-  if (v >= 1000) return `${(v / 1000).toFixed(1)}s`;
-  if (v >= 10) return `${v.toFixed(0)}ms`;
-  if (v >= 1) return `${v.toFixed(1)}ms`;
-  if (v >= 0.01) return `${(v * 1000).toFixed(0)}µs`;
-  return `${v.toFixed(2)}ms`;
-};
+const formatMs = formatDuration;
+
+function DurationOverlayChart({
+  data,
+  keys,
+  names,
+  colors,
+}: {
+  data: Array<Record<string, unknown>>;
+  keys: string[];
+  names: string[];
+  colors: string[];
+}) {
+  const { rows, maxes, normalized } = prepareDurationOverlay(data, keys);
+  const peak = Math.max(0, ...Object.values(maxes));
+  const tickFmt = normalized
+    ? (v: number) => `${Math.round(v)}%`
+    : durationTickFormatter(peak);
+  return (
+    <AreaChart data={rows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
+      <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
+      <YAxis
+        tick={{ fontSize: 9, fill: '#8899aa' }}
+        domain={normalized ? [0, 100] : [0, 'auto']}
+        ticks={normalized ? [0, 25, 50, 75, 100] : undefined}
+        tickFormatter={tickFmt}
+        width={normalized ? 36 : 48}
+      />
+      <ReTooltip
+        {...TOOLTIP_STYLE}
+        formatter={(v: number, n: string, item) => {
+          const key = String(item?.dataKey ?? '');
+          const raw = item?.payload?.[`${key}__raw`];
+          const ms = typeof raw === 'number' ? raw : v;
+          return [formatDuration(Number(ms)), n];
+        }}
+      />
+      <Legend wrapperStyle={{ fontSize: 10 }} />
+      {keys.map((k, i) => (
+        <Area
+          isAnimationActive={false}
+          animationDuration={0}
+          key={k}
+          type={CHART_LINE_TYPE}
+          dataKey={k}
+          stroke={colors[i % colors.length]}
+          fill="none"
+          strokeWidth={2}
+          dot={false}
+          name={
+            maxes[k] > 0
+              ? `${names[i]} · max ${formatDuration(maxes[k])}`
+              : names[i]
+          }
+        />
+      ))}
+    </AreaChart>
+  );
+}
 const shortName = (cn: string) => {
   if (cn.length <= 22) return cn;
   const parts = cn.split('.');
@@ -131,7 +188,7 @@ function ChartPanel({ title, expanded, onClick, children, stats }: ChartPanelPro
 const SERVER_HISTORY_KEY = 'openvox_perf_server_history';
 const MAX_SERVER_POINTS = 120;
 
-const HISTORY_VERSION = 4; // fleet_nodes + dual-axis population (bare JMX numbers)
+const HISTORY_VERSION = 5; // JMX timers stored as real milliseconds
 
 const COUNT_KEYS = new Set([
   'nodes', 'resources', 'queue_depth',
@@ -225,14 +282,14 @@ export function MetricsPerformancePage({
     if (!serverData) return;
     const server = serverData;
     const point: any = { time: new Date().toLocaleTimeString() };
-    point.catalog_ms = Number(server.catalog_processing?.Mean) || 0;
-    point.facts_ms = Number(server.facts_processing?.Mean) || 0;
-    point.report_ms = Number(server.report_processing?.Mean) || 0;
-    point.store_catalog_ms = Number(server.store_catalog?.Mean) / 1000 || 0;
-    point.store_facts_ms = Number(server.store_facts?.Mean) / 1000 || 0;
-    point.store_report_ms = Number(server.store_report?.Mean) / 1000 || 0;
-    point.http_query_ms = Number(server.http_query_time?.Mean) || 0;
-    point.http_cmd_ms = Number(server.http_cmd_time?.Mean) || 0;
+    point.catalog_ms = jmxTimerToMs(server.catalog_processing?.Mean);
+    point.facts_ms = jmxTimerToMs(server.facts_processing?.Mean);
+    point.report_ms = jmxTimerToMs(server.report_processing?.Mean);
+    point.store_catalog_ms = jmxTimerToMs(server.store_catalog?.Mean);
+    point.store_facts_ms = jmxTimerToMs(server.store_facts?.Mean);
+    point.store_report_ms = jmxTimerToMs(server.store_report?.Mean);
+    point.http_query_ms = jmxTimerToMs(server.http_query_time?.Mean);
+    point.http_cmd_ms = jmxTimerToMs(server.http_cmd_time?.Mean);
     point.queue_depth = Number(server.cmd_depth?.Count) || 0;
     point.write_active = Number(server.write_pool_active?.Value) || 0;
     point.write_idle = Number(server.write_pool_idle?.Value) || 0;
@@ -240,8 +297,8 @@ export function MetricsPerformancePage({
     point.read_idle = Number(server.read_pool_idle?.Value) || 0;
     point.write_pending = Number(server.write_pool_pending?.Value) || 0;
     point.read_pending = Number(server.read_pool_pending?.Value) || 0;
-    point.hash_match_ms = Number(server.catalog_hash_match?.Mean) / 1000 || 0;
-    point.hash_miss_ms = Number(server.catalog_hash_miss?.Mean) / 1000 || 0;
+    point.hash_match_ms = jmxTimerToMs(server.catalog_hash_match?.Mean);
+    point.hash_miss_ms = jmxTimerToMs(server.catalog_hash_miss?.Mean);
     point.dedup_pct = (Number(server.dedup_pct?.Value) || 0) * 100;
     point.gc_young_count = Number(server.gc_young?.CollectionCount) || 0;
     point.gc_young_time = Number(server.gc_young?.CollectionTime) || 0;
@@ -382,9 +439,9 @@ function MetricsPerformanceContent({
 
   // Build server metric bars for storage timing
   const storageData = [
-    { name: 'Catalog', mean: jmxVal(s.store_catalog, 'Mean') / 1000 },
-    { name: 'Facts', mean: jmxVal(s.store_facts, 'Mean') / 1000 },
-    { name: 'Report', mean: jmxVal(s.store_report, 'Mean') / 1000 },
+    { name: 'Catalog', mean: jmxTimerToMs(jmxVal(s.store_catalog, 'Mean')) },
+    { name: 'Facts', mean: jmxTimerToMs(jmxVal(s.store_facts, 'Mean')) },
+    { name: 'Report', mean: jmxTimerToMs(jmxVal(s.store_report, 'Mean')) },
   ].filter(d => d.mean > 0);
 
   // DB pool data
@@ -399,9 +456,9 @@ function MetricsPerformanceContent({
 
   // Command processing data
   const cmdData = [
-    { name: 'Catalog', mean: Number(jmxVal(s.catalog_processing, 'Mean')) / 1000 || 0, p95: Number(s.catalog_processing?.['95thPercentile'] ?? 0) / 1000 || 0 },
-    { name: 'Facts', mean: Number(jmxVal(s.facts_processing, 'Mean')) / 1000 || 0, p95: Number(s.facts_processing?.['95thPercentile'] ?? 0) / 1000 || 0 },
-    { name: 'Report', mean: Number(jmxVal(s.report_processing, 'Mean')) / 1000 || 0, p95: Number(s.report_processing?.['95thPercentile'] ?? 0) / 1000 || 0 },
+    { name: 'Catalog', mean: jmxTimerToMs(jmxVal(s.catalog_processing, 'Mean')), p95: jmxTimerToMs(s.catalog_processing?.['95thPercentile']) },
+    { name: 'Facts', mean: jmxTimerToMs(jmxVal(s.facts_processing, 'Mean')), p95: jmxTimerToMs(s.facts_processing?.['95thPercentile']) },
+    { name: 'Report', mean: jmxTimerToMs(jmxVal(s.report_processing, 'Mean')), p95: jmxTimerToMs(s.report_processing?.['95thPercentile']) },
   ].filter(d => d.mean > 0);
 
   // HTTP latency — may not be available (returns error object on some PuppetDB versions)
@@ -465,31 +522,23 @@ function MetricsPerformanceContent({
       id: 'cmd-processing', title: 'Command Processing Time',
       stats: cmdData.map(d => ({ label: d.name, value: String(formatMs(d.mean)), color: 'cyan' })),
       render: () => (
-        <AreaChart data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-          <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
-          <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
-          <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
-          <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="catalog_ms" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Catalog" />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="facts_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Facts" />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="report_ms" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Report" />
-        </AreaChart>
+        <DurationOverlayChart
+          data={serverHistoryChart}
+          keys={['catalog_ms', 'facts_ms', 'report_ms']}
+          names={['Catalog', 'Facts', 'Report']}
+          colors={['#0D6EFD', '#2ecc71', '#e67e22']}
+        />
       ),
     },
     {
       id: 'storage-timing', title: 'Storage Operation Timing',
       render: () => (
-        <AreaChart data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-          <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
-          <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
-          <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
-          <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="store_catalog_ms" stroke="#0D6EFD" fill="none" strokeWidth={2} dot={false} name="Catalog" />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="store_facts_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Facts" />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="store_report_ms" stroke="#e67e22" fill="none" strokeWidth={2} dot={false} name="Report" />
-        </AreaChart>
+        <DurationOverlayChart
+          data={serverHistoryChart}
+          keys={['store_catalog_ms', 'store_facts_ms', 'store_report_ms']}
+          names={['Catalog', 'Facts', 'Report']}
+          colors={['#0D6EFD', '#2ecc71', '#e67e22']}
+        />
       ),
     },
     {
@@ -513,30 +562,24 @@ function MetricsPerformanceContent({
     {
       id: 'http-latency', title: 'HTTP API Latency',
       render: () => (
-        <AreaChart data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-          <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
-          <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
-          <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
-          <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="http_query_ms" stroke="#3498db" fill="none" strokeWidth={2} dot={false} name="Query API" />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="http_cmd_ms" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Command API" />
-        </AreaChart>
+        <DurationOverlayChart
+          data={serverHistoryChart}
+          keys={['http_query_ms', 'http_cmd_ms']}
+          names={['Query API', 'Command API']}
+          colors={['#3498db', '#e74c3c']}
+        />
       ),
     },
     {
       id: 'catalog-dedup', title: 'Catalog Deduplication',
       stats: [{ label: 'Dedup Rate', value: `${(Number(jmxVal(s.dedup_pct, 'Value') || 0) * 100).toFixed(1)}%`, color: 'green' }],
       render: () => (
-        <AreaChart data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-          <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
-          <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatMs} />
-          <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatMs(v), n]} />
-          <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="hash_match_ms" stroke="#2ecc71" fill="none" strokeWidth={2} dot={false} name="Hash Match" />
-          <Area isAnimationActive={false} animationDuration={0} type={CHART_LINE_TYPE} dataKey="hash_miss_ms" stroke="#e74c3c" fill="none" strokeWidth={2} dot={false} name="Hash Miss" />
-        </AreaChart>
+        <DurationOverlayChart
+          data={serverHistoryChart}
+          keys={['hash_match_ms', 'hash_miss_ms']}
+          names={['Hash Match', 'Hash Miss']}
+          colors={['#2ecc71', '#e74c3c']}
+        />
       ),
     },
     {

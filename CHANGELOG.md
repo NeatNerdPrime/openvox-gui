@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.15] - 2026-09-04 (fix — Monitoring duration axis)
+
+### Fixed
+- **Storage / command / HTTP / hash timing charts:** JMX means were
+  divided by 1000 and formatted with ``0.00ms``, so every tick was
+  zero and the small series vanished. Timers convert to real
+  milliseconds. When series peaks differ by more than 8×, each line
+  is 0–100% of its own max; the tooltip and legend show the real
+  duration.
+
 ## [3.13.0-rc.14] - 2026-09-04 (fix — Top 10 Slowest Nodes is a rank bar)
 
 ### Fixed
