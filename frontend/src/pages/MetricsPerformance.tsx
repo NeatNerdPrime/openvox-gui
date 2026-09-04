@@ -17,10 +17,8 @@ import {
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
 import {
   CHART_LINE_TYPE,
-  buildHourlyNodeSeries,
   downsampleSeries,
   movingAverageSeries,
-  safeChartKey,
   smoothTimeSeries,
 } from '../utils/chartDefaults';
 import { MeasuredArea } from '../components/MeasuredChart';
@@ -61,6 +59,12 @@ const shortName = (cn: string) => {
   if (cn.length <= 22) return cn;
   const parts = cn.split('.');
   return parts[0].length <= 20 ? parts[0] : parts[0].substring(0, 18) + '...';
+};
+/** host.site — unique enough for a rank bar, no FQDN dataKey. */
+const barLabel = (cn: string) => {
+  const parts = String(cn || '').split('.');
+  if (parts.length >= 2) return `${parts[0]}.${parts[1]}`;
+  return shortName(cn);
 };
 const tickTime = (v: string) => {
   const s = String(v || '');
@@ -363,11 +367,10 @@ function MetricsPerformanceContent({
     .slice(0, 10);
   const stats = perfData.stats || {};
 
-  const top10Names = nodeComparison.map((n: any) => n.certname as string);
-  const top10Data = useMemo(
-    () => buildHourlyNodeSeries(perfData.run_time_trends || [], top10Names),
-    [perfData, top10Names],
-  );
+  const top10Bars = nodeComparison.map((n: any) => ({
+    name: barLabel(n.certname),
+    seconds: Number(n.avg_total) || Number(n.avg_catalog_application) || 0,
+  })).reverse();
 
   // Server-side data — safely default all fields to prevent render crashes
   const s: Record<string, any> = {};
@@ -442,53 +445,21 @@ function MetricsPerformanceContent({
     },
     {
       id: 'top10-nodes', title: 'Top 10 Slowest Nodes',
-      render: () => {
-        const fmt = (v: number, n: string) => [
-          typeof v === 'number' && Number.isFinite(v) ? formatSeconds(v) : '—',
-          n,
-        ];
-        // Estate sample is sparse: prefer hourly lines when we have points,
-        // otherwise rank by avg_total so production is never an empty axis.
-        if (top10Data.length > 0) {
-          return (
-            <ComposedChart data={top10Data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-              <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={tickTime} />
-              <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
-              <ReTooltip {...TOOLTIP_STYLE} filterNull formatter={fmt} />
-              <Legend wrapperStyle={{ fontSize: 9 }} />
-              {nodeComparison.map((n: any, i: number) => (
-                <Line
-                  isAnimationActive={false}
-                  animationDuration={0}
-                  key={n.certname}
-                  type={CHART_LINE_TYPE}
-                  dataKey={safeChartKey(n.certname)}
-                  stroke={COLORS[i % COLORS.length]}
-                  strokeWidth={2}
-                  dot={{ r: 3, strokeWidth: 1 }}
-                  activeDot={{ r: 5 }}
-                  connectNulls
-                  name={shortName(n.certname)}
-                />
-              ))}
-            </ComposedChart>
-          );
-        }
-        const bars = nodeComparison.map((n: any) => ({
-          name: shortName(n.certname),
-          seconds: Number(n.avg_total) || Number(n.avg_catalog_application) || 0,
-        }));
-        return (
-          <BarChart data={bars} layout="vertical" margin={{ top: 5, right: 16, left: 8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-            <XAxis type="number" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
-            <YAxis type="category" dataKey="name" width={88} tick={{ fontSize: 9, fill: '#8899aa' }} />
-            <ReTooltip {...TOOLTIP_STYLE} formatter={fmt} />
-            <Bar isAnimationActive={false} dataKey="seconds" fill="#0D6EFD" name="Avg run" />
-          </BarChart>
-        );
-      },
+      render: () => (
+        <BarChart data={top10Bars} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
+          <XAxis type="number" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
+          <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 9, fill: '#8899aa' }} />
+          <ReTooltip
+            {...TOOLTIP_STYLE}
+            formatter={(v: number) => [
+              typeof v === 'number' && Number.isFinite(v) ? formatSeconds(v) : '—',
+              'Avg run',
+            ]}
+          />
+          <Bar isAnimationActive={false} dataKey="seconds" fill="#0D6EFD" name="Avg run" maxBarSize={18} />
+        </BarChart>
+      ),
     },
     {
       id: 'cmd-processing', title: 'Command Processing Time',

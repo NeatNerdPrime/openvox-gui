@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.14] - 2026-09-04 (fix — Top 10 Slowest Nodes is a rank bar)
+
+### Fixed
+- **Top 10 Slowest Nodes:** estate samples give each host one hourly
+  point, so a multi-line chart has a tooltip and no path. The panel
+  is now a horizontal bar of average run time (same as the PDF
+  report).
+
 ## [3.13.0-rc.13] - 2026-09-04 (fix — CI leak scan on chart tests)
 
 ### Fixed
