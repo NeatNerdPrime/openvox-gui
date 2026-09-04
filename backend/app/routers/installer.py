@@ -61,6 +61,7 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..dependencies import require_role
+from ..services.certificates_service import resolve_ca_host
 
 logger = logging.getLogger(__name__)
 
@@ -135,29 +136,38 @@ def _puppet_server_fqdn() -> str:
     return host
 
 
-def _noproxy_hosts(console: str, compile_srv: str) -> str:
+def _ca_server_fqdn() -> str:
+    """CA FQDN for agent puppet.conf. Compilers have CA disabled."""
+    return (resolve_ca_host() or "").strip() or _puppet_server_fqdn()
+
+
+def _noproxy_hosts(console: str, compile_srv: str, ca_srv: str | None = None) -> str:
     """Comma-separated hosts curl/dnf must not send through a corp proxy."""
-    left = (console or "").strip()
-    right = (compile_srv or "").strip()
-    if left and right and left.lower() != right.lower():
-        return f"{left},{right}"
-    return left or right
+    seen: list[str] = []
+    for host in (console, compile_srv, ca_srv):
+        h = (host or "").strip()
+        if h and h.lower() not in [x.lower() for x in seen]:
+            seen.append(h)
+    return ",".join(seen)
 
 
 def _agent_install_commands(
-    console: str, compile_srv: str, repo_url: str,
+    console: str, compile_srv: str, repo_url: str, ca_srv: str | None = None,
 ) -> tuple[str, str]:
     """Linux and Windows one-liners for a clustered or AIO console.
 
     ``--server`` / ``-Server`` is the compile VIP (puppet.conf).
+    ``--ca-server`` / ``-CaServer`` is the CA VIP (compilers have CA off).
     ``--pkg-repo-url`` / ``-PkgRepoUrl`` is *this* console's ``/packages``
     mount. Deriving the yum/apt URL from ``--server`` 404s on compiler
     VIPs that do not serve ``/opt/openvox-pkgs``.
     """
-    noproxy = _noproxy_hosts(console, compile_srv)
+    ca = (ca_srv or "").strip() or compile_srv
+    noproxy = _noproxy_hosts(console, compile_srv, ca)
     linux = (
         f"curl -k --noproxy {noproxy} {repo_url}/install.bash "
         f"| sudo bash -s -- --server {compile_srv} "
+        f"--ca-server {ca} "
         f"--pkg-repo-url {repo_url}"
     )
     win = (
@@ -168,7 +178,8 @@ def _agent_install_commands(
         "$wc = New-Object System.Net.WebClient; "
         "$wc.Proxy = $null; "
         "$wc.DownloadFile($url, 'install.ps1'); "
-        f".\\install.ps1 -Server '{compile_srv}' -PkgRepoUrl '{repo_url}' -v"
+        f".\\install.ps1 -Server '{compile_srv}' -CaServer '{ca}' "
+        f"-PkgRepoUrl '{repo_url}' -v"
     )
     return linux, win
 
@@ -290,9 +301,11 @@ def _render_template(text: str) -> str:
     derive the package URL from the puppetserver FQDN at agent runtime.
     """
     server = _puppet_server_fqdn()
+    ca = _ca_server_fqdn()
     return (
         text
         .replace("__OPENVOX_PUPPET_SERVER__",    server)
+        .replace("__OPENVOX_CA_SERVER__",        ca)
         .replace("__OPENVOX_DEFAULT_VERSION__",  DEFAULT_OPENVOX_VERSION)
     )
 
@@ -360,9 +373,12 @@ async def get_installer_info(full: bool = False) -> InstallerInfo:
     repo_url      = _pkg_repo_url()
     console       = _local_fqdn()
     compile_srv   = _puppet_server_fqdn()
+    ca_srv        = _ca_server_fqdn()
     install_url_l = f"{repo_url}/install.bash"
     install_url_w = f"{repo_url}/install.ps1"
-    linux_cmd, win_cmd = _agent_install_commands(console, compile_srv, repo_url)
+    linux_cmd, win_cmd = _agent_install_commands(
+        console, compile_srv, repo_url, ca_srv,
+    )
 
     status = _read_status_file()
     if full:

@@ -28,6 +28,10 @@
 #                                      on a cluster). Overrides any
 #                                      server-side render and any value
 #                                      pulled from existing puppet.conf.
+#   --ca-server <fqdn>                 CA FQDN (ca_server=). Compilers
+#                                      have CA disabled; default is
+#                                      --server (AIO) or the rendered
+#                                      __OPENVOX_CA_SERVER__.
 #   --pkg-repo-url <url>               Package mirror base URL. Required
 #                                      on clustered estates: compilers
 #                                      do not serve /packages. Default
@@ -77,6 +81,8 @@ set -e
 
 PUPPET_SERVER="${PUPPET_SERVER:-__OPENVOX_PUPPET_SERVER__}"
 PUPPET_SERVER_PORT="${PUPPET_SERVER_PORT:-8140}"
+# CA VIP. Empty / unrendered placeholder → --ca-server, then server=.
+CA_SERVER="${CA_SERVER:-__OPENVOX_CA_SERVER__}"
 PKG_REPO_URL="${PKG_REPO_URL:-}"
 
 DEFAULT_OPENVOX_VERSION="${DEFAULT_OPENVOX_VERSION:-__OPENVOX_DEFAULT_VERSION__}"
@@ -243,6 +249,12 @@ while [ $# -gt 0 ]; do
             [ -z "$PUPPET_SERVER" ] && fail "--server requires a value"
             shift
             ;;
+        --ca-server)
+            shift
+            CA_SERVER="${1:-}"
+            [ -z "$CA_SERVER" ] && fail "--ca-server requires a value"
+            shift
+            ;;
         --pkg-repo-url)
             shift
             PKG_REPO_URL="${1:-}"
@@ -365,6 +377,25 @@ if [ -z "$PUPPET_SERVER" ]; then
     sudo bash install.bash --server <puppetserver-fqdn>"
 fi
 
+# CA host: compilers have CA disabled. Unrendered placeholder →
+# existing puppet.conf → compile server (AIO only).
+CA_PLACEHOLDER_MARKER='__OPENVOX''_CA_SERVER__'
+if [[ "$CA_SERVER" == *"${CA_PLACEHOLDER_MARKER}"* ]] || [ -z "$CA_SERVER" ]; then
+    CA_SERVER=""
+fi
+if [ -z "$CA_SERVER" ] && [ -r "${PUPPET_CONF_DIR}/puppet.conf" ]; then
+    EXISTING_CA=$(awk -F= '
+        /^[[:space:]]*ca_server[[:space:]]*=/ {
+            gsub(/[[:space:]]/, "", $2); print $2; exit
+        }
+    ' "${PUPPET_CONF_DIR}/puppet.conf" 2>/dev/null)
+    if [ -n "$EXISTING_CA" ]; then
+        CA_SERVER="$EXISTING_CA"
+        info "Reusing ca_server from existing puppet.conf: ${CA_SERVER}"
+    fi
+fi
+[ -z "$CA_SERVER" ] && CA_SERVER="$PUPPET_SERVER"
+
 # Default OPENVOX_VERSION if user didn't override
 OPENVOX_VERSION="${OPENVOX_VERSION:-$DEFAULT_OPENVOX_VERSION}"
 case "$OPENVOX_VERSION" in
@@ -390,6 +421,7 @@ if [ -z "$PKG_REPO_URL" ]; then
     unset _origin _origin_host _origin_port
 fi
 info "Server     : ${PUPPET_SERVER}"
+info "CA server  : ${CA_SERVER}"
 info "Repo URL   : ${PKG_REPO_URL}"
 info "OpenVox ver: ${OPENVOX_VERSION}"
 
@@ -413,6 +445,9 @@ info "OpenVox ver: ${OPENVOX_VERSION}"
 existing_no_proxy="${no_proxy:-${NO_PROXY:-}}"
 pkg_host=$(pkg_repo_host_from_url "$PKG_REPO_URL")
 no_proxy_extra="${PUPPET_SERVER},localhost,127.0.0.1"
+if [ -n "$CA_SERVER" ] && [ "$CA_SERVER" != "$PUPPET_SERVER" ]; then
+    no_proxy_extra="${no_proxy_extra},${CA_SERVER}"
+fi
 if [ -n "$pkg_host" ] && [ "$pkg_host" != "$PUPPET_SERVER" ]; then
     no_proxy_extra="${no_proxy_extra},${pkg_host}"
 fi
@@ -445,7 +480,7 @@ info "no_proxy   : ${no_proxy}"
 # the puppetserver cert normally -- no Verify-Peer=false, no
 # sslverify=0, no [trusted=yes] needed for the GPG fetch either.
 install_puppet_ca_cert() {
-    local ca_url="https://${PUPPET_SERVER}:${PUPPET_SERVER_PORT}/puppet-ca/v1/certificate/ca"
+    local ca_url="https://${CA_SERVER}:${PUPPET_SERVER_PORT}/puppet-ca/v1/certificate/ca"
     local ca_pem
     ca_pem=$(curl -ksLf "$ca_url" 2>/dev/null) || {
         warn "Could not fetch puppet CA cert from ${ca_url}"
@@ -717,6 +752,7 @@ CERTNAME="$("${PUPPET_INTERNAL_BIN_DIR}/facter" fqdn 2>/dev/null | tr '[:upper:]
 [ -z "$CERTNAME" ] && CERTNAME="$(hostname -f | tr '[:upper:]' '[:lower:]')"
 
 "${PUPPET_BIN_DIR}/puppet" config set server "$PUPPET_SERVER"  --section main
+"${PUPPET_BIN_DIR}/puppet" config set ca_server "$CA_SERVER"   --section main
 "${PUPPET_BIN_DIR}/puppet" config set certname "$CERTNAME"     --section main
 
 # Apply any extra section:setting=value directives the user passed in.
@@ -780,6 +816,7 @@ cat <<EOF
 
   Installed version : ${INSTALLED_VERSION}
   Server            : ${PUPPET_SERVER}
+  CA server         : ${CA_SERVER}
   Certname          : ${CERTNAME}
   Service           : ${PUPPET_SERVICE_ENSURE} / enabled=${PUPPET_SERVICE_ENABLE}
 

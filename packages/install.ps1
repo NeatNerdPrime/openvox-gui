@@ -29,6 +29,10 @@ Param(
   #      (helpful when re-installing on an already-configured host)
   [String]$Server = '__OPENVOX_PUPPET_SERVER__',
 
+  # CA FQDN (ca_server=). Compilers have CA disabled. Default is
+  # -Server (AIO) or the rendered __OPENVOX_CA_SERVER__.
+  [String]$CaServer = '__OPENVOX_CA_SERVER__',
+
   # Console /packages URL. Required on a cluster: -Server is the
   # compiler VIP and does not serve the yum/apt mirror. If omitted
   # it is derived as "https://<server>:8140/packages" (AIO only).
@@ -75,6 +79,8 @@ $puppet_conf_dir = Join-Path ([Environment]::GetFolderPath('CommonApplicationDat
 # `sed` from matching the token.
 $placeholderMarker = '__OPENVOX' + '_PUPPET_SERVER__'
 if ($Server -like "*$placeholderMarker*") { $Server = '' }
+$caPlaceholderMarker = '__OPENVOX' + '_CA_SERVER__'
+if ($CaServer -like "*$caPlaceholderMarker*") { $CaServer = '' }
 
 # Recovery path: re-install on a host that already has puppet.conf.
 # Pull the server= line out of [main]. This makes the script work
@@ -316,6 +322,8 @@ function Install-OpenVox {
     # Always set the server explicitly (the MSI's PUPPET_MASTER_SERVER
     # alone doesn't always make it into puppet.conf reliably).
     & "$puppet_bin_dir\puppet" config set server $Server --section main
+    if (-not $CaServer) { $CaServer = $Server }
+    & "$puppet_bin_dir\puppet" config set ca_server $CaServer --section main
 }
 
 # ─── Service management ────────────────────────────────────────────────────

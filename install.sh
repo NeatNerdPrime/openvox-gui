@@ -1581,6 +1581,7 @@ if [ "$CONFIGURE_PKG_REPO" = "true" ]; then
     if [ -f "${INSTALL_DIR}/packages/install.bash" ]; then
         sed \
             -e "s|__OPENVOX_PUPPET_SERVER__|${PUPPET_SERVER_HOST}|g" \
+            -e "s|__OPENVOX_CA_SERVER__|${PUPPET_CA_HOST:-$PUPPET_SERVER_HOST}|g" \
             -e "s|__OPENVOX_DEFAULT_VERSION__|8|g" \
             "${INSTALL_DIR}/packages/install.bash" > "${PKG_REPO_DIR}/install.bash"
         chmod 0755 "${PKG_REPO_DIR}/install.bash"
@@ -1592,6 +1593,7 @@ if [ "$CONFIGURE_PKG_REPO" = "true" ]; then
     if [ -f "${INSTALL_DIR}/packages/install.ps1" ]; then
         sed \
             -e "s|__OPENVOX_PUPPET_SERVER__|${PUPPET_SERVER_HOST}|g" \
+            -e "s|__OPENVOX_CA_SERVER__|${PUPPET_CA_HOST:-$PUPPET_SERVER_HOST}|g" \
             -e "s|__OPENVOX_DEFAULT_VERSION__|8|g" \
             "${INSTALL_DIR}/packages/install.ps1" > "${PKG_REPO_DIR}/install.ps1"
         chmod 0644 "${PKG_REPO_DIR}/install.ps1"

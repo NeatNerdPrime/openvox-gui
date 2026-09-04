@@ -746,6 +746,7 @@ for script in install.bash install.ps1; do
     if [ -f "${INSTALL_DIR}/packages/${script}" ]; then
         sed \
             -e "s|__OPENVOX_PUPPET_SERVER__|${PUPPET_SERVER_HOST}|g" \
+            -e "s|__OPENVOX_CA_SERVER__|${PUPPET_CA_HOST:-${OPENVOX_GUI_PUPPET_CA_HOST:-$PUPPET_SERVER_HOST}}|g" \
             -e "s|__OPENVOX_DEFAULT_VERSION__|8|g" \
             "${INSTALL_DIR}/packages/${script}" > "${PKG_REPO_DIR}/${script}"
         if [ "$script" = "install.bash" ]; then

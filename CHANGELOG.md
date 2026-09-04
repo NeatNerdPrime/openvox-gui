@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.16] - 2026-09-04 (fix — agent install.bash sets ca_server)
+
+### Fixed
+- **Agent installer:** clustered ``install.bash`` / ``install.ps1``
+  only set ``server=`` to the compiler VIP, so the first CSR went
+  to ovcompilers (CA disabled). The GUI one-liner now passes
+  ``--ca-server`` / ``-CaServer`` from ``OPENVOX_GUI_PUPPET_CA_HOST``,
+  and the script writes ``ca_server=`` and fetches the CA cert from
+  that host.
+
 ## [3.13.0-rc.15] - 2026-09-04 (fix — Monitoring duration axis)
 
 ### Fixed

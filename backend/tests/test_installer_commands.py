@@ -31,13 +31,19 @@ def test_linux_command_passes_pkg_repo_url_and_server():
         "openvox.atlc-it.example.com",
         "ovcompilers.atlc-it.example.com",
         "https://openvox.atlc-it.example.com:4567/packages",
+        "ovca.example.com",
     )
     assert "--server ovcompilers.atlc-it.example.com" in linux
+    assert "--ca-server ovca.example.com" in linux
     assert (
         "--pkg-repo-url https://openvox.atlc-it.example.com:4567/packages"
         in linux
     )
     assert "ovcompilers.atlc-it.example.com:8140/packages" not in linux
     assert "-Server 'ovcompilers.atlc-it.example.com'" in win
+    assert "-CaServer 'ovca.example.com'" in win
     assert "-PkgRepoUrl 'https://openvox.atlc-it.example.com:4567/packages'" in win
-    assert "--noproxy openvox.atlc-it.example.com,ovcompilers.atlc-it.example.com" in linux
+    assert (
+        "--noproxy openvox.atlc-it.example.com,ovcompilers.atlc-it.example.com,ovca.example.com"
+        in linux
+    )
