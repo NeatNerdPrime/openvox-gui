@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.17] - 2026-09-04 (fix — never use compiler VIP as CA)
+
+### Fixed
+- **Agent installer:** if ``OPENVOX_GUI_PUPPET_CA_HOST`` was empty,
+  ``--ca-server`` was set to the compiler VIP. Clustered consoles
+  no longer do that. ``install.bash`` refuses a compiler as CA.
+  Set ``OPENVOX_GUI_PUPPET_CA_HOST`` to the CA VIP on every console.
+
 ## [3.13.0-rc.16] - 2026-09-04 (fix — agent install.bash sets ca_server)
 
 ### Fixed

@@ -394,7 +394,20 @@ if [ -z "$CA_SERVER" ] && [ -r "${PUPPET_CONF_DIR}/puppet.conf" ]; then
         info "Reusing ca_server from existing puppet.conf: ${CA_SERVER}"
     fi
 fi
-[ -z "$CA_SERVER" ] && CA_SERVER="$PUPPET_SERVER"
+if [ -z "$CA_SERVER" ]; then
+    case "$PUPPET_SERVER" in
+        *compiler*)
+            fail "CA server is not set and --server is a compiler VIP (${PUPPET_SERVER}).
+  Compilers have CA disabled. Re-run with:
+    --ca-server <ca-vip>
+  On the console set OPENVOX_GUI_PUPPET_CA_HOST to the CA VIP and
+  copy the install command again."
+            ;;
+        *)
+            CA_SERVER="$PUPPET_SERVER"
+            ;;
+    esac
+fi
 
 # Default OPENVOX_VERSION if user didn't override
 OPENVOX_VERSION="${OPENVOX_VERSION:-$DEFAULT_OPENVOX_VERSION}"

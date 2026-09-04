@@ -47,3 +47,14 @@ def test_linux_command_passes_pkg_repo_url_and_server():
         "--noproxy openvox.atlc-it.example.com,ovcompilers.atlc-it.example.com,ovca.example.com"
         in linux
     )
+
+
+def test_linux_command_omits_ca_flag_when_ca_unknown():
+    linux, win = _agent_install_commands(
+        "openvox.atlc-it.example.com",
+        "ovcompilers.atlc-it.example.com",
+        "https://openvox.atlc-it.example.com:4567/packages",
+        "",
+    )
+    assert "--ca-server" not in linux
+    assert "-CaServer" not in win

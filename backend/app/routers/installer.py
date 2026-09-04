@@ -61,7 +61,6 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..dependencies import require_role
-from ..services.certificates_service import resolve_ca_host
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +136,24 @@ def _puppet_server_fqdn() -> str:
 
 
 def _ca_server_fqdn() -> str:
-    """CA FQDN for agent puppet.conf. Compilers have CA disabled."""
-    return (resolve_ca_host() or "").strip() or _puppet_server_fqdn()
+    """CA FQDN for agent puppet.conf. Compilers have CA disabled.
+
+    Never silently reuse the compiler VIP. Clustered consoles must set
+    OPENVOX_GUI_PUPPET_CA_HOST (or PUPPET_CA_HOST). AIO (console ==
+    compiler) may omit it.
+    """
+    explicit = (
+        (getattr(settings, "puppet_ca_host", None) or "").strip()
+        or (os.environ.get("OPENVOX_GUI_PUPPET_CA_HOST") or "").strip()
+        or (os.environ.get("PUPPET_CA_HOST") or "").strip()
+    )
+    compile_srv = _puppet_server_fqdn()
+    if explicit:
+        return explicit
+    console = _local_fqdn()
+    if compile_srv and console and compile_srv.lower() != console.lower():
+        return ""
+    return compile_srv or ""
 
 
 def _noproxy_hosts(console: str, compile_srv: str, ca_srv: str | None = None) -> str:
@@ -162,12 +177,13 @@ def _agent_install_commands(
     mount. Deriving the yum/apt URL from ``--server`` 404s on compiler
     VIPs that do not serve ``/opt/openvox-pkgs``.
     """
-    ca = (ca_srv or "").strip() or compile_srv
+    ca = (ca_srv or "").strip()
     noproxy = _noproxy_hosts(console, compile_srv, ca)
+    ca_flag = f"--ca-server {ca} " if ca else ""
     linux = (
         f"curl -k --noproxy {noproxy} {repo_url}/install.bash "
         f"| sudo bash -s -- --server {compile_srv} "
-        f"--ca-server {ca} "
+        f"{ca_flag}"
         f"--pkg-repo-url {repo_url}"
     )
     win = (
@@ -178,8 +194,9 @@ def _agent_install_commands(
         "$wc = New-Object System.Net.WebClient; "
         "$wc.Proxy = $null; "
         "$wc.DownloadFile($url, 'install.ps1'); "
-        f".\\install.ps1 -Server '{compile_srv}' -CaServer '{ca}' "
-        f"-PkgRepoUrl '{repo_url}' -v"
+        f".\\install.ps1 -Server '{compile_srv}'"
+        + (f" -CaServer '{ca}'" if ca else "")
+        + f" -PkgRepoUrl '{repo_url}' -v"
     )
     return linux, win
 
