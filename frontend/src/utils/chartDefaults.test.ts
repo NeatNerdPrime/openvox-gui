@@ -37,6 +37,27 @@ describe('buildHourlyNodeSeries', () => {
     expect(rows[1][kDb]).toBe(30);
     expect(rows[1][kWeb]).toBeNull();
   });
+
+  it('does not emit hours that only contain non-selected fleet nodes', () => {
+    const rows = buildHourlyNodeSeries(
+      [
+        { time: '2026-09-03T12:10:00', certname: 'web01.corp.int-x.ai', total: 10 },
+        { time: '2026-09-03T14:00:00', certname: 'other.corp.int-x.ai', total: 99 },
+      ],
+      ['web01.corp.int-x.ai'],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].time).toBe('2026-09-03T12');
+  });
+
+  it('falls back to run_duration when time.total is zero', () => {
+    const cn = 'web01.corp.int-x.ai';
+    const rows = buildHourlyNodeSeries(
+      [{ time: '2026-09-03T12:10:00', certname: cn, total: 0, run_duration: 42.5 }],
+      [cn],
+    );
+    expect(rows[0][safeChartKey(cn)]).toBe(42.5);
+  });
 });
 
 describe('movingAverageSeries', () => {

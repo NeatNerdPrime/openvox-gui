@@ -11,7 +11,7 @@ import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert, Grid, Paper, Select, Button,
 } from '@mantine/core';
 import {
-  AreaChart, Area, ComposedChart, Line,
+  AreaChart, Area, Bar, BarChart, ComposedChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend,
 } from 'recharts';
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
@@ -442,37 +442,53 @@ function MetricsPerformanceContent({
     },
     {
       id: 'top10-nodes', title: 'Top 10 Slowest Nodes',
-      render: () => (
-        <AreaChart data={top10Data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-          <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={tickTime} />
-          <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
-          <ReTooltip
-            {...TOOLTIP_STYLE}
-            filterNull
-            formatter={(v: number, n: string) => [
-              typeof v === 'number' && Number.isFinite(v) ? formatSeconds(v) : '—',
-              n,
-            ]}
-          />
-          <Legend wrapperStyle={{ fontSize: 9 }} />
-          {nodeComparison.map((n: any, i: number) => (
-            <Line
-              isAnimationActive={false}
-              animationDuration={0}
-              key={n.certname}
-              type={CHART_LINE_TYPE}
-              dataKey={safeChartKey(n.certname)}
-              stroke={COLORS[i % COLORS.length]}
-              strokeWidth={2}
-              dot={{ r: 3, strokeWidth: 1 }}
-              activeDot={{ r: 5 }}
-              connectNulls
-              name={shortName(n.certname)}
-            />
-          ))}
-        </AreaChart>
-      ),
+      render: () => {
+        const fmt = (v: number, n: string) => [
+          typeof v === 'number' && Number.isFinite(v) ? formatSeconds(v) : '—',
+          n,
+        ];
+        // Estate sample is sparse: prefer hourly lines when we have points,
+        // otherwise rank by avg_total so production is never an empty axis.
+        if (top10Data.length > 0) {
+          return (
+            <ComposedChart data={top10Data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
+              <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={tickTime} />
+              <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
+              <ReTooltip {...TOOLTIP_STYLE} filterNull formatter={fmt} />
+              <Legend wrapperStyle={{ fontSize: 9 }} />
+              {nodeComparison.map((n: any, i: number) => (
+                <Line
+                  isAnimationActive={false}
+                  animationDuration={0}
+                  key={n.certname}
+                  type={CHART_LINE_TYPE}
+                  dataKey={safeChartKey(n.certname)}
+                  stroke={COLORS[i % COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ r: 3, strokeWidth: 1 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                  name={shortName(n.certname)}
+                />
+              ))}
+            </ComposedChart>
+          );
+        }
+        const bars = nodeComparison.map((n: any) => ({
+          name: shortName(n.certname),
+          seconds: Number(n.avg_total) || Number(n.avg_catalog_application) || 0,
+        }));
+        return (
+          <BarChart data={bars} layout="vertical" margin={{ top: 5, right: 16, left: 8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
+            <XAxis type="number" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
+            <YAxis type="category" dataKey="name" width={88} tick={{ fontSize: 9, fill: '#8899aa' }} />
+            <ReTooltip {...TOOLTIP_STYLE} formatter={fmt} />
+            <Bar isAnimationActive={false} dataKey="seconds" fill="#0D6EFD" name="Avg run" />
+          </BarChart>
+        );
+      },
     },
     {
       id: 'cmd-processing', title: 'Command Processing Time',

@@ -52,11 +52,23 @@ export type TimedNodeRun = {
   time?: string;
   certname?: string;
   total?: number;
+  run_duration?: number;
 };
+
+function runSeconds(run: TimedNodeRun): number | null {
+  const total = Number(run.total);
+  if (Number.isFinite(total) && total > 0) return total;
+  const dur = Number(run.run_duration);
+  if (Number.isFinite(dur) && dur > 0) return dur;
+  if (Number.isFinite(total)) return total;
+  return null;
+}
 
 /**
  * Hourly averages keyed by safeChartKey(certname).
- * Every hour in the sample is a row so sparse production series still share an X axis.
+ * Only hours that contain at least one requested node are emitted.
+ * Padding every fleet hour (previous behavior) leaves production
+ * charts as a long all-null X axis — hover then shows no tooltip.
  */
 export function buildHourlyNodeSeries(
   runs: TimedNodeRun[] | null | undefined,
@@ -68,13 +80,13 @@ export function buildHourlyNodeSeries(
   const hours = new Set<string>();
   const buckets: Record<string, Record<string, number[]>> = {};
   for (const run of runs) {
-    const hour = (run.time || '').substring(0, 13);
+    const hour = String(run.time ?? '').substring(0, 13);
     if (!hour) continue;
-    hours.add(hour);
     const key = nameToKey.get(run.certname || '');
     if (!key) continue;
-    const v = Number(run.total);
-    if (!Number.isFinite(v)) continue;
+    const v = runSeconds(run);
+    if (v == null) continue;
+    hours.add(hour);
     if (!buckets[hour]) buckets[hour] = {};
     if (!buckets[hour][key]) buckets[hour][key] = [];
     buckets[hour][key].push(v);

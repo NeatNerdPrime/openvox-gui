@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.12] - 2026-09-04 (fix — Top 10 Slowest Nodes empty on estate)
+
+### Fixed
+- **Top 10 Slowest Nodes on production:** hourly series included every
+  fleet hour, then only filled the top 10. Hover on the empty axis
+  showed no tooltip (``filterNull``). Only hours with a top-10 sample
+  are plotted; ``run_duration`` is used when ``time.total`` is 0;
+  if there are still no points, a rank bar of ``avg_total`` is shown.
+
 ## [3.13.0-rc.11] - 2026-09-04 (fix — Top 10 Slowest Nodes plot)
 
 ### Fixed
