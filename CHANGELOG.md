@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.21] - 2026-09-04 (fix — missing cacheKeys module)
+
+### Fixed
+- **Frontend build:** ``Nodes.tsx`` imported ``../utils/cacheKeys``
+  which was not in the rc.20 tree. The module is now shipped.
+
 ## [3.13.0-rc.20] - 2026-09-04 (fix — VIP must not show a one-node fleet)
 
 ### Fixed
