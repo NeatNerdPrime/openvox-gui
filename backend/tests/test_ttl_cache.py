@@ -72,3 +72,29 @@ async def test_get_or_set_does_not_replace_good_with_empty():
 
     got = await ttl_cache.get_or_set("live", ttl=-1, factory=empty)
     assert got == [{"certname": "a"}]
+
+
+def test_is_worse_fleet_rejects_one_node_against_a_real_fleet():
+    stale = [{"certname": f"n{i}"} for i in range(12)]
+    probe = [{"certname": "lonely"}]
+    assert ttl_cache.is_worse_fleet(probe, stale) is True
+    assert ttl_cache.is_worse_fleet(stale, stale) is False
+    assert ttl_cache.is_worse_fleet(stale + [{"certname": "x"}], stale) is False
+
+
+def test_is_worse_fleet_accepts_shrink_after_hold():
+    stale = [{"certname": f"n{i}"} for i in range(10)]
+    probe = [{"certname": "lonely"}]
+    assert ttl_cache.is_worse_fleet(probe, stale, stale_age=10) is True
+    assert ttl_cache.is_worse_fleet(probe, stale, stale_age=8000) is False
+
+
+async def test_get_or_set_keeps_last_good_when_probe_is_one_node():
+    fleet = [{"certname": f"n{i}"} for i in range(8)]
+    ttl_cache.set("live", fleet)
+
+    async def tiny():
+        return [{"certname": "only-me"}]
+
+    got = await ttl_cache.get_or_set("live", ttl=-1, factory=tiny)
+    assert ttl_cache.fleet_size(got) == 8

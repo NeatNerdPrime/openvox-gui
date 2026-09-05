@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Title, Grid, Card, Text, Group, RingProgress, Stack, Center,
-  Badge, Tooltip, Table, ActionIcon, Select, Switch, Button,
+  Alert, Badge, Tooltip, Table, ActionIcon, Select, Switch, Button,
 } from '@mantine/core';
 import { IconEye, IconChevronUp, IconChevronDown, IconSelector } from '@tabler/icons-react';
 import { useNavigate } from 'react-router';
@@ -24,6 +24,8 @@ import { ExportActions } from '../components/ExportActions';
 import { STATUS_HEX, statusMantine } from '../utils/statusTheme';
 import { isNeedsAttention } from '../utils/needsAttention';
 import { MeasuredArea } from '../components/MeasuredChart';
+import { isImplausibleFleetShrink } from '../utils/fleetGuard';
+import { readSessionCache } from '../utils/sessionCache';
 
 const ATTENTION_EXPORT_COLS = [
   'certname',
@@ -192,7 +194,10 @@ export function DashboardPage() {
         if (hasNodes && Array.isArray(trends) && trends.length === 0) {
           return false;
         }
-        return hasNodes;
+        if (!hasNodes) return false;
+        const prev = readSessionCache<any>('openvox_dashboard_data_v3');
+        if (prev && isImplausibleFleetShrink(d, prev)) return false;
+        return true;
       },
       pollIntervalMs: pollMs,
     },
@@ -319,6 +324,14 @@ export function DashboardPage() {
           </Group>
         }
       />
+
+      {dashData?.fleet_view?.source === 'last_good' && (
+        <Alert color="yellow" variant="light" title="Showing last-good fleet">
+          This console just probed {dashData.fleet_view.probe_count} node(s);
+          keeping the last complete view ({dashData.fleet_view.shown_count} nodes)
+          so a VIP flap cannot look like a one-node estate.
+        </Alert>
+      )}
 
       {/* Casual theme illustration — deferred one tick so ring/trends paint first */}
       {isRobots && showMascot && (

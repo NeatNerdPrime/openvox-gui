@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.20] - 2026-09-04 (fix — VIP must not show a one-node fleet)
+
+### Fixed
+- **Dashboard / Nodes behind a console VIP:** a backend whose
+  PuppetDB only sees one reporter no longer replaces a known fleet.
+  Last-good is kept in memory and in the app DB (``gui_kv``) so both
+  VIP consoles share it when they use the same Postgres URL. A
+  one-node (or <50%) probe is held for 2 hours; the Dashboard
+  banners when serving last-good.
+
 ## [3.13.0-rc.19] - 2026-09-04 (fix — apt install finds rsync pool tree)
 
 ### Fixed

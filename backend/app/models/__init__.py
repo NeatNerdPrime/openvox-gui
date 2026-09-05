@@ -29,3 +29,4 @@ from .api_token import ApiToken
 from .executive_report import ExecutiveReportRecipient, ExecutiveReportConfig
 from .cluster_secret import ClusterSecret
 from .dismissed_node import DismissedNode
+from .gui_kv import GuiKv

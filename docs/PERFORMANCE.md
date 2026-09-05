@@ -54,6 +54,16 @@ Return visits in the same tab paint the last-good snapshot immediately, then ref
 
 If Dashboard is still slow on **first** login of the day, the remaining cost is co-located PuppetDB/CA latency for `get_live_nodes()` (active nodes ∩ signed certs). Check `ovox infra health` and PDB heap before raising GUI workers further.
 
+### VIP flap must not show a one-node estate
+
+A console whose PuppetDB only sees one reporter must **not** replace a
+known fleet on the VIP. `ttl_cache` keeps last-good when a probe is
+empty or shrinks below 50% / down to 1 node (hold 2 hours). That
+snapshot is written to the app DB (`gui_kv`) so both VIP backends
+share it when they use the same Postgres URL. Dashboard shows a
+yellow banner when serving last-good. Flush via cache invalidate if
+the estate *really* shrank.
+
 
 ## Node Detail
 
@@ -131,9 +141,37 @@ You should see a supervisor process plus **N** workers when `--workers N` is act
 
 ## Reverse proxy (Apache / nginx)
 
-- Prefer **gzip/brotli** for `application/json` and static assets (nginx sample already enables gzip for JSON).
-- Do **not** cache authenticated `/api/*` at the proxy without careful cache keys — app-level TTL is safer.
-- Keep proxy buffering defaults unless you stream very large Bolt output.
+Typical installs already sit behind **Apache** (TLS + `ProxyPass`
+to uvicorn `:4567`). Putting Apache in front again does **not** make
+Classification or other SPA pages draw faster.
+
+What Apache *can* do (already the right layer):
+
+- Terminate TLS and gzip/brotli JSON and static assets.
+- Long-cache hashed `/assets/*` (the GUI also sets immutable
+  `Cache-Control` on those files).
+
+What Apache must **not** do:
+
+- Cache authenticated `/api/*`. ENC, nodes, and PuppetDB payloads
+  change under you. App-level TTL + session cache are safer.
+- Try to speed up React tab mounts. Classification slowness was
+  unused tabs mounting plus JS/API waits, not the proxy hop.
+
+## Navigation prefetch + session warmup (3.13)
+
+After login the shell now:
+
+1. Prefetches JS chunks for Nodes, Classification, Reports, CA,
+   Deploy, and Monitoring (idle + sidebar/palette hover).
+2. Warms sessionStorage with ENC catalog/nodes/common/hierarchy
+   plus the fleet list so return visits paint immediately.
+3. Classification tabs use `keepMounted={false}` so only the
+   active tab runs (Help's hierarchy SVG no longer mounts every
+   visit).
+
+Class-picker lists stay on a 90s in-memory cache (same TTL as
+the backend) so another modal does not re-walk the compiler.
 
 ## Measuring before/after
 

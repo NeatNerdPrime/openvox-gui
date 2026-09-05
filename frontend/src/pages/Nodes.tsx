@@ -28,6 +28,9 @@ import type { NodeSummary } from '../types';
 import { timeAgo } from '../utils/timeAgo';
 import { isNeedsAttention } from '../utils/needsAttention';
 import { PageHeader } from '../components/PageHeader';
+import { CACHE_NODES } from '../utils/cacheKeys';
+import { isImplausibleFleetShrink } from '../utils/fleetGuard';
+import { readSessionCache } from '../utils/sessionCache';
 
 /** Columns for All Nodes export (CSV / JSON / text) — mirrors Inventory ExportActions. */
 const NODES_EXPORT_COLS = [
@@ -246,8 +249,13 @@ export function NodesPage() {
     nodes.list,
     [],
     {
-      cacheKey: 'openvox_nodes_v1',
-      cacheValidate: (rows) => Array.isArray(rows) && rows.length > 0,
+      cacheKey: CACHE_NODES,
+      cacheValidate: (rows) => {
+        if (!Array.isArray(rows) || rows.length === 0) return false;
+        const prev = readSessionCache<NodeSummary[]>(CACHE_NODES);
+        if (prev && isImplausibleFleetShrink(rows, prev)) return false;
+        return true;
+      },
       pollIntervalMs: 20000,
     },
   );

@@ -63,6 +63,65 @@ def _is_empty_result(value: Any) -> bool:
     return False
 
 
+def fleet_size(value: Any) -> int:
+    """How many nodes a live_nodes list or dashboard payload represents."""
+    if value is None:
+        return 0
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, dict):
+        nodes = value.get("nodes")
+        if isinstance(nodes, list) and nodes:
+            return len(nodes)
+        status = value.get("node_status") or {}
+        try:
+            return int(status.get("total") or 0)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+# Keep last-good when a VIP backend / site PDB returns a tiny slice.
+_SHRINK_HOLD_SECONDS = 7200.0
+
+
+def is_worse_fleet(new: Any, stale: Any, stale_age: float = 0.0) -> bool:
+    """True when *new* must not replace *stale* on screen.
+
+    A 1-node (or <50%) probe against a known fleet is almost always
+    the other console's empty-ish PuppetDB during a VIP flap — not a
+    real decommission. After ``_SHRINK_HOLD_SECONDS`` we accept the
+    smaller set so genuine shrinks eventually land.
+    """
+    if stale is None:
+        return False
+    if _is_empty_result(new):
+        return True
+    old_n = fleet_size(stale)
+    new_n = fleet_size(new)
+    if old_n <= 1 or new_n >= old_n:
+        return False
+    if stale_age > _SHRINK_HOLD_SECONDS and not _is_empty_result(new):
+        return False
+    if old_n >= 3 and new_n <= 1:
+        return True
+    if new_n < max(2, int(old_n * 0.5)):
+        return True
+    return False
+
+
+def _annotate_last_good(value: Any, probe: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    out = dict(value)
+    out["fleet_view"] = {
+        "source": "last_good",
+        "probe_count": fleet_size(probe),
+        "shown_count": fleet_size(value),
+    }
+    return out
+
+
 async def get_or_set(
     key: str,
     ttl: float,
@@ -83,18 +142,45 @@ async def get_or_set(
         if hit is not None:
             return hit  # type: ignore[return-value]
         stale = _store.get(key)
+        stale_ts = _ts.get(key, 0.0)
+        if stale is None:
+            try:
+                from ..services.fleet_last_good import load as load_last_good
+
+                stale = await load_last_good(key)
+                if stale is not None:
+                    _store[key] = stale
+                    _ts[key] = time.time()
+                    stale_ts = _ts[key]
+            except Exception:
+                logger.debug("cache %s last-good load skipped", key, exc_info=True)
         try:
             value = await factory()
         except Exception:
             if stale is not None:
                 logger.warning(
-                    "cache %s factory failed; serving stale", key, exc_info=True
+                    "cache %s factory failed; serving last-good (%d nodes)",
+                    key,
+                    fleet_size(stale),
+                    exc_info=True,
                 )
-                return stale  # type: ignore[return-value]
+                return _annotate_last_good(stale, None)  # type: ignore[return-value]
             raise
-        if _is_empty_result(value) and stale is not None:
-            logger.warning("cache %s got empty result; keeping stale", key)
-            return stale  # type: ignore[return-value]
+        stale_age = (time.time() - stale_ts) if stale is not None and stale_ts else 0.0
+        if stale is not None and is_worse_fleet(value, stale, stale_age):
+            logger.warning(
+                "cache %s probe has %d nodes (had %d); keeping last-good",
+                key,
+                fleet_size(value),
+                fleet_size(stale),
+            )
+            return _annotate_last_good(stale, value)  # type: ignore[return-value]
         if not _is_empty_result(value):
             set(key, value)
+            try:
+                from ..services.fleet_last_good import save as save_last_good
+
+                await save_last_good(key, value, fleet_size(value))
+            except Exception:
+                logger.debug("cache %s last-good save skipped", key, exc_info=True)
         return value
