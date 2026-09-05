@@ -35,6 +35,23 @@ _DASHBOARD_DATA_TTL = 20.0
 _TREND_REPORT_FIELDS = '["certname", "status", "noop", "receive_time"]'
 
 
+def _normalize_trend_reports(rows: List[Any]) -> List[Dict[str, Any]]:
+    """PuppetDB extract may return maps or positional tuples."""
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        if isinstance(row, dict):
+            out.append(row)
+            continue
+        if isinstance(row, (list, tuple)) and len(row) >= 4:
+            out.append({
+                "certname": row[0],
+                "status": row[1],
+                "noop": row[2],
+                "receive_time": row[3],
+            })
+    return out
+
+
 # ─── Helpers (operate on already-fetched data, no PuppetDB calls) ────
 
 
@@ -55,9 +72,10 @@ async def _fetch_trend_reports(cutoff: str) -> List[Any]:
         "order_by": '[{"field": "receive_time", "order": "asc"}]',
     }
     try:
-        return await puppetdb_service._query(
+        rows = await puppetdb_service._query(
             "reports", query=lean_query, params=params
         ) or []
+        return _normalize_trend_reports(rows)
     except Exception as e:
         logger.warning(
             "dashboard lean report extract failed (%s); falling back to full reports",

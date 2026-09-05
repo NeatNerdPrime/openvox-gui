@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.22] - 2026-09-04 (fix — Active Node Status Trends)
+
+### Fixed
+- **Overview | Active Node Status Trends:** last-good fleet cache
+  kept the node list but replaced a 48-hour series with a single
+  bucket when the other VIP backend had almost no reports. Collapsed
+  trends are treated as worse than last-good. ``compute_trends``
+  always emits 48 hourly points so the area chart has an X axis.
+
 ## [3.13.0-rc.21] - 2026-09-04 (fix — missing cacheKeys module)
 
 ### Fixed

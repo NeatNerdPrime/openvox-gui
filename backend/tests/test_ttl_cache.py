@@ -82,6 +82,20 @@ def test_is_worse_fleet_rejects_one_node_against_a_real_fleet():
     assert ttl_cache.is_worse_fleet(stale + [{"certname": "x"}], stale) is False
 
 
+def test_is_worse_fleet_rejects_collapsed_trends():
+    stale = {
+        "nodes": [{"certname": f"n{i}"} for i in range(8)],
+        "node_status": {"total": 8},
+        "node_trends": [{"timestamp": str(i)} for i in range(24)],
+    }
+    probe = {
+        "nodes": list(stale["nodes"]),
+        "node_status": {"total": 8},
+        "node_trends": [{"timestamp": "now"}],
+    }
+    assert ttl_cache.is_worse_fleet(probe, stale) is True
+
+
 def test_is_worse_fleet_accepts_shrink_after_hold():
     stale = [{"certname": f"n{i}"} for i in range(10)]
     probe = [{"certname": "lonely"}]

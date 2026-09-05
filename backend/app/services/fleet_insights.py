@@ -154,34 +154,28 @@ def compute_trends(nodes: List[Dict], reports: List[Any]) -> List[Dict]:
         if ts:
             bucket_reports[ts].append(report)
 
-    all_buckets = sorted(bucket_reports.keys())
-    if not all_buckets:
+    def _snapshot() -> Dict[str, int]:
         counts = {"unchanged": 0, "changed": 0, "failed": 0, "noop": 0, "unreported": 0}
         for status in node_state.values():
             if status in counts:
                 counts[status] += 1
             else:
                 counts["unreported"] += 1
-        now_h = datetime.utcnow().strftime("%Y-%m-%dT%H")
-        return [{"timestamp": now_h, "hour": now_h, **counts}]
+        return counts
+
+    now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    hours = [(now - timedelta(hours=47 - i)).strftime("%Y-%m-%dT%H") for i in range(48)]
 
     result = []
-    for bucket in all_buckets:
-        for report in bucket_reports[bucket]:
+    for bucket in hours:
+        for report in bucket_reports.get(bucket, []):
             cn = report.get("certname", "")
             if cn not in node_state:
                 continue
             if report.get("noop", False):
                 node_state[cn] = "noop"
             else:
-                node_state[cn] = report.get("status", "unchanged")
-
-        counts = {"unchanged": 0, "changed": 0, "failed": 0, "noop": 0, "unreported": 0}
-        for status in node_state.values():
-            if status in counts:
-                counts[status] += 1
-            else:
-                counts["unchanged"] += 1
-        # Dashboard uses "timestamp"; keep both keys for consumers
+                node_state[cn] = (report.get("status") or "unchanged").strip().lower()
+        counts = _snapshot()
         result.append({"timestamp": bucket, "hour": bucket, **counts})
-    return result[-48:] if result else result
+    return result

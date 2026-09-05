@@ -35,5 +35,5 @@ def test_trends_single_bucket_when_no_reports():
         }
     ]
     rows = compute_trends(nodes, [])
-    assert len(rows) == 1
-    assert rows[0]["unchanged"] == 1
+    assert len(rows) == 48
+    assert rows[-1]["unchanged"] == 1

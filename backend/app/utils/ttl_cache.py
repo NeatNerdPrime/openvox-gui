@@ -63,6 +63,15 @@ def _is_empty_result(value: Any) -> bool:
     return False
 
 
+def trend_points(value: Any) -> int:
+    """How many Active Node Status buckets a dashboard payload has."""
+    if isinstance(value, dict):
+        t = value.get("node_trends")
+        if isinstance(t, list):
+            return len(t)
+    return 0
+
+
 def fleet_size(value: Any) -> int:
     """How many nodes a live_nodes list or dashboard payload represents."""
     if value is None:
@@ -106,6 +115,14 @@ def is_worse_fleet(new: Any, stale: Any, stale_age: float = 0.0) -> bool:
     if old_n >= 3 and new_n <= 1:
         return True
     if new_n < max(2, int(old_n * 0.5)):
+        return True
+    # Same headcount, but the trend series collapsed (thin-site PDB).
+    if (
+        isinstance(new, dict)
+        and isinstance(stale, dict)
+        and trend_points(stale) >= 3
+        and trend_points(new) <= 1
+    ):
         return True
     return False
 

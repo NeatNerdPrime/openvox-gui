@@ -197,6 +197,8 @@ export function DashboardPage() {
         if (!hasNodes) return false;
         const prev = readSessionCache<any>('openvox_dashboard_data_v3');
         if (prev && isImplausibleFleetShrink(d, prev)) return false;
+        const prevTrends = Array.isArray(prev?.node_trends) ? prev.node_trends.length : 0;
+        if (prevTrends >= 3 && Array.isArray(trends) && trends.length <= 1) return false;
         return true;
       },
       pollIntervalMs: pollMs,
