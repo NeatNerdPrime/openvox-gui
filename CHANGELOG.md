@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.23] - 2026-09-05 (fix — CI is_worse_fleet same-count trends)
+
+### Fixed
+- **CI:** ``is_worse_fleet`` returned early when node counts matched,
+  so collapsed 48h trends were not treated as worse. Same-count
+  probes with one trend bucket now keep last-good.
+
 ## [3.13.0-rc.22] - 2026-09-04 (fix — Active Node Status Trends)
 
 ### Fixed

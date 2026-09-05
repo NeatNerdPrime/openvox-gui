@@ -108,23 +108,25 @@ def is_worse_fleet(new: Any, stale: Any, stale_age: float = 0.0) -> bool:
         return True
     old_n = fleet_size(stale)
     new_n = fleet_size(new)
-    if old_n <= 1 or new_n >= old_n:
+    if old_n <= 1:
         return False
-    if stale_age > _SHRINK_HOLD_SECONDS and not _is_empty_result(new):
+    if new_n > old_n:
         return False
-    if old_n >= 3 and new_n <= 1:
-        return True
-    if new_n < max(2, int(old_n * 0.5)):
-        return True
-    # Same headcount, but the trend series collapsed (thin-site PDB).
-    if (
+    if new_n < old_n:
+        if stale_age > _SHRINK_HOLD_SECONDS and not _is_empty_result(new):
+            return False
+        if old_n >= 3 and new_n <= 1:
+            return True
+        if new_n < max(2, int(old_n * 0.5)):
+            return True
+        return False
+    # Same headcount — still worse if the 48h trend collapsed.
+    return (
         isinstance(new, dict)
         and isinstance(stale, dict)
         and trend_points(stale) >= 3
         and trend_points(new) <= 1
-    ):
-        return True
-    return False
+    )
 
 
 def _annotate_last_good(value: Any, probe: Any) -> Any:
