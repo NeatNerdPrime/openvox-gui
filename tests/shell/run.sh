@@ -68,7 +68,10 @@ fi
 echo
 echo "── VERSION is present and PEP 440-ish ──"
 ver="$(tr -d '[:space:]' < VERSION)"
-if [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?$ ]]; then
+# PEP 440: N.N.N[pre][+local]. Local segments are how we mark
+# security/bugfix artifacts on an RC (e.g. 3.13.0-rc.23+1sec,
+# 3.10.2+bugfix). The previous regex rejected '+'.
+if [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?(\+[A-Za-z0-9.]+)?$ ]]; then
   pass "VERSION=$ver"
 else
   fail "VERSION looks invalid: $ver"

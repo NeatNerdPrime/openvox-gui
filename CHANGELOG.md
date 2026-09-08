@@ -32,6 +32,8 @@ after ``rc.23``), so the security designation is the local segment
 ### Fixed
 - Backend pytest 164 passed against the new pins. Frontend
   typecheck clean. ``npm audit`` reports 0 vulnerabilities.
+- **CI shell smoke:** VERSION check now accepts PEP 440 local
+  segments (``+1sec``). The old regex treated ``+`` as invalid.
 
 ## [3.13.0-rc.23] - 2026-09-05 (fix — CI is_worse_fleet same-count trends)
 
