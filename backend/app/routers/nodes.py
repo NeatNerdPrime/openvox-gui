@@ -12,6 +12,8 @@ to prevent PQL injection attacks.
 """
 import logging
 from datetime import datetime, timedelta
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -441,8 +443,25 @@ async def get_node_detail(certname: str, db: AsyncSession = Depends(get_db)):
             cached_catalog_status=node.get("cached_catalog_status"),
             report_producer=node.get("report_producer"),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Node '{certname}' was not found in PuppetDB.",
+            )
+        logger.error("PuppetDB error loading node %s: %s", certname, e.response.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail="PuppetDB returned an error while loading this node.",
+        )
+    except Exception:
+        logger.exception("Failed to load node %s", certname)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not load this node from PuppetDB.",
+        )
 
 
 @router.get("/{certname}/facts")
@@ -456,8 +475,20 @@ async def get_node_facts(certname: str):
     try:
         facts = await puppetdb_service.get_node_facts(certname)
         return facts
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as e:
+        logger.error("PuppetDB error loading facts for %s: %s", certname, e.response.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail="PuppetDB returned an error while loading facts.",
+        )
+    except Exception:
+        logger.exception("Failed to load facts for %s", certname)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not load facts from PuppetDB.",
+        )
 
 
 @router.get("/{certname}/resources")
@@ -471,8 +502,20 @@ async def get_node_resources(certname: str):
     try:
         resources = await puppetdb_service.get_node_resources(certname)
         return resources
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as e:
+        logger.error("PuppetDB error loading resources for %s: %s", certname, e.response.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail="PuppetDB returned an error while loading resources.",
+        )
+    except Exception:
+        logger.exception("Failed to load resources for %s", certname)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not load resources from PuppetDB.",
+        )
 
 
 @router.get("/{certname}/reports")

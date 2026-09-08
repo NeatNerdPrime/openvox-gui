@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.25] - 2026-09-08 (fix — PuppetDB 404 facts is empty, not 500)
+
+### Fixed
+- **Node facts / resources:** PuppetDB returns 404 for
+  ``/pdb/query/v4/nodes/<cert>/facts`` when the certname is unknown
+  (ENC-only node, FQDN vs short certname). The GUI turned that into
+  API 500 and leaked the PuppetDB URL. 404 is now ``[]``; FQDN
+  retries the short hostname; remaining PDB errors are 502 without
+  the upstream URL.
+
 ## [3.13.0-rc.24] - 2026-09-08 (fix — Vitest on Node 18/20 + ENC warmup tests)
 
 ### Fixed

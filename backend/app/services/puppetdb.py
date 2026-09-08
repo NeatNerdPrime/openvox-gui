@@ -157,7 +157,12 @@ class PuppetDBService:
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"PuppetDB HTTP error: {e.response.status_code} - {e.response.text}")
+            if e.response.status_code == 404:
+                logger.info("PuppetDB 404 for %s", url)
+            else:
+                logger.error(
+                    "PuppetDB HTTP error: %s", e.response.status_code,
+                )
             raise
         except Exception as e:
             logger.error(f"PuppetDB connection error: {e}", exc_info=True)
@@ -360,7 +365,21 @@ class PuppetDBService:
 
     async def get_node(self, certname: str) -> Dict:
         """Get a single node by certname, status overlaid from newest report."""
-        result = await self._query(f"nodes/{certname}")
+        result = None
+        last_404: Optional[httpx.HTTPStatusError] = None
+        for name in _cert_aliases(certname):
+            try:
+                result = await self._query(f"nodes/{name}")
+                break
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    last_404 = e
+                    continue
+                raise
+        if result is None:
+            if last_404:
+                raise last_404
+            return {}
         if isinstance(result, dict):
             await self._overlay_latest_report_status([result])
             newest = await self.get_newest_report_for_certname(certname)
@@ -382,13 +401,48 @@ class PuppetDBService:
                 result["status_source"] = "newest_report"
         return result
 
+    async def _query_node_collection(self, kind: str, certname: str) -> List[Dict]:
+        """facts or resources for one node.
+
+        ``GET /nodes/<cert>/facts`` is 404 when the certname is unknown
+        to this OpenVoxDB (ENC-only names, FQDN vs short certname). That
+        is empty data, not a server error. Try aliases, then PQL (which
+        returns [] instead of 404).
+        """
+        if kind not in ("facts", "resources"):
+            raise ValueError(f"unsupported node collection: {kind}")
+        aliases = _cert_aliases(certname)
+        for name in aliases:
+            try:
+                rows = await self._query(f"nodes/{name}/{kind}")
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    continue
+                raise
+            if isinstance(rows, list):
+                return rows
+        for name in aliases:
+            safe = name.replace("\\", "\\\\").replace('"', '\\"')
+            try:
+                rows = await self._query(
+                    "",
+                    params={"query": f'{kind} {{ certname = "{safe}" }}'},
+                )
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    continue
+                raise
+            if isinstance(rows, list) and rows:
+                return rows
+        return []
+
     async def get_node_facts(self, certname: str) -> List[Dict]:
-        """Get all facts for a node."""
-        return await self._query(f"nodes/{certname}/facts")
+        """Get all facts for a node. Unknown certname → []."""
+        return await self._query_node_collection("facts", certname)
 
     async def get_node_resources(self, certname: str) -> List[Dict]:
-        """Get all resources for a node."""
-        return await self._query(f"nodes/{certname}/resources")
+        """Get all resources for a node. Unknown certname → []."""
+        return await self._query_node_collection("resources", certname)
 
     async def get_node_applied_classes(self, certname: str) -> List[str]:
         """Class titles from the last catalog (not ENC layers)."""
