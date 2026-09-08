@@ -1,7 +1,7 @@
 {
   "name": "openvox-gui",
   "private": true,
-  "version": "3.13.0-rc.23+1sec",
+  "version": "3.13.0-rc.24",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +31,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.0",
-    "jsdom": "^30.0.1",
+    "jsdom": "~26.1.0",
     "postcss": "^8.5.28",
     "postcss-preset-mantine": "^1.12.0",
     "postcss-simple-vars": "^7.0.1",

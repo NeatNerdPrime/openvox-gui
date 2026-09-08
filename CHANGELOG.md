@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.24] - 2026-09-08 (fix — Vitest on Node 18/20 + ENC warmup tests)
+
+### Fixed
+- **Frontend tests:** ``jsdom`` 30.x requires Node 22 (``undici``
+  ``markAsUncloneable``). Local ``npm test`` died before any spec ran
+  on Node 18/20. Pin ``jsdom@~26.1.0`` (CI Node 22 still works).
+- **Warmup tests:** ENC class cache, route prefetch, and
+  ``warmSessionCaches`` now assert production-shaped payloads
+  (``role::web`` / ``profile::base``, ``web01.example.com``,
+  ``openvox_*_v1`` session keys) instead of dummy hashes.
+
+### Improved
+- After login, prefetch Classification / Nodes / Reports chunks and
+  seed last-good ENC + fleet session caches so those pages paint
+  immediately.
+
 ## [3.13.0-rc.23+1sec] - 2026-09-08 (security — Dependabot PRs #80–#89)
 
 GitHub Dependabot opened PRs #80–#89 against `main`. Review and

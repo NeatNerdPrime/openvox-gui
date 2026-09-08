@@ -63,6 +63,8 @@ import { useAuth } from '../hooks/AuthContext';
 import { useAppTheme, type AppTheme } from '../hooks/ThemeContext';
 import { useActivity } from '../hooks/ActivityContext';
 import { useInsightsTrickle } from '../hooks/useInsightsTrickle';
+import { useAppWarmup } from '../hooks/useAppWarmup';
+import { prefetchRoute } from '../utils/routePrefetch';
 import { dashboard, config, nodes as nodesApi } from '../services/api';
 import { APP_VERSION } from '../version';
 import type { PaletteAction } from './CommandPalette';
@@ -201,6 +203,7 @@ export function AppShellLayout() {
   const { items: activityItems } = useActivity();
   const runningCount = activityItems.filter((i) => i.status === 'running').length;
   useInsightsTrickle(45000);
+  useAppWarmup();
 
   useHotkeys([
     ['mod+K', () => setPaletteOpen((v) => !v)],
@@ -314,6 +317,11 @@ export function AppShellLayout() {
           opened={isOpen}
           onChange={(o) => setOpenGroups((prev) => ({ ...prev, [item.label]: o }))}
           onClick={handleClick}
+          onMouseEnter={() => {
+            prefetchRoute(item.path);
+            item.children?.forEach((child) => prefetchRoute(child.path));
+          }}
+          onFocus={() => prefetchRoute(item.path)}
           mb={4}
           pl={depth > 0 ? `${indent}px` : undefined}
         >
@@ -330,6 +338,8 @@ export function AppShellLayout() {
         leftSection={<ItemIcon size={depth > 0 ? 16 : 18} />}
         active={isActive}
         onClick={() => { navigate(item.path); setOpened(false); }}
+        onMouseEnter={() => prefetchRoute(item.path)}
+        onFocus={() => prefetchRoute(item.path)}
         mb={1}
         pl={depth > 0 ? `${indent + 4}px` : undefined}
       />
@@ -352,6 +362,8 @@ export function AppShellLayout() {
           leftSection={<ItemIcon size={18} stroke={1.6} />}
           active={navItemMatchesPath(location.pathname, item.path)}
           onClick={() => { navigate(item.path); setOpened(false); }}
+          onMouseEnter={() => prefetchRoute(item.path)}
+          onFocus={() => prefetchRoute(item.path)}
           mb={4}
         />
       );
@@ -382,6 +394,7 @@ export function AppShellLayout() {
           setGroupOpen(o);
         }}
         onClick={handleParentClick}
+        onMouseEnter={() => items.forEach((item) => prefetchRoute(item.path))}
         mb={4}
       >
         {items.map((item) => (

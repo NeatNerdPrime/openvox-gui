@@ -21,6 +21,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters';
 import { OpsTable, OpsColumn } from '../components/OpsTable';
 import { FilterBar } from '../components/FilterBar';
 import { PageHeader } from '../components/PageHeader';
+import { CACHE_ENC_HIERARCHY, CACHE_NODES } from '../utils/cacheKeys';
 
 type ReportNodeRow = {
   certname: string;
@@ -353,7 +354,7 @@ export function ReportsPage() {
   const { data: hierarchy, loading: hierarchyLoading } = useApi(
     () => enc.getHierarchy(),
     [],
-    { cacheKey: 'openvox_enc_hierarchy_v1', pollIntervalMs: 30000 },
+    { cacheKey: CACHE_ENC_HIERARCHY, pollIntervalMs: 30000 },
   );
 
   // Fetch reports
@@ -369,7 +370,7 @@ export function ReportsPage() {
   const { data: fleetNodes, loading: fleetLoading } = useApi(
     () => nodesApi.list(),
     [],
-    { cacheKey: 'openvox_nodes_v1', pollIntervalMs: 20000 },
+    { cacheKey: CACHE_NODES, pollIntervalMs: 20000 },
   );
 
   const loading = hierarchyLoading || reportsLoading || fleetLoading;

@@ -22,6 +22,15 @@ import { useApi } from '../hooks/useApi';
 import { PrettyJson } from '../components/PrettyJson';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { LoadingState } from '../components/StateComponents';
+import {
+  CACHE_ENC_CATALOG,
+  CACHE_ENC_COMMON,
+  CACHE_ENC_HIERARCHY,
+  CACHE_ENC_NODES,
+  CACHE_NODES,
+} from '../utils/cacheKeys';
+import { loadAvailableClasses, readEncClassCache } from '../utils/encClassCache';
+import { readSessionCache, writeSessionCache } from '../utils/sessionCache';
 
 /** Shared shape for ENC environments + groups across Classification tabs. */
 type EncCatalog = {
@@ -76,16 +85,24 @@ function ClassPicker({
   label?: string;
   description?: string;
 }) {
-  const [available, setAvailable] = useState<any>({
-    roles: [], profiles: [], modules: [], all: [], message: null, source: null, host: null,
-  });
-  const [loaded, setLoaded] = useState(false);
+  const [available, setAvailable] = useState<any>(() =>
+    readEncClassCache(environment) || {
+      roles: [], profiles: [], modules: [], all: [], message: null, source: null, host: null,
+    },
+  );
+  const [loaded, setLoaded] = useState(() => readEncClassCache(environment) != null);
   const [manual, setManual] = useState('');
 
   useEffect(() => {
     const ac = new AbortController();
-    setLoaded(false);
-    enc.getAvailableClasses(environment, ac.signal)
+    const cached = readEncClassCache<any>(environment);
+    if (cached) {
+      setAvailable(cached);
+      setLoaded(true);
+    } else {
+      setLoaded(false);
+    }
+    loadAvailableClasses(environment, ac.signal)
       .then((d) => {
         if (ac.signal.aborted) return;
         setAvailable(d || {});
@@ -93,6 +110,7 @@ function ClassPicker({
       })
       .catch((e: any) => {
         if (e?.name === 'AbortError' || ac.signal.aborted) return;
+        if (cached) return;
         setAvailable({
           roles: [], profiles: [], modules: [], all: [],
           message: e?.message || 'Failed to load classes',
@@ -388,26 +406,25 @@ function NodeOScope() {
 function HierarchyTab({ reloadToken = 0 }: { reloadToken?: number }) {
   const navigate = useNavigate();
   const { isRobots } = useAppTheme();
-  const [data, setData] = useState<any>(null);
-  const [puppetNodes, setPuppetNodes] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading } = useApi(
+    () => enc.getHierarchy(),
+    [reloadToken],
+    {
+      cacheKey: CACHE_ENC_HIERARCHY,
+      cacheValidate: (v) => v != null && typeof v === 'object',
+    },
+  );
+  const { data: fleet } = useApi(
+    () => nodesApi.list().catch(() => [] as any[]),
+    [],
+    {
+      cacheKey: CACHE_NODES,
+      cacheValidate: (rows) => Array.isArray(rows),
+    },
+  );
+  const puppetNodes = (Array.isArray(fleet) ? fleet : []).map((x: any) => x.certname).filter(Boolean).sort();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [hier, pn] = await Promise.all([
-        enc.getHierarchy(),
-        nodesApi.list().catch(() => []),
-      ]);
-      setData(hier);
-      setPuppetNodes(pn.map((x: any) => x.certname).sort());
-    } catch {}
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load, reloadToken]);
-
-  if (loading) return <Center h={300}><Loader size="xl" /></Center>;
+  if (loading && !data) return <Center h={300}><Loader size="xl" /></Center>;
   if (!data) return <Alert color="red">Failed to load hierarchy</Alert>;
 
   // Filter hierarchy nodes to only those active in PuppetDB
@@ -674,9 +691,14 @@ async function ensureEncEnvironments(opts?: {
  * One shared catalog for Classification tabs so Create Group immediately
  * appears in Classify Node (and other consumers) without a full page reload.
  */
+function isEncCatalog(value: EncCatalog): boolean {
+  return Array.isArray(value?.groups) && Array.isArray(value?.envs);
+}
+
 function useEncCatalog() {
-  const [catalog, setCatalog] = useState<EncCatalog>({ groups: [], envs: [] });
-  const [ready, setReady] = useState(false);
+  const seed = readSessionCache<EncCatalog>(CACHE_ENC_CATALOG, isEncCatalog);
+  const [catalog, setCatalog] = useState<EncCatalog>(seed || { groups: [], envs: [] });
+  const [ready, setReady] = useState(seed != null);
   const refreshGen = useRef(0);
 
   const refresh = useCallback(async (opts?: {
@@ -720,6 +742,7 @@ function useEncCatalog() {
     if (gen === refreshGen.current) {
       setCatalog(next);
       setReady(true);
+      writeSessionCache(CACHE_ENC_CATALOG, next);
     }
     return next;
   }, []);
@@ -1133,10 +1156,32 @@ function NodesTab({
   envs: any[];
   refreshCatalog: CatalogRefresh;
 }) {
-  const [classified, setClassified] = useState<any[]>([]);
-  const [commonData, setCommonData] = useState<any>(null);
-  const [puppetNodes, setPuppetNodes] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: classifiedRows, loading, refetch: load } = useApi(
+    () => enc.listNodes(),
+    [],
+    {
+      cacheKey: CACHE_ENC_NODES,
+      cacheValidate: (rows) => Array.isArray(rows),
+    },
+  );
+  const { data: commonData } = useApi(
+    () => enc.getCommon().catch(() => null),
+    [],
+    { cacheKey: CACHE_ENC_COMMON },
+  );
+  const { data: fleet } = useApi(
+    () => nodesApi.list().catch(() => [] as any[]),
+    [],
+    {
+      cacheKey: CACHE_NODES,
+      cacheValidate: (rows) => Array.isArray(rows),
+    },
+  );
+  const classified = Array.isArray(classifiedRows) ? classifiedRows : [];
+  const puppetNodes = (Array.isArray(fleet) ? fleet : [])
+    .map((x: any) => x.certname)
+    .filter(Boolean)
+    .sort();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formCert, setFormCert] = useState('');
@@ -1147,29 +1192,6 @@ function NodesTab({
   const [pendingDeleteNode, setPendingDeleteNode] = useState<string | null>(null);
   const [pendingDismissNode, setPendingDismissNode] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Do NOT refreshCatalog here — parent already loaded groups/envs once.
-      // Triple-refresh (catalog + NodesTab + tab-switch) was the main ENC lag.
-      const [n, c, pn] = await Promise.all([
-        enc.listNodes(),
-        enc.getCommon().catch(() => null),
-        nodesApi.list().catch(() => [] as any[]),
-      ]);
-      setClassified(Array.isArray(n) ? n : []);
-      setCommonData(c);
-      setPuppetNodes(
-        Array.isArray(pn) ? pn.map((x: any) => x.certname).filter(Boolean).sort() : [],
-      );
-    } catch {
-      setClassified([]);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   const openCreate = async (prefillCert?: string) => {
     // Lightweight refresh only when opening the modal (groups may have changed)
@@ -1314,7 +1336,7 @@ function NodesTab({
     return key && !puppetSet.has(key);
   });
 
-  if (loading) return <Center h={300}><Loader size="xl" /></Center>;
+  if (loading && classified.length === 0) return <Center h={300}><Loader size="xl" /></Center>;
 
   return (
     <Stack>
@@ -1512,11 +1534,18 @@ function LookupTab() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [puppetNodes, setPuppetNodes] = useState<string[]>([]);
-
-  useEffect(() => {
-    nodesApi.list().then((ns: any[]) => setPuppetNodes(ns.map((n: any) => n.certname).sort())).catch(() => {});
-  }, []);
+  const { data: fleet } = useApi(
+    () => nodesApi.list().catch(() => [] as any[]),
+    [],
+    {
+      cacheKey: CACHE_NODES,
+      cacheValidate: (rows) => Array.isArray(rows),
+    },
+  );
+  const puppetNodes = (Array.isArray(fleet) ? fleet : [])
+    .map((n: any) => n.certname)
+    .filter(Boolean)
+    .sort();
 
   const handleLookup = async () => {
     if (!certname) return;
@@ -1602,25 +1631,21 @@ function LookupTab() {
    TAB: COMMON DEFAULTS
    ═══════════════════════════════════════════════════════════════ */
 function CommonTab() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, refetch: load } = useApi(
+    () => enc.getCommon(),
+    [],
+    { cacheKey: CACHE_ENC_COMMON },
+  );
   const [editing, setEditing] = useState(false);
   const [formClasses, setFormClasses] = useState<string[]>([]);
   const [formParams, setFormParams] = useState<Array<{ key: string; val: string }>>([]);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const c = await enc.getCommon();
-      setData(c);
-      setFormClasses(classDictToList(c.classes));
-      setFormParams(dictToRows(c.parameters));
-    } catch {}
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!data) return;
+    setFormClasses(classDictToList(data.classes));
+    setFormParams(dictToRows(data.parameters));
+  }, [data]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -1632,7 +1657,7 @@ function CommonTab() {
     setSaving(false);
   };
 
-  if (loading) return <Center h={300}><Loader size="xl" /></Center>;
+  if (loading && !data) return <Center h={300}><Loader size="xl" /></Center>;
 
   return (
     <Stack>
@@ -1711,7 +1736,7 @@ export function NodeClassifierPage() {
         )}
       </Group>
       <InfrastructureGroupsHint />
-      <Tabs value={activeTab} onChange={setActiveTab} variant="outline">
+      <Tabs value={activeTab} onChange={setActiveTab} variant="outline" keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="nodes" leftSection={<IconServer size={16} />}>Nodes</Tabs.Tab>
           <Tabs.Tab value="common" leftSection={<IconWorld size={16} />}>Common</Tabs.Tab>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal, TextInput, ScrollArea, UnstyledButton, Text, Group, Kbd, Stack } from '@mantine/core';
 import { useNavigate } from 'react-router';
 import { IconSearch } from '@tabler/icons-react';
+import { prefetchRoute } from '../utils/routePrefetch';
 
 export type PaletteAction = {
   id: string;
@@ -147,6 +148,7 @@ export function CommandPalette({
               <UnstyledButton
                 key={a.id}
                 onClick={() => go(a)}
+                onMouseEnter={() => { if (a.path) prefetchRoute(a.path); }}
                 p="sm"
                 style={{
                   borderRadius: 8,
