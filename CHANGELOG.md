@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.23+1sec] - 2026-09-08 (security — Dependabot PRs #80–#89)
+
+GitHub Dependabot opened PRs #80–#89 against `main`. Review and
+remediation landed on the current RC train. PEP 440 rejects
+``3.13.0-rc.23.1sec`` (``1sec`` is not a valid pre-release segment
+after ``rc.23``), so the security designation is the local segment
+``+1sec`` — same pattern as the historical ``3.10.2+bugfix`` tags.
+
+### Security / Dependencies
+- **Applied (compatible):** python-dotenv 1.2.2 → 1.2.3 (#80),
+  ruff ≥0.16.6 (#82), starlette 1.3.1 → 1.6.0 (#83; GZip and
+  ``max_body_size`` only, FastAPI 0.141.1 still satisfied),
+  postcss 8.5.26 → 8.5.28 (#84), python-multipart 0.0.31 → 0.0.32
+  (#85), asyncpg 0.30.0 → 0.31.0 (#86; connection-leak fix).
+- **Not applied (breaking majors):** @mantine/dropzone 7 → 9 (#81),
+  @mantine/notifications 7 → 9 (#87), @mantine/hooks 7 → 8 (#88).
+  Core stays on Mantine 7.17.8; a single-package major would
+  desync the UI stack. Vitest 4 → 5 (#89) is a major with Node 22
+  and API breaks, not a security pin.
+
+### Fixed
+- Backend pytest 164 passed against the new pins. Frontend
+  typecheck clean. ``npm audit`` reports 0 vulnerabilities.
+
 ## [3.13.0-rc.23] - 2026-09-05 (fix — CI is_worse_fleet same-count trends)
 
 ### Fixed

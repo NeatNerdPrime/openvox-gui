@@ -105,4 +105,4 @@ Thank you for helping keep OpenVox GUI and the broader infrastructure management
 
 ---
 
-*Last updated: 2026-06-22 (in conjunction with pydantic-settings security patch and SECURITY.md addition). See CHANGELOG.md for related dependency and hardening history.*
+*Last updated: 2026-09-08 (Dependabot PRs #80–#89 reviewed; compatible pins shipped in 3.13.0-rc.23+1sec). See CHANGELOG.md for related dependency and hardening history.*
