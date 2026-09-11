@@ -50,6 +50,8 @@ import { cleanCliOutput } from '../utils/cleanCliOutput';
 import {
   parseBoltJsonPayload,
   formatBoltItemsAsHuman,
+  formatPuppetAgentConsole,
+  boltItemsArePuppetAgent,
 } from '../utils/boltOutput';
 
 /* ── ANSI color converter (singleton) ──────────────────────── */
@@ -139,7 +141,9 @@ function ResultPane({ results }: { results: { human?: any; json?: any; rainbow?:
   const errorText = firstResult.error || '';
   const parsed = parseBoltJsonPayload(outputText);
   const humanText = parsed
-    ? formatBoltItemsAsHuman(parsed.items, parsed.meta)
+    ? (boltItemsArePuppetAgent(parsed.items)
+      ? formatPuppetAgentConsole(outputText)
+      : formatBoltItemsAsHuman(parsed.items, parsed.meta))
     : (outputText.trim().startsWith('{')
       ? 'Could not parse Bolt result as human text. Use the JSON tab.'
       : (outputText || errorText || ''));

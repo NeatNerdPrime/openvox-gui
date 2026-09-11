@@ -1,5 +1,6 @@
 /** Parse Bolt --format json even when SSH noise is mixed in. */
 import { isPuppetAgentCommand, isPuppetAgentSuccess } from './puppetAgentExit';
+import { cleanCliOutput } from './cleanCliOutput';
 
 export type BoltItem = {
   target?: string;
@@ -117,6 +118,38 @@ function boltItemSucceeded(item: BoltItem): boolean {
     return true;
   }
   return statusOk;
+}
+
+/** True when Bolt items are a puppet agent run (object or exit 0/2). */
+export function boltItemsArePuppetAgent(items: BoltItem[]): boolean {
+  return items.some(
+    (i) =>
+      isPuppetAgentCommand(String(i.object || '')) ||
+      isPuppetAgentSuccess(i.value?.exit_code),
+  );
+}
+
+/**
+ * CLI-shaped puppet agent output: Info/Notice/Error lines from stdout.
+ * Drops the Bolt JSON wrapper. Use this on success; keep JSON for errors.
+ */
+export function formatPuppetAgentConsole(outputText: string): string {
+  const parsed = parseBoltJsonPayload(outputText);
+  if (!parsed?.items.length) {
+    const cleaned = cleanCliOutput(outputText);
+    if (cleaned.trim().startsWith('{') && cleaned.includes('"items"')) {
+      return '';
+    }
+    return cleaned;
+  }
+  return parsed.items
+    .map((item) => {
+      const val = item.value || {};
+      return cleanCliOutput(String(val.stdout || val.merged_output || ''));
+    })
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
 }
 
 export function formatBoltItemsAsHuman(

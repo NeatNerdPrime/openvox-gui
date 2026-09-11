@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.27] - 2026-09-11 (fix — Run OpenVox shows CLI Puppet output)
+
+### Fixed
+- **Run OpenVox / Orchestration Human tab:** success (exit 0 or 2)
+  shows the agent's Info/Notice lines, not the Bolt JSON wrapper.
+  The JSON payload is kept for failed runs (and the Orchestration
+  JSON tab).
+
 ## [3.13.0-rc.26] - 2026-09-11 (fix — Run OpenVox treats Puppet exit 2 as success)
 
 ### Fixed

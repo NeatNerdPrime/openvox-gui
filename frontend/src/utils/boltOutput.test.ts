@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBoltJsonPayload, formatBoltItemsAsHuman } from './boltOutput';
+import { parseBoltJsonPayload, formatBoltItemsAsHuman, formatPuppetAgentConsole } from './boltOutput';
 
 const messy = `
 \x00{ "items": [
@@ -55,5 +55,31 @@ describe('formatBoltItemsAsHuman', () => {
     expect(human).toContain('changes applied');
     expect(human).not.toContain('Failed on');
     expect(human).not.toContain('The command failed with exit code 2');
+  });
+});
+
+describe('formatPuppetAgentConsole', () => {
+  it('extracts familiar Info/Notice lines from Bolt JSON', () => {
+    const payload = JSON.stringify({
+      items: [
+        {
+          target: '1pass-vault-bot.example.com',
+          action: 'command',
+          object: '/opt/puppetlabs/bin/puppet agent -t',
+          status: 'success',
+          value: {
+            exit_code: 2,
+            stdout:
+              "Info: Using environment 'staging'\nNotice: Applied catalog in 2.96 seconds\n",
+            stderr: '',
+          },
+        },
+      ],
+    });
+    const human = formatPuppetAgentConsole(payload);
+    expect(human).toContain("Info: Using environment 'staging'");
+    expect(human).toContain('Notice: Applied catalog in 2.96 seconds');
+    expect(human).not.toContain('"items"');
+    expect(human).not.toContain('The command failed');
   });
 });

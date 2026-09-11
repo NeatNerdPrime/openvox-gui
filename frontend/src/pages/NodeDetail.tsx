@@ -23,6 +23,7 @@ import { useAppTheme } from '../hooks/ThemeContext';
 import { useActivity } from '../hooks/ActivityContext';
 import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
 import { isPuppetAgentSuccess } from '../utils/puppetAgentExit';
+import { formatPuppetAgentConsole } from '../utils/boltOutput';
 
 /** Defer health glance (extra API + charts) until after first paint. */
 const NodeHealthGlance = lazy(() =>
@@ -345,17 +346,17 @@ export function NodeDetailPage() {
               {puppetResult.returncode === 2 ? ' (changes applied)' : ''}
             </Badge>
           </Group>
-          {(puppetResult.output || puppetResult.error) && (
+          {(formatPuppetAgentConsole(puppetResult.output || '') || puppetResult.error) && (
             <OutputPane
-              output={puppetResult.output}
+              output={formatPuppetAgentConsole(puppetResult.output || '')}
               error={isPuppetAgentSuccess(puppetResult.returncode) ? undefined : puppetResult.error}
               maxHeight={400}
               title="Agent output"
             />
           )}
-          {puppetResult.error && !isPuppetAgentSuccess(puppetResult.returncode) && (
+          {!isPuppetAgentSuccess(puppetResult.returncode) && puppetResult.output && (
             <Code block color="red" style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflow: 'auto', marginTop: 8 }}>
-              {puppetResult.error}
+              {puppetResult.output}
             </Code>
           )}
         </Card>
