@@ -28,6 +28,7 @@ import type { NodeSummary } from '../types';
 import { timeAgo } from '../utils/timeAgo';
 import { isNeedsAttention } from '../utils/needsAttention';
 import { PageHeader } from '../components/PageHeader';
+import { isPuppetAgentSuccess } from '../utils/puppetAgentExit';
 import { CACHE_NODES } from '../utils/cacheKeys';
 import { isImplausibleFleetShrink } from '../utils/fleetGuard';
 import { readSessionCache } from '../utils/sessionCache';
@@ -279,7 +280,7 @@ export function NodesPage() {
         run_as: 'root',
         format: 'json',
       });
-      const ok = r.returncode === 0 || r.returncode === 2;
+      const ok = isPuppetAgentSuccess(r.returncode);
       end(actId, ok ? 'done' : 'error', `exit ${r.returncode}`);
       // Prefer a short human summary — raw Bolt human text says "Failed on… exit 2" even on success
       const failDetail = (r.error || r.output || `Exit code ${r.returncode} on ${certname}`)

@@ -22,6 +22,7 @@ import { notifications } from '@mantine/notifications';
 import { useAppTheme } from '../hooks/ThemeContext';
 import { useActivity } from '../hooks/ActivityContext';
 import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
+import { isPuppetAgentSuccess } from '../utils/puppetAgentExit';
 
 /** Defer health glance (extra API + charts) until after first paint. */
 const NodeHealthGlance = lazy(() =>
@@ -184,7 +185,7 @@ export function NodeDetailPage() {
         format: 'json',
       });
       setPuppetResult(r);
-      const ok = r.returncode === 0 || r.returncode === 2;
+      const ok = isPuppetAgentSuccess(r.returncode);
       end(actId, ok ? 'done' : 'error', `exit ${r.returncode}`);
       // Puppet exit codes: 0 = no changes, 2 = changes applied successfully, anything else = error
       if (r.returncode === 0) {
@@ -337,21 +338,22 @@ export function NodeDetailPage() {
         <Card withBorder shadow="sm" padding="md">
           <Group justify="space-between" mb="xs">
             <Text fw={700} size="sm">
-              Run Output {puppetResult.returncode === 0 ? '✅' : puppetResult.returncode === 2 ? '✅' : '❌'}
+              Run Output {isPuppetAgentSuccess(puppetResult.returncode) ? '✅' : '❌'}
             </Text>
-            <Badge color={puppetResult.returncode === 0 || puppetResult.returncode === 2 ? 'green' : 'red'}>
+            <Badge color={isPuppetAgentSuccess(puppetResult.returncode) ? 'green' : 'red'}>
               Exit {puppetResult.returncode}
+              {puppetResult.returncode === 2 ? ' (changes applied)' : ''}
             </Badge>
           </Group>
           {(puppetResult.output || puppetResult.error) && (
             <OutputPane
               output={puppetResult.output}
-              error={puppetResult.error}
+              error={isPuppetAgentSuccess(puppetResult.returncode) ? undefined : puppetResult.error}
               maxHeight={400}
               title="Agent output"
             />
           )}
-          {puppetResult.error && (
+          {puppetResult.error && !isPuppetAgentSuccess(puppetResult.returncode) && (
             <Code block color="red" style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflow: 'auto', marginTop: 8 }}>
               {puppetResult.error}
             </Code>

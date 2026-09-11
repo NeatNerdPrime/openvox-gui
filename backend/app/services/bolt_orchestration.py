@@ -148,6 +148,50 @@ def _target_exit_code(item: Dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _mark_puppet_agent_item_success(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Bolt marks any non-zero exit as status=failure. Puppet 0/2 are success."""
+    if _target_exit_code(item) not in PUPPET_AGENT_SUCCESS_EXIT_CODES:
+        return item
+    marked = dict(item)
+    marked["status"] = "success"
+    val = marked.get("value")
+    if isinstance(val, dict):
+        val = dict(val)
+        val.pop("_error", None)
+        marked["value"] = val
+    return marked
+
+
+def _rewrite_stdout_items(stdout: str, rewriter: Any) -> str:
+    """Apply rewriter() to each Bolt JSON item; return original text if not JSON."""
+    text = (stdout or "").strip()
+    if not text:
+        return stdout or ""
+    data: Any = None
+    prefix = suffix = ""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            return stdout or ""
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return stdout or ""
+        prefix, suffix = text[:start], text[end + 1 :]
+    if isinstance(data, dict) and isinstance(data.get("items"), list):
+        data["items"] = [
+            rewriter(i) if isinstance(i, dict) else i for i in data["items"]
+        ]
+        return prefix + json.dumps(data) + suffix
+    if isinstance(data, list):
+        data = [rewriter(i) if isinstance(i, dict) else i for i in data]
+        return prefix + json.dumps(data) + suffix
+    return stdout or ""
+
+
 def _target_merged_text(item: Dict[str, Any]) -> str:
     val = item.get("value")
     if not isinstance(val, dict):
@@ -186,6 +230,12 @@ def reinterpret_puppet_agent_bolt_result(
 
     stdout = out.get("stdout") or ""
     items = _iter_bolt_result_items(stdout)
+    if items:
+        # Bolt JSON status is "failure" for exit 2. Rewrite so the GUI
+        # error pane / human formatter do not treat changes-applied as fail.
+        out["stdout"] = _rewrite_stdout_items(stdout, _mark_puppet_agent_item_success)
+        stdout = out["stdout"]
+        items = _iter_bolt_result_items(stdout)
     notes: List[str] = []
 
     if items:
@@ -450,11 +500,22 @@ async def finish_execution_history(
             pass
 
 
-def summarize_bolt_item_failures(stdout: str) -> str:
-    """Pull target stderr / _error.msg out of Bolt --format json."""
+def summarize_bolt_item_failures(
+    stdout: str,
+    *,
+    success_exit_codes: frozenset = frozenset(),
+) -> str:
+    """Pull target stderr / _error.msg out of Bolt --format json.
+
+    Items whose exit_code is in ``success_exit_codes`` are skipped even
+    when Bolt labeled them ``status: failure`` (Puppet agent exit 2).
+    """
     bits: List[str] = []
     for item in _iter_bolt_result_items(stdout or ""):
         if (item.get("status") or "").lower() == "success":
+            continue
+        exit_code = _target_exit_code(item)
+        if exit_code is not None and exit_code in success_exit_codes:
             continue
         val = item.get("value") if isinstance(item.get("value"), dict) else {}
         err = ""
@@ -469,11 +530,23 @@ def summarize_bolt_item_failures(stdout: str) -> str:
     return "\n".join(bits)
 
 
-def sanitize_bolt_result(result: Dict[str, Any]) -> BoltRunResultModel:
+def sanitize_bolt_result(
+    result: Dict[str, Any],
+    *,
+    original_command: Optional[str] = None,
+) -> BoltRunResultModel:
     """Map run_bolt_command dict → API model with ANSI / Bolt noise stripped."""
     stdout = strip_ansi(clean_bolt_console_text(result.get("stdout") or ""))
     stderr = strip_ansi(clean_bolt_console_text(result.get("stderr") or ""))
-    item_err = summarize_bolt_item_failures(result.get("stdout") or "")
+    success_exits = (
+        PUPPET_AGENT_SUCCESS_EXIT_CODES
+        if _is_puppet_agent_invocation(original_command or "")
+        else frozenset()
+    )
+    item_err = summarize_bolt_item_failures(
+        result.get("stdout") or "",
+        success_exit_codes=success_exits,
+    )
     if item_err:
         stderr = (item_err + ("\n" + stderr if stderr else "")).strip()
     return BoltRunResultModel(

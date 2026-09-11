@@ -85,6 +85,41 @@ def test_normalize_puppet_agent_adds_env():
     )
     assert puppet_agent_run_succeeded(r2, "puppet agent -t")
 
+    # Bolt JSON labels exit 2 as status=failure + _error.msg
+    exit2_json = json.dumps({
+        "items": [{
+            "target": "1pass-vault-bot.example.com",
+            "status": "failure",
+            "object": "/opt/puppetlabs/bin/puppet agent -t",
+            "value": {
+                "exit_code": 2,
+                "stdout": "Notice: Applied catalog in 3.14 seconds",
+                "stderr": "",
+                "_error": {"msg": "The command failed with exit code 2"},
+            },
+        }],
+    })
+    r_exit2 = reinterpret_puppet_agent_bolt_result(
+        {"returncode": 1, "stdout": exit2_json, "stderr": ""},
+        original_command="/opt/puppetlabs/bin/puppet agent -t",
+    )
+    assert puppet_agent_run_succeeded(r_exit2, "/opt/puppetlabs/bin/puppet agent -t")
+    assert r_exit2["returncode"] == 2
+    items2 = json.loads(r_exit2["stdout"])["items"]
+    assert items2[0]["status"] == "success"
+    assert "_error" not in items2[0]["value"]
+    sanitized = sanitize_bolt_result(
+        r_exit2, original_command="/opt/puppetlabs/bin/puppet agent -t"
+    )
+    assert sanitized.returncode == 2
+    assert "The command failed with exit code 2" not in (sanitized.error or "")
+    # Non-puppet command exit 2 still surfaces as a failure summary
+    generic = sanitize_bolt_result(
+        {"returncode": 2, "stdout": exit2_json, "stderr": ""},
+        original_command="false",
+    )
+    assert "exit 2" in (generic.error or "")
+
     lock_json = {
         "returncode": 1,
         "stdout": json.dumps({

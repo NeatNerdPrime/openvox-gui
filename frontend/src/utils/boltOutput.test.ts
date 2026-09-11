@@ -33,4 +33,27 @@ describe('formatBoltItemsAsHuman', () => {
     expect(human).toContain('Finished on ok.example.com');
     expect(human).toContain('bolt');
   });
+
+  it('treats Puppet agent exit 2 as success even when Bolt status is failure', () => {
+    const items = [
+      {
+        target: '1pass-vault-bot.example.com',
+        action: 'command',
+        object: '/opt/puppetlabs/bin/puppet agent -t',
+        status: 'failure',
+        value: {
+          exit_code: 2,
+          stdout: 'Notice: Applied catalog in 3.14 seconds',
+          stderr: '',
+          _error: { msg: 'The command failed with exit code 2' },
+        },
+      },
+    ];
+    const human = formatBoltItemsAsHuman(items);
+    expect(human).toContain('Successful on 1 / 1');
+    expect(human).toContain('Finished on 1pass-vault-bot.example.com');
+    expect(human).toContain('changes applied');
+    expect(human).not.toContain('Failed on');
+    expect(human).not.toContain('The command failed with exit code 2');
+  });
 });

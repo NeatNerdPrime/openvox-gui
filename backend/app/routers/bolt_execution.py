@@ -243,7 +243,7 @@ async def run_command(
             format=fmt,
             escalate=escalate,
         )
-        return bolt_orch.sanitize_bolt_result(result)
+        return bolt_orch.sanitize_bolt_result(result, original_command=req.command)
     except HTTPException:
         raise
     except Exception as e:

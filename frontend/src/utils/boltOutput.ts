@@ -1,4 +1,5 @@
 /** Parse Bolt --format json even when SSH noise is mixed in. */
+import { isPuppetAgentCommand, isPuppetAgentSuccess } from './puppetAgentExit';
 
 export type BoltItem = {
   target?: string;
@@ -108,13 +109,23 @@ export function parseBoltJsonPayload(
   return { items, meta: { items, target_count: items.length } };
 }
 
+function boltItemSucceeded(item: BoltItem): boolean {
+  const statusOk = (item.status || '').toLowerCase() === 'success';
+  const cmd = String(item.object || '');
+  const exitCode = item.value?.exit_code;
+  if (isPuppetAgentCommand(cmd) && isPuppetAgentSuccess(exitCode)) {
+    return true;
+  }
+  return statusOk;
+}
+
 export function formatBoltItemsAsHuman(
   items: BoltItem[],
   meta?: any,
 ): string {
   if (!items.length) return '';
-  const ok = items.filter((i) => (i.status || '').toLowerCase() === 'success');
-  const fail = items.filter((i) => (i.status || '').toLowerCase() !== 'success');
+  const ok = items.filter((i) => boltItemSucceeded(i));
+  const fail = items.filter((i) => !boltItemSucceeded(i));
   const lines: string[] = [
     `Successful on ${ok.length} / ${items.length} target(s)` +
       (fail.length ? `, failed on ${fail.length}` : '') +
@@ -125,16 +136,21 @@ export function formatBoltItemsAsHuman(
   const show = [...fail, ...ok];
   for (const item of show) {
     const target = item.target || '(unknown)';
-    const status = (item.status || 'unknown').toLowerCase();
     const val = item.value || {};
+    const succeeded = boltItemSucceeded(item);
     const stdout = String(val.stdout || val.merged_output || '').replace(/\x00/g, '').trim();
     const stderr = String(val.stderr || '').replace(/\x00/g, '').trim();
     const errMsg = val._error?.msg ? String(val._error.msg).trim() : '';
-    lines.push(status === 'success' ? `Finished on ${target}` : `Failed on ${target}`);
-    if (status !== 'success' && errMsg) lines.push(`  ${errMsg}`);
-    if (stdout && status === 'success') lines.push(`  ${stdout.replace(/\s+/g, ' ')}`);
+    if (succeeded) {
+      const extra = val.exit_code === 2 ? ' (changes applied; Puppet exit 2 = success)' : '';
+      lines.push(`Finished on ${target}${extra}`);
+    } else {
+      lines.push(`Failed on ${target}`);
+    }
+    if (!succeeded && errMsg) lines.push(`  ${errMsg}`);
+    if (stdout && succeeded) lines.push(`  ${stdout.replace(/\s+/g, ' ')}`);
     if (stderr && !errMsg.includes(stderr)) lines.push(`  ${stderr}`);
-    if (val.exit_code != null && status !== 'success') {
+    if (val.exit_code != null && !succeeded) {
       lines.push(`  exit ${val.exit_code}`);
     }
     lines.push('');

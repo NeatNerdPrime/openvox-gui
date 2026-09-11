@@ -14,6 +14,7 @@ import { TargetSelector } from '../components/TargetSelector';
 import { OutputPane } from '../components/OutputPane';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useSkipAdhocConfirm } from '../hooks/useSkipAdhocConfirm';
+import { isPuppetAgentSuccess } from '../utils/puppetAgentExit';
 
 /* Simple Error Boundary to prevent result rendering crashes from bubbling to the page bottom */
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
@@ -91,10 +92,12 @@ function stripAnsiForDisplay(text: string): string {
 
 function lineColorForRainbow(line: string): string {
   const l = line.toLowerCase();
+  if (/exit code: 2\b/.test(l) || /puppet exit 2 = success/.test(l) || /changes applied/.test(l)) {
+    return 'teal.4';
+  }
   if (/failed on |error:|err:|_error|command-error|exit code: [1-9]/.test(l)) return 'red.4';
   if (/successful on |finished on |notice:|info:|applied catalog|exit code: 0/.test(l)) return 'green.4';
   if (/warning:|started on /.test(l)) return 'yellow.4';
-  if (/^\[.*\] exit code: 2/.test(l) || /exit code: 2/.test(l)) return 'teal.4'; // changes applied
   return 'gray.3';
 }
 
@@ -141,7 +144,7 @@ function ResultPane({ results }: { results: { human?: any; json?: any; rainbow?:
       ? 'Could not parse Bolt result as human text. Use the JSON tab.'
       : (outputText || errorText || ''));
   const rc = firstResult.returncode;
-  const rcOk = rc === 0 || rc === 2;
+  const rcOk = isPuppetAgentSuccess(rc);
 
   const renderOutput = (format: string) => {
     if (format === 'json') {

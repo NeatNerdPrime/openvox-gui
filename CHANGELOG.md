@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.26] - 2026-09-11 (fix — Run OpenVox treats Puppet exit 2 as success)
+
+### Fixed
+- **Run OpenVox / Orchestration `puppet agent`:** Bolt JSON marks
+  exit 2 (`changes applied`) as ``status: failure`` with
+  ``The command failed with exit code 2``. The GUI copied that into
+  the red error pane even though Puppet exit 2 is a successful run.
+  Agent results now rewrite those items to success, keep 0 and 2 as
+  green, and still treat any other exit as a real failure.
+
 ## [3.13.0-rc.25] - 2026-09-08 (fix — PuppetDB 404 facts is empty, not 500)
 
 ### Fixed
