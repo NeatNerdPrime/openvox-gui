@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.28] - 2026-09-11 (fix — parse Bolt JSON when notes are appended)
+
+### Fixed
+- **Backend test:** `reinterpret_puppet_agent_bolt_result` may append
+  a success note after the JSON payload. Tests parse items via
+  `_iter_bolt_result_items` instead of `json.loads` on the whole
+  stdout string.
+
 ## [3.13.0-rc.27] - 2026-09-11 (fix — Run OpenVox shows CLI Puppet output)
 
 ### Fixed

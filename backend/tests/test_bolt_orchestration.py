@@ -76,6 +76,7 @@ def test_normalize_puppet_agent_adds_env():
     from app.services.bolt_orchestration import (
         reinterpret_puppet_agent_bolt_result,
         puppet_agent_run_succeeded,
+        _iter_bolt_result_items,
     )
 
     # Exit 2 = changes applied → still success for GUI
@@ -105,9 +106,11 @@ def test_normalize_puppet_agent_adds_env():
     )
     assert puppet_agent_run_succeeded(r_exit2, "/opt/puppetlabs/bin/puppet agent -t")
     assert r_exit2["returncode"] == 2
-    items2 = json.loads(r_exit2["stdout"])["items"]
+    # Notes may be appended after the JSON; parse items, not the whole string.
+    items2 = _iter_bolt_result_items(r_exit2["stdout"])
+    assert items2
     assert items2[0]["status"] == "success"
-    assert "_error" not in items2[0]["value"]
+    assert "_error" not in (items2[0].get("value") or {})
     sanitized = sanitize_bolt_result(
         r_exit2, original_command="/opt/puppetlabs/bin/puppet agent -t"
     )
