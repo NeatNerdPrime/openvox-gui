@@ -6,7 +6,7 @@
  * Combines agent-side metrics (from PuppetDB reports) with server-side
  * metrics (from PuppetDB Jolokia/JMX).
  */
-import { useState, useEffect, useCallback, useMemo, cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
   Title, Card, Stack, Group, Text, Badge, Loader, Center, Alert, Grid, Paper, Select, Button,
 } from '@mantine/core';
@@ -66,28 +66,54 @@ function DurationOverlayChart({
   height,
   xLabel = 'Time',
   yLabel = 'Duration',
+  snapshot,
 }: {
   data: Array<Record<string, unknown>>;
   keys: string[];
   names: string[];
   colors: string[];
-  width?: number;
-  height?: number;
+  width: number;
+  height: number;
   xLabel?: string;
   yLabel?: string;
+  snapshot?: Array<{ name: string; mean: number }>;
 }) {
   const { rows, maxes, normalized } = prepareDurationOverlay(data, keys);
   const peak = Math.max(0, ...Object.values(maxes));
+  const snap = (snapshot || []).filter((d) => d.mean > 0);
+  const size = chartSizeProps(width, height);
+  const showDots = rows.length < 4;
+  // Time series is empty or all-zero — still plot the current Jolokia snapshot
+  // so the card is never a blank box on first paint / after Clear History.
+  if (peak <= 0 && snap.length) {
+    const snapPeak = Math.max(...snap.map((d) => d.mean));
+    return (
+      <BarChart data={snap} margin={{ top: 8, right: 12, left: 4, bottom: 18 }} {...size}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
+        <XAxis
+          dataKey="name"
+          tick={{ fontSize: 9, fill: '#8899aa' }}
+          label={{ value: 'Operation', position: 'insideBottom', offset: -2, fill: '#8899aa', fontSize: 9 }}
+        />
+        <YAxis
+          tick={{ fontSize: 9, fill: '#8899aa' }}
+          tickFormatter={durationTickFormatter(snapPeak)}
+          width={52}
+          label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: '#8899aa', fontSize: 9 }}
+        />
+        <ReTooltip {...TOOLTIP_STYLE} formatter={(v: number, n: string) => [formatDuration(Number(v)), n]} />
+        <Bar isAnimationActive={false} dataKey="mean" fill={colors[0] || '#0D6EFD'} name={yLabel} maxBarSize={36} />
+      </BarChart>
+    );
+  }
   const tickFmt = normalized
     ? (v: number) => `${Math.round(v)}%`
     : durationTickFormatter(peak);
-  // ChartPanel cloneElement injects measured size. Without forwarding it,
-  // Recharts paints a 0×0 SVG — no series and no axis ticks/labels.
   return (
     <AreaChart
       data={rows}
       margin={{ top: 8, right: 12, left: 4, bottom: 18 }}
-      {...chartSizeProps(width, height)}
+      {...size}
     >
       <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
       <XAxis
@@ -129,7 +155,7 @@ function DurationOverlayChart({
           stroke={colors[i % colors.length]}
           fill="none"
           strokeWidth={2}
-          dot={false}
+          dot={showDots ? { r: 3 } : false}
           name={
             maxes[k] > 0
               ? `${names[i]} · max ${formatDuration(maxes[k])}`
@@ -179,11 +205,11 @@ interface ChartPanelProps {
   title: string;
   expanded: boolean;
   onClick: () => void;
-  children: ReactNode;
+  render: (width: number, height: number) => ReactNode;
   stats?: Array<{ label: string; value: string; color?: string }>;
 }
 
-function ChartPanel({ title, expanded, onClick, children, stats }: ChartPanelProps) {
+function ChartPanel({ title, expanded, onClick, render, stats }: ChartPanelProps) {
   const height = expanded ? 450 : 200;
   return (
     <Card withBorder shadow="sm" padding="sm" style={{ cursor: 'pointer', transition: 'all 0.2s' }}
@@ -192,7 +218,7 @@ function ChartPanel({ title, expanded, onClick, children, stats }: ChartPanelPro
         <Text size={expanded ? 'md' : 'sm'} fw={700}>{title}</Text>
         {expanded ? <IconArrowsMinimize size={14} color="#8899aa" /> : <IconArrowsMaximize size={14} color="#8899aa" />}
       </Group>
-      {stats && expanded && (
+      {stats && stats.length > 0 && (
         <Group gap="xs" mb="xs">
           {stats.map((s, i) => (
             <Badge key={i} size="sm" variant="light" color={s.color || 'blue'}>{s.label}: {s.value}</Badge>
@@ -200,14 +226,7 @@ function ChartPanel({ title, expanded, onClick, children, stats }: ChartPanelPro
         </Group>
       )}
       <MeasuredArea height={height}>
-        {(w) =>
-          isValidElement(children)
-            ? cloneElement(children as ReactElement<{ width?: number; height?: number }>, {
-                width: w,
-                height,
-              })
-            : children
-        }
+        {(w) => render(w, height)}
       </MeasuredArea>
     </Card>
   );
@@ -216,7 +235,7 @@ function ChartPanel({ title, expanded, onClick, children, stats }: ChartPanelPro
 const SERVER_HISTORY_KEY = 'openvox_perf_server_history';
 const MAX_SERVER_POINTS = 120;
 
-const HISTORY_VERSION = 5; // JMX timers stored as real milliseconds
+const HISTORY_VERSION = 6; // size-safe overlay + snapshot fallback
 
 const COUNT_KEYS = new Set([
   'nodes', 'resources', 'queue_depth',
@@ -296,7 +315,7 @@ export function MetricsPerformancePage({
     fetchBundle,
     [hoursNum, sq],
     {
-      cacheKey: `openvox_metrics_performance_v2_${hoursNum}_${sq}`,
+      cacheKey: `openvox_metrics_performance_v3_${hoursNum}_${sq}`,
       cacheValidate: (d) => d != null && (d as any).perf != null,
       pollIntervalMs: effectivePollIntervalMs(parseInt(refreshRate, 10) * 1000) ?? undefined,
     },
@@ -496,18 +515,28 @@ function MetricsPerformanceContent({
   ].filter(d => d.mean > 0);
   const hashPeak = Math.max(
     0,
+    jmxMean(s.catalog_hash_match),
+    jmxMean(s.catalog_hash_miss),
     ...serverHistoryChart.map((r) =>
       Math.max(Number(r.hash_match_ms) || 0, Number(r.hash_miss_ms) || 0),
     ),
   );
+  const dedupSeries = serverHistoryChart.length
+    ? serverHistoryChart
+    : [{
+        time: lastRefresh.toLocaleTimeString(),
+        dedup_pct: jmxGaugePct(s.dedup_pct),
+        hash_match_ms: jmxMean(s.catalog_hash_match),
+        hash_miss_ms: jmxMean(s.catalog_hash_miss),
+      }];
 
   // Define all 10 chart panels
-  const charts: Array<{ id: string; title: string; stats?: any[]; render: (h: number) => ReactNode }> = [
+  const charts: Array<{ id: string; title: string; stats?: any[]; render: (w: number, h: number) => ReactNode }> = [
     {
       id: 'run-trends', title: 'Run Duration Trends',
       stats: [{ label: 'Avg', value: formatSeconds(stats.avg_run_time || 0) }, { label: 'Max', value: formatSeconds(stats.max_run_time || 0), color: 'red' }],
-      render: () => (
-        <AreaChart data={trends} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+      render: (w, h) => (
+        <AreaChart width={w} height={h} data={trends} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <defs><linearGradient id="gT" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0D6EFD" stopOpacity={0.3}/><stop offset="95%" stopColor="#0D6EFD" stopOpacity={0.02}/></linearGradient></defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={tickTime} />
@@ -520,8 +549,8 @@ function MetricsPerformanceContent({
     },
     {
       id: 'phase-breakdown', title: 'Timing Phase Breakdown',
-      render: () => (
-        <AreaChart data={trends} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+      render: (w, h) => (
+        <AreaChart width={w} height={h} data={trends} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={tickTime} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
@@ -536,8 +565,8 @@ function MetricsPerformanceContent({
     },
     {
       id: 'top10-nodes', title: 'Top 10 Slowest Nodes',
-      render: () => (
-        <BarChart data={top10Bars} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 0 }}>
+      render: (w, h) => (
+        <BarChart width={w} height={h} data={top10Bars} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
           <XAxis type="number" tick={{ fontSize: 9, fill: '#8899aa' }} tickFormatter={formatSeconds} />
           <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 9, fill: '#8899aa' }} />
@@ -555,31 +584,37 @@ function MetricsPerformanceContent({
     {
       id: 'cmd-processing', title: 'Command Processing Time',
       stats: cmdData.map(d => ({ label: d.name, value: String(formatMs(d.mean)), color: 'cyan' })),
-      render: () => (
+      render: (w, h) => (
         <DurationOverlayChart
+          width={w}
+          height={h}
           data={serverHistoryChart}
           keys={['catalog_ms', 'facts_ms', 'report_ms']}
           names={['Catalog', 'Facts', 'Report']}
           colors={['#0D6EFD', '#2ecc71', '#e67e22']}
+          snapshot={cmdData}
         />
       ),
     },
     {
       id: 'storage-timing', title: 'Storage Operation Timing',
       stats: storageData.map(d => ({ label: d.name, value: String(formatMs(d.mean)), color: 'cyan' })),
-      render: () => (
+      render: (w, h) => (
         <DurationOverlayChart
+          width={w}
+          height={h}
           data={serverHistoryChart}
           keys={['store_catalog_ms', 'store_facts_ms', 'store_report_ms']}
           names={['Catalog', 'Facts', 'Report']}
           colors={['#0D6EFD', '#2ecc71', '#e67e22']}
+          snapshot={storageData}
         />
       ),
     },
     {
       id: 'db-pool', title: 'Database Connection Pool',
-      render: () => (
-        <AreaChart data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+      render: (w, h) => (
+        <AreaChart width={w} height={h} data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} allowDecimals={false} />
@@ -597,20 +632,23 @@ function MetricsPerformanceContent({
     {
       id: 'http-latency', title: 'HTTP API Latency',
       stats: httpData.map(d => ({ label: d.name, value: String(formatMs(d.mean)), color: 'cyan' })),
-      render: () => (
+      render: (w, h) => (
         <DurationOverlayChart
+          width={w}
+          height={h}
           data={serverHistoryChart}
           keys={['http_query_ms', 'http_cmd_ms']}
           names={['Query API', 'Command API']}
           colors={['#3498db', '#e74c3c']}
+          snapshot={httpData}
         />
       ),
     },
     {
       id: 'catalog-dedup', title: 'Catalog Deduplication',
       stats: [{ label: 'Dedup Rate', value: `${jmxGaugePct(s.dedup_pct).toFixed(1)}%`, color: 'green' }],
-      render: () => (
-        <ComposedChart data={serverHistoryChart} margin={{ top: 8, right: 12, left: 4, bottom: 18 }}>
+      render: (w, h) => (
+        <ComposedChart width={w} height={h} data={dedupSeries} margin={{ top: 8, right: 12, left: 4, bottom: 18 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
           <XAxis
             dataKey="time"
@@ -686,8 +724,8 @@ function MetricsPerformanceContent({
         { label: 'Young GC', value: `${Number(jmxVal(s.gc_young, 'CollectionCount')) || 0} collections`, color: 'cyan' },
         { label: 'Old GC', value: `${Number(jmxVal(s.gc_old, 'CollectionCount')) || 0} collections`, color: 'orange' },
       ],
-      render: () => (
-        <AreaChart data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+      render: (w, h) => (
+        <AreaChart width={w} height={h} data={serverHistoryChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
           <YAxis tick={{ fontSize: 9, fill: '#8899aa' }} />
@@ -705,8 +743,8 @@ function MetricsPerformanceContent({
         { label: 'Catalog resources', value: `${Number(s.fleet_resources) || Number(jmxVal(s.population_resources, 'Value')) || 0}`, color: 'violet' },
         { label: 'Avg / node', value: `${(Number(s.fleet_avg_resources) || Number(jmxVal(s.population_avg_resources, 'Value')) || 0).toFixed(0)}`, color: 'orange' },
       ],
-      render: () => (
-        <ComposedChart data={serverHistoryChart} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+      render: (w, h) => (
+        <ComposedChart width={w} height={h} data={serverHistoryChart} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.35} />
           <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#64748b' }} />
           <YAxis
@@ -791,9 +829,7 @@ function MetricsPerformanceContent({
           const chart = charts.find(c => c.id === expanded);
           if (!chart) return null;
           return (
-            <ChartPanel title={chart.title} expanded={true} onClick={() => toggleExpand(chart.id)} stats={chart.stats}>
-              {chart.render(450)}
-            </ChartPanel>
+            <ChartPanel title={chart.title} expanded={true} onClick={() => toggleExpand(chart.id)} stats={chart.stats} render={chart.render} />
           );
         })()
       ) : (
@@ -801,9 +837,7 @@ function MetricsPerformanceContent({
         <Grid>
           {charts.map(chart => (
             <Grid.Col key={chart.id} span={6}>
-              <ChartPanel title={chart.title} expanded={false} onClick={() => toggleExpand(chart.id)} stats={chart.stats}>
-                {chart.render(200)}
-              </ChartPanel>
+              <ChartPanel title={chart.title} expanded={false} onClick={() => toggleExpand(chart.id)} stats={chart.stats} render={chart.render} />
             </Grid.Col>
           ))}
         </Grid>

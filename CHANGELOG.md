@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.30] - 2026-09-15 (fix — Monitoring charts paint without cloneElement)
+
+### Fixed
+- **Insights | Monitoring:** a hard refresh did not restore HTTP API
+  Latency, Storage Operation Timing, or Catalog Deduplication. Those
+  panels never received a width (cloneElement onto a wrapper). Chart
+  panels now pass measured size into each chart. If the time series is
+  empty, the current Jolokia snapshot is drawn as bars so the card is
+  never a blank box. Lab OpenVoxDB already returns these timers
+  (storage ~17–39ms, HTTP ~7–43ms, dedup 100%).
+
 ## [3.13.0-rc.29] - 2026-09-15 (fix — Insights Monitoring duration charts)
 
 ### Fixed

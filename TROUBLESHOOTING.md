@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.13.0-rc.29**
+**OpenVox GUI Version 3.13.0-rc.30**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.13.0-rc.29"}
+   # Should return: {"status":"ok","version":"3.13.0-rc.30"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -525,11 +525,12 @@ must receive the measured chart width/height. Without that, Recharts paints a
 
 **Fix:**
 
-1. Upgrade to **3.13.0-rc.29** or later and hard-refresh (`Cmd+Shift+R`).
-2. On the Run Performance card, click **Clear History** so localStorage
-   drops pre-fix all-zero points, then wait one refresh cycle (30s).
-3. If HTTP/storage still stay at 0, confirm Jolokia is reachable — see
-   [METRICS.md](docs/METRICS.md).
+1. Upgrade to **3.13.0-rc.30** or later. A hard refresh of rc.29 is
+   not enough — those cards never received a chart width.
+2. Confirm the footer / health version is **3.13.0-rc.30**.
+3. On Run Performance, click **Clear History** so old all-zero
+   localStorage points are dropped. The cards should show current
+   Jolokia bars immediately, then a time series as samples arrive.
 
 ### Problem: Theme Not Switching
 
