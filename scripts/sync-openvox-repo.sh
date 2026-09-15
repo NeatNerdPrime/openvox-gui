@@ -932,10 +932,28 @@ curl_sync_apt() {
     done
 }
 
+# One filename per line next to the .debs. install.bash fetches this *file*
+# so puppetserver :8140 (no autoindex) and GUI :4567 both work.
+write_apt_file_indexes() {
+    local d
+    for d in \
+        "${PKG_REPO_DIR}"/apt/pool/openvox*/o/openvox-agent \
+        "${PKG_REPO_DIR}"/apt/openvox*/o/openvox-agent
+    do
+        [ -d "$d" ] || continue
+        if ls -1 "$d"/*.deb >/dev/null 2>&1; then
+            # shellcheck disable=SC2012
+            ls -1 "$d" | grep -E '\.deb$' > "${d}/index.txt" || true
+            info "  wrote ${d}/index.txt ($(wc -l < "${d}/index.txt" | tr -d ' ') debs)"
+        fi
+    done
+}
+
 sync_apt() {
     info "Syncing apt packages -> ${PKG_REPO_DIR}/apt/"
     if [ "$HAVE_RSYNC" = "true" ]; then
         if rsync_sync_apt; then
+            write_apt_file_indexes
             return 0
         fi
         if [ "$RSYNC_FALLBACK" != "true" ]; then
@@ -946,6 +964,7 @@ sync_apt() {
         warn "rsync failed for apt; falling back to HTTPS ${APT_BASE}"
     fi
     curl_sync_apt
+    write_apt_file_indexes
 }
 
 # ─── downloads.voxpupuli.org/windows/ (MSI installers) ───────────────────────

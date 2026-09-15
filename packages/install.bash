@@ -656,9 +656,27 @@ apt_dist_suite() {
     esac
 }
 
+# Newest openvox-agent_*.deb for $arch+$dist from a list of names/paths.
+_apt_pick_deb() {
+    local names="$1" pick=""
+    pick=$(printf '%s\n' "$names" \
+        | grep -E 'openvox-agent_.*\.deb' \
+        | grep -F "$arch" \
+        | grep -Fi "$dist" \
+        | sort -V | tail -1) || true
+    if [ -z "$pick" ]; then
+        pick=$(printf '%s\n' "$names" \
+            | grep -E 'openvox-agent_.*\.deb' \
+            | grep -F "$arch" \
+            | sort -V | tail -1) || true
+    fi
+    printf '%s' "$pick"
+}
+
 setup_apt_repo() {
-    # Mirror is a raw .deb tree under /packages/apt/openvox{N}/ (pool walk).
-    # No dists/ InRelease/Packages — those 404 and are ephemeral.
+    # Prefer file indexes (Packages.gz / index.txt). Directory HTML is last
+    # because Starlette StaticFiles does not autoindex — GUI :4567 now does,
+    # puppetserver :8140 still will not unless index.txt is present.
     local apt_root="${PKG_REPO_URL%/}/apt"
     local ver_url="${apt_root}/openvox${OPENVOX_VERSION}"
     local pool_url="${apt_root}/pool/openvox${OPENVOX_VERSION}/o/openvox-agent"
@@ -678,50 +696,101 @@ setup_apt_repo() {
         curl_tls_args="--insecure"
     fi
 
-    info "Installing openvox-agent from raw .deb mirror"
+    info "Installing openvox-agent from local apt mirror"
     info "  match: ${dist} ${arch}"
 
-    local listing hrefs deb index_url=""
+    local listing hrefs deb index_url="" deb_url=""
     local curl_time="--connect-timeout 15 --max-time 90"
-    local try
-    # rsync sync: apt/pool/openvoxN/o/openvox-agent/
-    # curl fallback: apt/openvoxN/o/openvox-agent/ or apt/openvoxN/
-    for try in "${pool_url}/" "${ver_url}/o/openvox-agent/" "${ver_url}/"; do
+    local try raw filenames
+
+    # 1) Official apt metadata — a *file*, so it works without autoindex.
+    for try in \
+        "${apt_root}/dists/${dist}/openvox${OPENVOX_VERSION}/binary-${arch}/Packages.gz" \
+        "${apt_root}/dists/${dist}/openvox${OPENVOX_VERSION}/binary-${arch}/Packages"
+    do
         info "  index: ${try}"
         # shellcheck disable=SC2086
-        listing=$(curl -fsSL ${curl_tls_args} ${curl_time} "$try" || true)
-        if [ -n "$listing" ]; then
+        raw=$(curl -fsSL ${curl_tls_args} ${curl_time} "$try" || true)
+        [ -n "$raw" ] || continue
+        if printf '%s' "$try" | grep -q '\.gz$'; then
+            raw=$(printf '%s' "$raw" | gzip -dc 2>/dev/null || printf '%s' "$raw")
+        fi
+        filenames=$(printf '%s\n' "$raw" | awk -v want="$arch" '
+            $1=="Package:" { pkg=$2 }
+            $1=="Architecture:" { a=$2 }
+            $1=="Filename:" { fn=$2 }
+            NF==0 {
+                if (pkg=="openvox-agent" && (a=="" || a==want || a=="all")) print fn
+                pkg=""; a=""; fn=""
+            }
+            END {
+                if (pkg=="openvox-agent" && (a=="" || a==want || a=="all")) print fn
+            }
+        ')
+        deb=$(_apt_pick_deb "$filenames")
+        if [ -n "$deb" ]; then
             index_url="$try"
+            case "$deb" in
+                http*://*) deb_url="$deb" ;;
+                /*)        deb_url="$deb" ;;
+                pool/*)    deb_url="${apt_root}/${deb}" ;;
+                *)         deb_url="${apt_root}/${deb}" ;;
+            esac
             break
         fi
     done
-    if [ -z "$listing" ]; then
+
+    # 2) index.txt written by sync-openvox-repo.sh (file — works on :8140).
+    if [ -z "$deb_url" ]; then
+        for try in \
+            "${pool_url}/index.txt" \
+            "${ver_url}/o/openvox-agent/index.txt" \
+            "${ver_url}/index.txt"
+        do
+            info "  index: ${try}"
+            # shellcheck disable=SC2086
+            listing=$(curl -fsSL ${curl_tls_args} ${curl_time} "$try" || true)
+            [ -n "$listing" ] || continue
+            deb=$(_apt_pick_deb "$listing")
+            [ -n "$deb" ] || continue
+            index_url="$try"
+            case "$deb" in
+                http*://*|/*) deb_url="$deb" ;;
+                */*)          deb_url="${apt_root}/${deb#/}" ;;
+                *)            deb_url="$(dirname "$try")/${deb}" ;;
+            esac
+            break
+        done
+    fi
+
+    # 3) HTML directory listing (GUI :4567 PackageStaticFiles autoindex).
+    if [ -z "$deb_url" ]; then
+        for try in "${pool_url}/" "${ver_url}/o/openvox-agent/" "${ver_url}/"; do
+            info "  index: ${try}"
+            # shellcheck disable=SC2086
+            listing=$(curl -fsSL ${curl_tls_args} ${curl_time} "$try" || true)
+            [ -n "$listing" ] || continue
+            hrefs=$(printf '%s\n' "$listing" | sed -n 's/.*href="\([^"]*\)".*/\1/p' | grep -vE '^\.\./|^/' || true)
+            deb=$(_apt_pick_deb "$hrefs")
+            [ -n "$deb" ] || continue
+            index_url="$try"
+            case "$deb" in
+                http*://*|/*) deb_url="$deb" ;;
+                *)            deb_url="${try}${deb}" ;;
+            esac
+            break
+        done
+    fi
+
+    if [ -z "$deb_url" ]; then
         fail "Empty package index (timeout or 404). Tried:
+  ${apt_root}/dists/${dist}/openvox${OPENVOX_VERSION}/binary-${arch}/Packages.gz
+  ${pool_url}/index.txt
   ${pool_url}/
-  ${ver_url}/o/openvox-agent/
-  ${ver_url}/
 On the console: ls /opt/openvox-pkgs/apt/pool/openvox${OPENVOX_VERSION}/o/openvox-agent/
 If empty, run Infrastructure → Agent Install → Sync."
     fi
-    info "  index: ${index_url} ($(printf '%s' "$listing" | wc -c) bytes)"
-    hrefs=$(printf '%s\n' "$listing" | sed -n 's/.*href="\([^"]*\)".*/\1/p' | grep -vE '^\.\./|^/')
-    deb=$(printf '%s\n' "$hrefs" \
-        | grep -E 'openvox-agent_.*\.deb$' \
-        | grep -F "$arch" \
-        | grep -Fi "$dist" \
-        | sort -V | tail -1)
-    if [ -z "$deb" ]; then
-        deb=$(printf '%s\n' "$hrefs" \
-            | grep -E 'openvox-agent_.*\.deb$' \
-            | grep -F "$arch" \
-            | sort -V | tail -1)
-    fi
-    [ -n "$deb" ] || fail "No openvox-agent .deb for ${dist}/${arch} under ${index_url}"
-
-    local deb_url="${index_url}${deb}"
-    case "$deb" in
-        http*|/*) deb_url="$deb" ;;
-    esac
+    info "  index: ${index_url}"
     info "  deb  : ${deb_url}"
     # shellcheck disable=SC2086
     curl -fSL --connect-timeout 15 --max-time 300 ${curl_tls_args} \

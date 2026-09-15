@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.13.0-rc.30**
+**OpenVox GUI Version 3.13.0-rc.31**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.13.0-rc.30"}
+   # Should return: {"status":"ok","version":"3.13.0-rc.31"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1376,6 +1376,24 @@ sudo update-ca-trust extract
 ```
 
 ### Problem: Agent Install page shows "Mirror size: 0 B" / "Last sync: never"
+
+### Problem: Agent install 404s on `/packages/apt/pool/.../openvox-agent/`
+
+**Symptom:** `curl https://<console>:4567/packages/install.bash` succeeds,
+then the script fails with 404 on the three apt directory URLs (pool,
+`apt/openvox8/o/openvox-agent/`, `apt/openvox8/`).
+
+**Cause:** those are directory GETs. FastAPI `StaticFiles` does not list
+directories, so the folder 404s even when the `.deb` files exist.
+
+**Fix:** upgrade the console to **3.13.0-rc.31** or later (GUI autoindex
++ `install.bash` uses `Packages.gz` / `index.txt`). Re-run the same
+one-liner against `:4567`. Confirm with:
+
+```bash
+curl -skI https://<console>:4567/packages/apt/pool/openvox8/o/openvox-agent/
+# expect HTTP 200 and an HTML body containing href="openvox-agent_...deb"
+```
 
 The local mirror at `/opt/openvox-pkgs/` is empty. Either:
 

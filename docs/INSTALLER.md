@@ -582,6 +582,29 @@ sudo curl -ksLf https://<fqdn>:8140/puppet-ca/v1/certificate/ca \
 sudo update-ca-trust extract
 ```
 
+### `404` on `/packages/apt/pool/openvox8/o/openvox-agent/` (directory)
+
+`curl …/packages/install.bash` works (that is a **file**) but the
+bootstrap then 404s on the **directory** URLs:
+
+```
+/packages/apt/pool/openvox8/o/openvox-agent/
+/packages/apt/openvox8/o/openvox-agent/
+/packages/apt/openvox8/
+```
+
+Cause: Starlette `StaticFiles` does not generate directory listings.
+`html=True` only serves `index.html`. The `.deb` files can be on disk
+and a direct GET of a `.deb` returns 200 while the folder still 404s.
+
+Fixed in **3.13.0-rc.31**: the GUI (`:4567/packages`) autoindexes those
+dirs, `install.bash` prefers `dists/…/Packages.gz` then `index.txt`,
+and `sync-openvox-repo.sh` writes `index.txt` next to the debs (so
+puppetserver `:8140` works too).
+
+Upgrade the **console** (the host that serves `--pkg-repo-url`), then
+re-run the one-liner. No mirror re-sync is required for `:4567`.
+
 ### `404 Not Found` fetching e.g. `/packages/apt/dists/ubuntu24.04/openvox8/binary-amd64/Packages`
 
 Different from "puppetserver returns ~378 bytes of HTML" above --

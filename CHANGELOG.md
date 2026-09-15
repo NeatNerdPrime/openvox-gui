@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.31] - 2026-09-15 (fix — apt /packages directory 404s)
+
+### Fixed
+- **Agent install (apt):** `curl …/packages/install.bash` succeeded, then
+  404'd on `/packages/apt/pool/openvox8/o/openvox-agent/` (and the
+  flattened `apt/openvox8/` walk). The 60G mirror is fine — those URLs
+  are **directories**. Starlette `StaticFiles` does not autoindex, so
+  the folder 404s while a direct `.deb` GET is 200. Consoles already
+  have `dists/ubuntu24.04/openvox8/binary-amd64/Packages.gz`.
+  `install.bash` now reads that file (then `index.txt`, then HTML).
+  The GUI `:4567/packages` mount lists directories. Sync writes
+  `index.txt` next to the debs for puppetserver `:8140`.
+
 ## [3.13.0-rc.30] - 2026-09-15 (fix — Monitoring charts paint without cloneElement)
 
 ### Fixed

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
+from .utils.pkg_static import PackageStaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
@@ -353,11 +354,15 @@ if frontend_dist.exists():
 # /packages/* falls through to the SPA 404 handler.
 _pkg_repo_dir = Path(os.environ.get("OPENVOX_GUI_PKG_REPO_DIR", "/opt/openvox-pkgs"))
 if _pkg_repo_dir.exists():
-    # html=False so directory listings are NOT served (we don't want
-    # to leak the full directory structure to anonymous users).
-    # Auto-error responses for missing files are handled by StaticFiles
-    # itself, returning a 404 that flows through to the SPA catch-all.
-    app.mount("/packages", StaticFiles(directory=str(_pkg_repo_dir), html=False), name="packages")
+    # Autoindex directories so install.bash can scrape pool/ for .debs.
+    # Starlette html=True only serves index.html — it does not list files —
+    # which made GET /packages/apt/pool/.../openvox-agent/ a 404 even when
+    # the .debs were on disk. Individual files still stream as before.
+    app.mount(
+        "/packages",
+        PackageStaticFiles(directory=str(_pkg_repo_dir), html=False),
+        name="packages",
+    )
 
 
 @app.get("/health")
