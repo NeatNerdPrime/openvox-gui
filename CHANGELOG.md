@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.29] - 2026-09-15 (fix — Insights Monitoring duration charts)
+
+### Fixed
+- **Insights | Monitoring / Run Performance:** HTTP API Latency,
+  Storage Operation Timing, and Catalog Deduplication painted a 0×0
+  SVG (no series, no X/Y labels). `DurationOverlayChart` now forwards
+  the measured width/height, always draws Time/Duration axes, and
+  Catalog Deduplication plots the dedup rate plus hash times.
+- **OpenVoxDB Jolokia:** HTTP timer ObjectNames now try `/pdb/query/v4`
+  and `/pdb/cmd/v1`, search when the canned name 404s, and POST with
+  unescaped slashes. Storage beans are resolved if the unprefixed name
+  is missing.
+
 ## [3.13.0-rc.28] - 2026-09-11 (fix — parse Bolt JSON when notes are appended)
 
 ### Fixed

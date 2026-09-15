@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildHourlyNodeSeries,
+  chartSizeProps,
   defaultMaWindow,
   durationTickFormatter,
   formatDuration,
+  jmxGaugePct,
+  jmxMean,
   jmxTimerToMs,
   movingAverageSeries,
   prepareDurationOverlay,
@@ -70,6 +73,31 @@ describe('jmxTimerToMs', () => {
     expect(jmxTimerToMs(12.5)).toBe(12.5);
     expect(jmxTimerToMs(0.004)).toBe(0.004);
     expect(jmxTimerToMs(0)).toBe(0);
+  });
+});
+
+describe('jmxMean', () => {
+  it('reads Mean from a timer and ignores Jolokia error objects', () => {
+    expect(jmxMean({ Mean: 5_000_000 })).toBe(5);
+    expect(jmxMean({ error: 'InstanceNotFoundException', status: 404 })).toBe(0);
+    expect(jmxMean(12.5)).toBe(12.5);
+  });
+});
+
+describe('jmxGaugePct', () => {
+  it('accepts a 0–1 ratio, a 0–100 gauge, or a bare number', () => {
+    expect(jmxGaugePct({ Value: 0.85 })).toBeCloseTo(85);
+    expect(jmxGaugePct(0.4)).toBeCloseTo(40);
+    expect(jmxGaugePct({ Value: 92 })).toBe(92);
+    expect(jmxGaugePct(null)).toBe(0);
+  });
+});
+
+describe('chartSizeProps', () => {
+  it('only forwards positive width and height so Recharts can paint axes', () => {
+    expect(chartSizeProps(640, 200)).toEqual({ width: 640, height: 200 });
+    expect(chartSizeProps(0, 200)).toEqual({ height: 200 });
+    expect(chartSizeProps(undefined, undefined)).toEqual({});
   });
 });
 

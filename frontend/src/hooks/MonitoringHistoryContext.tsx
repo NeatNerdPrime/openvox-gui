@@ -24,6 +24,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { metrics, performance as perfApi } from '../services/api';
+import { jmxGaugePct, jmxMean } from '../utils/chartDefaults';
 
 const PERF_HIST_KEY = 'openvox_monitor_perf_hist_v2';
 const PS_HIST_KEY = 'openvox_monitor_ps_hist_v3';
@@ -189,22 +190,23 @@ export function MonitoringHistoryProvider({ children }: { children: ReactNode })
           const point: AnyPoint = {
             ts: tsNow,
             time: hourKeyFromMs(tsNow),
-            catalog_ms: Number(server.catalog_processing?.Mean) || 0,
-            facts_ms: Number(server.facts_processing?.Mean) || 0,
-            report_ms: Number(server.report_processing?.Mean) || 0,
-            store_catalog_ms: Number(server.store_catalog?.Mean) / 1000 || 0,
-            store_facts_ms: Number(server.store_facts?.Mean) / 1000 || 0,
-            store_report_ms: Number(server.store_report?.Mean) / 1000 || 0,
-            http_query_ms: Number(server.http_query_time?.Mean) || 0,
-            http_cmd_ms: Number(server.http_cmd_time?.Mean) || 0,
+            catalog_ms: jmxMean(server.catalog_processing),
+            facts_ms: jmxMean(server.facts_processing),
+            report_ms: jmxMean(server.report_processing),
+            store_catalog_ms: jmxMean(server.store_catalog),
+            store_facts_ms: jmxMean(server.store_facts),
+            store_report_ms: jmxMean(server.store_report),
+            http_query_ms: jmxMean(server.http_query_time),
+            http_cmd_ms: jmxMean(server.http_cmd_time),
             write_active: Number(server.write_pool_active?.Value) || 0,
             write_idle: Number(server.write_pool_idle?.Value) || 0,
             read_active: Number(server.read_pool_active?.Value) || 0,
             read_idle: Number(server.read_pool_idle?.Value) || 0,
             write_pending: Number(server.write_pool_pending?.Value) || 0,
             read_pending: Number(server.read_pool_pending?.Value) || 0,
-            hash_match_ms: Number(server.catalog_hash_match?.Mean) / 1000 || 0,
-            hash_miss_ms: Number(server.catalog_hash_miss?.Mean) / 1000 || 0,
+            hash_match_ms: jmxMean(server.catalog_hash_match),
+            hash_miss_ms: jmxMean(server.catalog_hash_miss),
+            dedup_pct: jmxGaugePct(server.dedup_pct),
             gc_young_count: Number(server.gc_young?.CollectionCount) || 0,
             gc_old_count: Number(server.gc_old?.CollectionCount) || 0,
             nodes: Number(server.fleet_nodes)

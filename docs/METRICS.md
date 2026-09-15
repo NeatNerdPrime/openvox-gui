@@ -203,6 +203,7 @@ If charts are empty or show only zeros after configuration + restart, click the 
 | Only partial data              | Using old top-level `enabled` in metrics.conf     | Switch to the nested structure |
 | Works in curl but not GUI      | GUI using wrong cert path or wrong hostname       | Check `.env` / settings for `puppet_ssl_*` paths |
 | Data appears after delay       | Caching (30s in backend) + browser localStorage   | Hard refresh + wait 30–60s |
+| HTTP / storage / dedup blank | Overlay chart size or HTTP bean name | Upgrade; Clear History; see TROUBLESHOOTING |
 
 You can also use the **ovox CLI**:
 

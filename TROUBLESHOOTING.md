@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.13.0-rc.28**
+**OpenVox GUI Version 3.13.0-rc.29**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.13.0-rc.28"}
+   # Should return: {"status":"ok","version":"3.13.0-rc.29"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -510,6 +510,26 @@ sudo ./install.sh
 3. **Check for JavaScript errors:**
    - Disable browser extensions
    - Try a different browser
+
+### Problem: Insights | Monitoring storage / HTTP / catalog-dedup charts are blank
+
+**Symptoms:** Run Performance (full page or the Monitoring wallboard) shows
+**Storage Operation Timing**, **HTTP API Latency**, and **Catalog Deduplication**
+with no lines and no X/Y axis labels. Command Processing / DB pool / GC may
+still look fine.
+
+**Cause (3.13.0-rc.29+):** those three panels share a duration overlay that
+must receive the measured chart width/height. Without that, Recharts paints a
+0×0 SVG. HTTP beans also vary by OpenVoxDB version (`/pdb/query` vs
+`/pdb/query/v4`); the backend now searches Jolokia when the canned name 404s.
+
+**Fix:**
+
+1. Upgrade to **3.13.0-rc.29** or later and hard-refresh (`Cmd+Shift+R`).
+2. On the Run Performance card, click **Clear History** so localStorage
+   drops pre-fix all-zero points, then wait one refresh cycle (30s).
+3. If HTTP/storage still stay at 0, confirm Jolokia is reachable — see
+   [METRICS.md](docs/METRICS.md).
 
 ### Problem: Theme Not Switching
 

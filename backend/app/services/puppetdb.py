@@ -26,6 +26,14 @@ from typing import Any, Dict, List, Optional
 from copy import deepcopy
 from ..config import settings
 from ..utils.ttl_cache import get_or_set as cache_get_or_set
+from ..utils.jolokia import (
+    escape_jolokia_path,
+    jolokia_row_value,
+    normalize_mbean,
+    pick_http_latency_beans,
+    timer_present,
+    unescape_jolokia_mbean,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -807,7 +815,11 @@ class PuppetDBService:
             return out
         try:
             client = await self._get_client()
-            body = [{"type": "read", "mbean": mbean} for mbean in names.values()]
+            # POST body uses real ObjectNames. !/ is only for GET URL paths.
+            body = [
+                {"type": "read", "mbean": unescape_jolokia_mbean(mbean)}
+                for mbean in names.values()
+            ]
             resp = await client.post("/metrics/v2/read", json=body)
             if resp.status_code == 200:
                 payload = resp.json()
@@ -821,18 +833,20 @@ class PuppetDBService:
                             continue
                         req = row.get("request") or {}
                         mbean = req.get("mbean")
-                        if mbean:
-                            by_mbean[str(mbean)] = row.get("value", row)
+                        val = jolokia_row_value(row)
+                        if mbean and val is not None:
+                            by_mbean[normalize_mbean(str(mbean))] = val
                 for key, mbean in names.items():
-                    if mbean in by_mbean:
-                        out[key] = by_mbean[mbean]
-                if any(v is not None for v in out.values()):
-                    return out
+                    matched = by_mbean.get(normalize_mbean(mbean))
+                    if matched is not None:
+                        out[key] = matched
         except Exception as e:
             logger.warning("Jolokia bulk read failed: %s", e)
-        async def _one(key: str, mbean: str) -> None:
-            out[key] = (await self.get_pdb_metrics(mbean)).get("value")
-        await asyncio.gather(*[_one(k, m) for k, m in names.items()])
+        missing = {k: m for k, m in names.items() if out.get(k) is None}
+        if missing:
+            async def _one(key: str, mbean: str) -> None:
+                out[key] = (await self.get_pdb_metrics(mbean)).get("value")
+            await asyncio.gather(*[_one(k, m) for k, m in missing.items()])
         return out
 
     async def get_report(self, report_hash: str) -> Dict:
@@ -1304,12 +1318,78 @@ class PuppetDBService:
         """Query PuppetDB's JMX metrics endpoint."""
         try:
             client = await self._get_client()
-            resp = await client.get(f"/metrics/v2/read/{metric_name}")
+            resp = await client.get(f"/metrics/v2/read/{escape_jolokia_path(metric_name)}")
             resp.raise_for_status()
-            return resp.json()
+            body = resp.json()
+            if isinstance(body, dict) and jolokia_row_value(body) is None and body.get("error"):
+                return {}
+            return body if isinstance(body, dict) else {}
         except Exception as e:
             logger.warning(f"Failed to get PuppetDB metric {metric_name}: {e}", exc_info=True)
             return {}
+
+    async def search_pdb_mbeans(self, pattern: str) -> List[str]:
+        """Jolokia search. *pattern* is an ObjectName glob, e.g. domain:name=*."""
+        try:
+            client = await self._get_client()
+            resp = await client.get(f"/metrics/v2/search/{escape_jolokia_path(pattern)}")
+            if resp.status_code != 200:
+                return []
+            body = resp.json()
+            val = body.get("value") if isinstance(body, dict) else body
+            if isinstance(val, list):
+                return [str(x) for x in val if x]
+            return []
+        except Exception as e:
+            logger.warning("Jolokia search failed for %s: %s", pattern, e)
+            return []
+
+    async def fill_pdb_http_latency(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve query/cmd HTTP timers when the canned ObjectNames 404."""
+        if timer_present(results.get("http_query_time")) and timer_present(
+            results.get("http_cmd_time")
+        ):
+            return results
+        beans = await self.search_pdb_mbeans("puppetlabs.puppetdb.http:name=*")
+        query_name, cmd_name = pick_http_latency_beans(beans)
+        to_fetch: Dict[str, str] = {}
+        if not timer_present(results.get("http_query_time")) and query_name:
+            to_fetch["http_query_time"] = query_name
+        if not timer_present(results.get("http_cmd_time")) and cmd_name:
+            to_fetch["http_cmd_time"] = cmd_name
+        if to_fetch:
+            extra = await self.get_pdb_metrics_bulk(to_fetch)
+            for key, val in extra.items():
+                if timer_present(val):
+                    results[key] = val
+        return results
+
+    async def fill_pdb_storage_metrics(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve storage timers when the unprefixed ObjectName is missing."""
+        wanted = {
+            "store_catalog": "replace-catalog-time",
+            "store_facts": "replace-facts-time",
+            "store_report": "store-report-time",
+            "catalog_hash_match": "catalog-hash-match-time",
+            "catalog_hash_miss": "catalog-hash-miss-time",
+            "dedup_pct": "duplicate-pct",
+        }
+        if all(results.get(k) is not None for k in wanted):
+            return results
+        beans = await self.search_pdb_mbeans("puppetlabs.puppetdb.storage:name=*")
+        to_fetch: Dict[str, str] = {}
+        for key, suffix in wanted.items():
+            if results.get(key) is not None:
+                continue
+            hit = next((b for b in beans if suffix in b), None)
+            if hit:
+                to_fetch[key] = hit
+        if to_fetch:
+            extra = await self.get_pdb_metrics_bulk(to_fetch)
+            for key, val in extra.items():
+                if val is not None:
+                    results[key] = val
+        return results
 
     # ─── System Inventory Report ────────────────────────────
 

@@ -53,6 +53,38 @@ export function jmxTimerToMs(raw: unknown): number {
   return n;
 }
 
+/** Jolokia timer/gauge: bare number, {Mean}, {Value}, or an error object. */
+export function jmxMean(obj: unknown): number {
+  if (obj == null || typeof obj === 'boolean') return 0;
+  if (typeof obj === 'number') return jmxTimerToMs(obj);
+  if (typeof obj !== 'object') return jmxTimerToMs(obj);
+  const o = obj as Record<string, unknown>;
+  if (o.error && o.Mean == null && o.mean == null && o.Value == null) return 0;
+  return jmxTimerToMs(o.Mean ?? o.mean ?? o.Value ?? o.value);
+}
+
+/** Duplicate-pct and similar gauges: 0–1 ratio or already 0–100. */
+export function jmxGaugePct(obj: unknown): number {
+  let n: number;
+  if (typeof obj === 'number') n = obj;
+  else if (obj && typeof obj === 'object') {
+    const o = obj as Record<string, unknown>;
+    n = Number(o.Value ?? o.value ?? o.Mean);
+  } else {
+    n = Number(obj);
+  }
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n <= 1 ? n * 100 : n;
+}
+
+/** Props ChartPanel cloneElement injects; DurationOverlay must forward these. */
+export function chartSizeProps(width?: number, height?: number): { width?: number; height?: number } {
+  const out: { width?: number; height?: number } = {};
+  if (typeof width === 'number' && width > 0) out.width = width;
+  if (typeof height === 'number' && height > 0) out.height = height;
+  return out;
+}
+
 /** Never print 0.00ms for a non-zero duration. */
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms === 0) return '0';

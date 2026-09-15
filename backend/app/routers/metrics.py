@@ -613,9 +613,13 @@ async def get_puppetdb_performance(_user: str = Depends(_AUTH)):
         "read_pool_total": "puppetlabs.puppetdb.database:name=PDBReadPool.pool.TotalConnections",
         "read_pool_max": "puppetlabs.puppetdb.database:name=PDBReadPool.pool.MaxConnections",
         "read_pool_usage": "puppetlabs.puppetdb.database:name=PDBReadPool.pool.Usage",
-        # HTTP latency — slashes escaped as !/ for Jolokia path parsing
-        "http_query_time": "puppetlabs.puppetdb.http:name=!/pdb!/query.service-time",
-        "http_cmd_time": "puppetlabs.puppetdb.http:name=!/pdb!/cmd.service-time",
+        # HTTP latency — POST uses real slashes; GET fallback escapes them.
+        # OpenVoxDB/PuppetDB register per-URL beans; v4/v1 are the live ones.
+        "http_query_time": "puppetlabs.puppetdb.http:name=/pdb/query.service-time",
+        "http_query_v4": "puppetlabs.puppetdb.http:name=/pdb/query/v4.service-time",
+        "http_cmd_time": "puppetlabs.puppetdb.http:name=/pdb/cmd.service-time",
+        "http_cmd_v1": "puppetlabs.puppetdb.http:name=/pdb/cmd/v1.service-time",
+        "http_cmd_commands": "puppetlabs.puppetdb.http:name=commands.service-time",
         # GC
         "gc_young": "java.lang:name=G1 Young Generation,type=GarbageCollector",
         "gc_old": "java.lang:name=G1 Old Generation,type=GarbageCollector",
@@ -626,6 +630,14 @@ async def get_puppetdb_performance(_user: str = Depends(_AUTH)):
     }
 
     results = await puppetdb_service.get_pdb_metrics_bulk(metric_names)
+    if results.get("http_query_time") is None:
+        results["http_query_time"] = results.get("http_query_v4")
+    if results.get("http_cmd_time") is None:
+        results["http_cmd_time"] = results.get("http_cmd_v1") or results.get(
+            "http_cmd_commands"
+        )
+    results = await puppetdb_service.fill_pdb_http_latency(results)
+    results = await puppetdb_service.fill_pdb_storage_metrics(results)
 
     jmx_nodes = jmx_scalar(results.get("population_nodes")) or 0
     jmx_res = jmx_scalar(results.get("population_resources")) or 0

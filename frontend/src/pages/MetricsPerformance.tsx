@@ -17,9 +17,12 @@ import {
 import { IconChartLine, IconArrowsMaximize, IconArrowsMinimize, IconRefresh, IconTrash } from '@tabler/icons-react';
 import {
   CHART_LINE_TYPE,
+  chartSizeProps,
   durationTickFormatter,
   downsampleSeries,
   formatDuration,
+  jmxGaugePct,
+  jmxMean,
   jmxTimerToMs,
   movingAverageSeries,
   prepareDurationOverlay,
@@ -59,27 +62,52 @@ function DurationOverlayChart({
   keys,
   names,
   colors,
+  width,
+  height,
+  xLabel = 'Time',
+  yLabel = 'Duration',
 }: {
   data: Array<Record<string, unknown>>;
   keys: string[];
   names: string[];
   colors: string[];
+  width?: number;
+  height?: number;
+  xLabel?: string;
+  yLabel?: string;
 }) {
   const { rows, maxes, normalized } = prepareDurationOverlay(data, keys);
   const peak = Math.max(0, ...Object.values(maxes));
   const tickFmt = normalized
     ? (v: number) => `${Math.round(v)}%`
     : durationTickFormatter(peak);
+  // ChartPanel cloneElement injects measured size. Without forwarding it,
+  // Recharts paints a 0×0 SVG — no series and no axis ticks/labels.
   return (
-    <AreaChart data={rows} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+    <AreaChart
+      data={rows}
+      margin={{ top: 8, right: 12, left: 4, bottom: 18 }}
+      {...chartSizeProps(width, height)}
+    >
       <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
-      <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8899aa' }} />
+      <XAxis
+        dataKey="time"
+        tick={{ fontSize: 9, fill: '#8899aa' }}
+        label={{ value: xLabel, position: 'insideBottom', offset: -2, fill: '#8899aa', fontSize: 9 }}
+      />
       <YAxis
         tick={{ fontSize: 9, fill: '#8899aa' }}
-        domain={normalized ? [0, 100] : [0, 'auto']}
+        domain={normalized ? [0, 100] : peak > 0 ? [0, 'auto'] : [0, 1]}
         ticks={normalized ? [0, 25, 50, 75, 100] : undefined}
         tickFormatter={tickFmt}
-        width={normalized ? 36 : 48}
+        width={normalized ? 40 : 52}
+        label={{
+          value: normalized ? 'Relative duration' : yLabel,
+          angle: -90,
+          position: 'insideLeft',
+          fill: '#8899aa',
+          fontSize: 9,
+        }}
       />
       <ReTooltip
         {...TOOLTIP_STYLE}
@@ -282,14 +310,14 @@ export function MetricsPerformancePage({
     if (!serverData) return;
     const server = serverData;
     const point: any = { time: new Date().toLocaleTimeString() };
-    point.catalog_ms = jmxTimerToMs(server.catalog_processing?.Mean);
-    point.facts_ms = jmxTimerToMs(server.facts_processing?.Mean);
-    point.report_ms = jmxTimerToMs(server.report_processing?.Mean);
-    point.store_catalog_ms = jmxTimerToMs(server.store_catalog?.Mean);
-    point.store_facts_ms = jmxTimerToMs(server.store_facts?.Mean);
-    point.store_report_ms = jmxTimerToMs(server.store_report?.Mean);
-    point.http_query_ms = jmxTimerToMs(server.http_query_time?.Mean);
-    point.http_cmd_ms = jmxTimerToMs(server.http_cmd_time?.Mean);
+    point.catalog_ms = jmxMean(server.catalog_processing);
+    point.facts_ms = jmxMean(server.facts_processing);
+    point.report_ms = jmxMean(server.report_processing);
+    point.store_catalog_ms = jmxMean(server.store_catalog);
+    point.store_facts_ms = jmxMean(server.store_facts);
+    point.store_report_ms = jmxMean(server.store_report);
+    point.http_query_ms = jmxMean(server.http_query_time);
+    point.http_cmd_ms = jmxMean(server.http_cmd_time);
     point.queue_depth = Number(server.cmd_depth?.Count) || 0;
     point.write_active = Number(server.write_pool_active?.Value) || 0;
     point.write_idle = Number(server.write_pool_idle?.Value) || 0;
@@ -297,9 +325,9 @@ export function MetricsPerformancePage({
     point.read_idle = Number(server.read_pool_idle?.Value) || 0;
     point.write_pending = Number(server.write_pool_pending?.Value) || 0;
     point.read_pending = Number(server.read_pool_pending?.Value) || 0;
-    point.hash_match_ms = jmxTimerToMs(server.catalog_hash_match?.Mean);
-    point.hash_miss_ms = jmxTimerToMs(server.catalog_hash_miss?.Mean);
-    point.dedup_pct = (Number(server.dedup_pct?.Value) || 0) * 100;
+    point.hash_match_ms = jmxMean(server.catalog_hash_match);
+    point.hash_miss_ms = jmxMean(server.catalog_hash_miss);
+    point.dedup_pct = jmxGaugePct(server.dedup_pct);
     point.gc_young_count = Number(server.gc_young?.CollectionCount) || 0;
     point.gc_young_time = Number(server.gc_young?.CollectionTime) || 0;
     point.gc_old_count = Number(server.gc_old?.CollectionCount) || 0;
@@ -461,11 +489,17 @@ function MetricsPerformanceContent({
     { name: 'Report', mean: jmxTimerToMs(jmxVal(s.report_processing, 'Mean')), p95: jmxTimerToMs(s.report_processing?.['95thPercentile']) },
   ].filter(d => d.mean > 0);
 
-  // HTTP latency — may not be available (returns error object on some PuppetDB versions)
+  // HTTP latency — bean names vary by OpenVoxDB/PuppetDB version
   const httpData = [
-    { name: 'Query API', mean: jmxVal(s.http_query_time, 'Mean'), p95: Number(s.http_query_time?.['95thPercentile']) || 0 },
-    { name: 'Command API', mean: jmxVal(s.http_cmd_time, 'Mean'), p95: Number(s.http_cmd_time?.['95thPercentile']) || 0 },
+    { name: 'Query API', mean: jmxMean(s.http_query_time), p95: jmxTimerToMs(s.http_query_time?.['95thPercentile']) },
+    { name: 'Command API', mean: jmxMean(s.http_cmd_time), p95: jmxTimerToMs(s.http_cmd_time?.['95thPercentile']) },
   ].filter(d => d.mean > 0);
+  const hashPeak = Math.max(
+    0,
+    ...serverHistoryChart.map((r) =>
+      Math.max(Number(r.hash_match_ms) || 0, Number(r.hash_miss_ms) || 0),
+    ),
+  );
 
   // Define all 10 chart panels
   const charts: Array<{ id: string; title: string; stats?: any[]; render: (h: number) => ReactNode }> = [
@@ -532,6 +566,7 @@ function MetricsPerformanceContent({
     },
     {
       id: 'storage-timing', title: 'Storage Operation Timing',
+      stats: storageData.map(d => ({ label: d.name, value: String(formatMs(d.mean)), color: 'cyan' })),
       render: () => (
         <DurationOverlayChart
           data={serverHistoryChart}
@@ -561,6 +596,7 @@ function MetricsPerformanceContent({
     },
     {
       id: 'http-latency', title: 'HTTP API Latency',
+      stats: httpData.map(d => ({ label: d.name, value: String(formatMs(d.mean)), color: 'cyan' })),
       render: () => (
         <DurationOverlayChart
           data={serverHistoryChart}
@@ -572,14 +608,76 @@ function MetricsPerformanceContent({
     },
     {
       id: 'catalog-dedup', title: 'Catalog Deduplication',
-      stats: [{ label: 'Dedup Rate', value: `${(Number(jmxVal(s.dedup_pct, 'Value') || 0) * 100).toFixed(1)}%`, color: 'green' }],
+      stats: [{ label: 'Dedup Rate', value: `${jmxGaugePct(s.dedup_pct).toFixed(1)}%`, color: 'green' }],
       render: () => (
-        <DurationOverlayChart
-          data={serverHistoryChart}
-          keys={['hash_match_ms', 'hash_miss_ms']}
-          names={['Hash Match', 'Hash Miss']}
-          colors={['#2ecc71', '#e74c3c']}
-        />
+        <ComposedChart data={serverHistoryChart} margin={{ top: 8, right: 12, left: 4, bottom: 18 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" strokeOpacity={0.5} />
+          <XAxis
+            dataKey="time"
+            tick={{ fontSize: 9, fill: '#8899aa' }}
+            label={{ value: 'Time', position: 'insideBottom', offset: -2, fill: '#8899aa', fontSize: 9 }}
+          />
+          <YAxis
+            yAxisId="pct"
+            domain={[0, 100]}
+            ticks={[0, 25, 50, 75, 100]}
+            tickFormatter={(v: number) => `${v}%`}
+            tick={{ fontSize: 9, fill: '#2ecc71' }}
+            width={40}
+            label={{ value: 'Dedup rate', angle: -90, position: 'insideLeft', fill: '#2ecc71', fontSize: 9 }}
+          />
+          <YAxis
+            yAxisId="ms"
+            orientation="right"
+            domain={hashPeak > 0 ? [0, 'auto'] : [0, 1]}
+            tickFormatter={durationTickFormatter(hashPeak)}
+            tick={{ fontSize: 9, fill: '#8899aa' }}
+            width={48}
+            label={{ value: 'Hash time', angle: 90, position: 'insideRight', fill: '#8899aa', fontSize: 9 }}
+          />
+          <ReTooltip
+            {...TOOLTIP_STYLE}
+            formatter={(v: number, n: string) => [
+              String(n).includes('Dedup')
+                ? `${Number(v).toFixed(1)}%`
+                : formatDuration(Number(v)),
+              n,
+            ]}
+          />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <Area
+            yAxisId="pct"
+            isAnimationActive={false}
+            animationDuration={0}
+            type={CHART_LINE_TYPE}
+            dataKey="dedup_pct"
+            stroke="#2ecc71"
+            fill="none"
+            strokeWidth={2}
+            dot={false}
+            name="Dedup rate"
+          />
+          <Line
+            yAxisId="ms"
+            isAnimationActive={false}
+            type={CHART_LINE_TYPE}
+            dataKey="hash_match_ms"
+            stroke="#3498db"
+            strokeWidth={1.5}
+            dot={false}
+            name="Hash match"
+          />
+          <Line
+            yAxisId="ms"
+            isAnimationActive={false}
+            type={CHART_LINE_TYPE}
+            dataKey="hash_miss_ms"
+            stroke="#e74c3c"
+            strokeWidth={1.5}
+            dot={false}
+            name="Hash miss"
+          />
+        </ComposedChart>
       ),
     },
     {
