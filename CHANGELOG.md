@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.14.0] - 2026-09-21 (stable — clustered ops, lean PDB, agent installer)
+
+Stable promotion of the **3.13.0-rc.1–rc.32** train (which itself
+promoted **3.12.1-dev.1–dev.34**) on `main`. There is **no** separate
+3.13.0 GitHub Release; this is the next stable after **3.12.0**.
+Per-commit detail stays in the rc/dev entries below.
+
+### Highlights
+- **Clustered ops without compiler TTY.** Code Deploy, Hiera Lookup,
+  and Agent Install no longer depend on compiler sudo TTY or the
+  compiler's PuppetDB termini. Clustered `install.bash` writes
+  `ca_server=` from `OPENVOX_GUI_PUPPET_CA_HOST` and never treats the
+  compiler VIP as CA.
+- **Lean PDB + last-good fleet.** Overview and Monitoring use one
+  PuppetDB VIP and a lean report extract. A one-node or empty VIP
+  probe no longer replaces a known fleet; last-good is stored in
+  `gui_kv` so both consoles share it.
+- **Monitoring charts paint.** Duration overlays get a real width,
+  Fleet Population is dual-axis, Top 10 Slowest Nodes is a rank bar,
+  and empty Jolokia series still draw snapshot bars.
+- **Agent package mirror stays on the disk you have.** EL9/EL10 +
+  OpenVox 8/9 no longer recurse `src/` / `ppc64le/` or leave a ~40G
+  apt pool after you uncheck Debian. Apply Changes and nightly sync
+  prune unselected trees. `install.bash` finds both rsync `pool/` and
+  curl `apt/openvoxN/` layouts.
+- **Run OpenVox.** Agent exit 2 (changes applied) is success; the
+  Human tab shows Puppet CLI, not the Bolt JSON wrapper.
+- **Security.** Dependabot PRs #80–#89 (compatible pins only;
+  Mantine stays 7), postcss CVE-2026-9358, `npm audit` 0.
+
+### Upgrade
+```bash
+sudo /opt/openvox-gui/scripts/update_local.sh
+```
+Hard-refresh browsers once (Monitoring charts). Clustered consoles
+must set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP. If `/opt/openvox-pkgs`
+already filled the disk, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+("Selecting only EL9/EL10 still fills the disk") then Sync now.
+
+See [UPDATE.md](UPDATE.md), [docs/STATUS.md](docs/STATUS.md),
+[docs/INSTALLER.md](docs/INSTALLER.md).
+
 ## [3.13.0-rc.32] - 2026-09-21 (fix — EL-only mirror no longer pulls the world)
 
 ### Fixed

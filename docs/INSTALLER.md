@@ -1,7 +1,7 @@
 # OpenVox Agent Installer
 
 **Available since:** openvox-gui 3.6.0 · **UI:** Infrastructure → Agent Install (`/installer`)  
-**Current product train:** see root `VERSION` (doc refreshed 3.12)
+**Current product train:** see root `VERSION` (doc refreshed 3.14.0)
 
 This guide covers the **agent installer** feature: a local OpenVox
 package mirror, a one-line bootstrap script for Linux and Windows
@@ -607,7 +607,7 @@ Cause: Starlette `StaticFiles` does not generate directory listings.
 `html=True` only serves `index.html`. The `.deb` files can be on disk
 and a direct GET of a `.deb` returns 200 while the folder still 404s.
 
-Fixed in **3.13.0-rc.31**: the GUI (`:4567/packages`) autoindexes those
+Fixed in **3.14.0**: the GUI (`:4567/packages`) autoindexes those
 dirs, `install.bash` prefers `dists/…/Packages.gz` then `index.txt`,
 and `sync-openvox-repo.sh` writes `index.txt` next to the debs (so
 puppetserver `:8140` works too).
@@ -697,10 +697,11 @@ sudo dpkg -i /opt/openvox-pkgs/apt/openvox8-release-debian12.deb
 
 ### Sync runs but takes hours
 
-The first sync is full (~2 GB).  Subsequent syncs are incremental
-because `wget --mirror` skips files that haven't changed upstream.
-If syncs are routinely slow, mirror only the platforms you actually
-deploy. The platform names match the upstream-source layout
+The first sync is full (EL9+EL10 yum-only is ~9 GB; a full apt pool
+is ~20 GB). Subsequent syncs are incremental (`curl -z` / rsync).
+If syncs are routinely slow or the disk fills, mirror only the
+platforms you actually deploy — unselected trees are pruned. The
+platform names match the upstream-source layout
 (`yum`, `apt`, `windows`, `mac`) -- the older `redhat,debian,ubuntu`
 names from the early test builds are still accepted with a
 deprecation warning:

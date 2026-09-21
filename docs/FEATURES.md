@@ -1,6 +1,6 @@
 # OpenVox GUI — Feature Reference
 
-**Document version:** matches root `VERSION` (see repo `VERSION` file; 3.12.0 stable, 3.12.1-dev train)  
+**Document version:** matches root `VERSION` (see repo `VERSION` file; **3.14.0** stable)  
 **Audience:** operators, reviewers, and release prep  
 **Scope:** every primary **page**, **capability**, and **supporting subsystem** in the product as shipped on `main`.
 
@@ -504,4 +504,4 @@ When cutting a stable release, verify this file still matches:
 4. `backend/app/routers/` prefixes  
 5. Root `VERSION` and [CHANGELOG.md](../CHANGELOG.md) headline features  
 
-*Last full inventory pass: 3.12.0 stable (2026-08-25).*
+*Last full inventory pass: 3.14.0 stable (2026-09-21). Agent installer prune, last-good fleet, and Monitoring chart sizing landed in the 3.13.0-rc train.*

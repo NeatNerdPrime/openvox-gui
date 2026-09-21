@@ -6,14 +6,15 @@ We actively support security and operational updates for the latest stable and p
 
 | Version | Supported          |
 | ------- | ------------------ |
-| **3.12.x** stable (**3.12.0** — current GitHub Release; AIO + clustered) | :white_check_mark: |
-| **3.10.x** stable (**3.10.6**) | :white_check_mark: (upgrade to 3.12.0 when you can) |
-| 3.11.x betas | Prefer 3.12.0 |
-| 3.9.x | Prefer upgrade to 3.12.0 |
+| **3.14.x** stable (**3.14.0** — current; AIO + clustered) | :white_check_mark: |
+| **3.12.x** stable (**3.12.0**) | :white_check_mark: (upgrade to 3.14.0 when you can) |
+| **3.10.x** stable (**3.10.6**) | Upgrade to 3.14.0 when you can |
+| 3.11.x betas | Prefer 3.14.0 |
+| 3.9.x | Prefer upgrade to 3.14.0 |
 | 3.0 – 3.8.x | Limited — upgrade when you can |
 | < 3.0   | :x: (end of life)  |
 
-**Default recommendation:** run the latest **stable** GitHub Release (**[v3.12.0](https://github.com/cvquesty/openvox-gui/releases/tag/v3.12.0)**). Track [docs/STATUS.md](docs/STATUS.md).
+**Default recommendation:** run the latest **stable** (**[v3.14.0](https://github.com/cvquesty/openvox-gui/releases/tag/v3.14.0)**). Track [docs/STATUS.md](docs/STATUS.md).
 
 **CI (every push/PR to `main`):** GitHub Actions workflow **CI** (`.github/workflows/ci.yml`) runs pytest (Python 3.10/3.11), ruff error-class rules, frontend typecheck + Vitest + Vite build, `bash -n` / ShellCheck, the Bolt ENC plugin tests, and VERSION lockstep. See [docs/TESTING.md](docs/TESTING.md).
 
@@ -105,4 +106,4 @@ Thank you for helping keep OpenVox GUI and the broader infrastructure management
 
 ---
 
-*Last updated: 2026-09-08 (Dependabot PRs #80–#89 reviewed; compatible pins shipped in 3.13.0-rc.23+1sec). See CHANGELOG.md for related dependency and hardening history.*
+*Last updated: 2026-09-21 (3.14.0 stable; Dependabot PRs #80–#89 in the 3.13.0-rc train). See CHANGELOG.md for related dependency and hardening history.*

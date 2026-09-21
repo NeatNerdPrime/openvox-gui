@@ -126,6 +126,18 @@ if [ -f "$PKG" ]; then
           delete pkg.displayVersion;
           fs.writeFileSync('$PKG', JSON.stringify(pkg, null, 2) + '\n');
         "
+        LOCK="$REPO_ROOT/frontend/package-lock.json"
+        if [ -f "$LOCK" ]; then
+            node -e "
+              const fs = require('fs');
+              const lock = JSON.parse(fs.readFileSync('$LOCK', 'utf8'));
+              lock.version = '$SEMVER_VERSION';
+              if (lock.packages && lock.packages['']) {
+                lock.packages[''].version = '$SEMVER_VERSION';
+              }
+              fs.writeFileSync('$LOCK', JSON.stringify(lock, null, 2) + '\n');
+            "
+        fi
     else
         sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$SEMVER_VERSION\"/" "$PKG"
         rm -f "$PKG.bak"

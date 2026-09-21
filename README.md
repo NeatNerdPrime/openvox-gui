@@ -4,7 +4,7 @@
 
 **A web-based management interface for OpenVox/Puppet infrastructure**
 
-[![Version](https://img.shields.io/badge/version-3.13.0--rc.32-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases)
+[![Version](https://img.shields.io/badge/version-3.14.0-orange?style=for-the-badge)](https://github.com/cvquesty/openvox-gui/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![React](https://img.shields.io/badge/react-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
@@ -61,7 +61,7 @@ See the dedicated **[ovox documentation](ovox/README.md)** for the complete comm
 ## 🚀 Quick Start
 
 > **Most common path = all-in-one:** install OpenVox GUI **on your OpenVox Server** (same host as puppetserver / agent). That is what Quick Start and `install.sh` optimize for.  
-> **Clustered / multi-DC** (dedicated console, separate compilers/CA/PDB) is fully supported in the 3.12 train — see [docs/STATUS.md](docs/STATUS.md) and the Advanced section of [INSTALL.md](INSTALL.md).
+> **Clustered / multi-DC** (dedicated console, separate compilers/CA/PDB) is fully supported in the 3.14 train — see [docs/STATUS.md](docs/STATUS.md) and the Advanced section of [INSTALL.md](INSTALL.md).
 
 If you just want to get up and running quickly, log in to your OpenVox Server and run:
 
@@ -245,23 +245,25 @@ sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py r
 sudo /opt/openvox-gui/venv/bin/python /opt/openvox-gui/scripts/manage_users.py list
 ```
 
-## Current train (3.12) and versioning
+## Current train (3.14) and versioning
 
-**Current stable GitHub Release:** **3.12.0** (`v3.12.0`).  
+**Current stable:** **3.14.0** (`v3.14.0`).  
 Full map: [docs/STATUS.md](docs/STATUS.md) · features: [docs/FEATURES.md](docs/FEATURES.md) · history: [CHANGELOG.md](CHANGELOG.md).
 
-### 3.12.0 headlines (AIO + clustered)
+### 3.14.0 headlines (AIO + clustered)
 - **AIO still first** — install on the OpenVox Server; SQLite; local services
-- **Clustered optional** — dedicated consoles, VIP sessions, fleet VIP exclude, remote CA/PDB, `ovox infra health`
-- **One fleet status** — newest OpenVoxDB report on Overview / Nodes / detail; peer merge so two consoles agree
-- **Ops polish** — PQL sortable results, Log Viewer empty≠502, console host/IP footer
+- **Clustered ops** — Code Deploy / Hiera / Agent Install without compiler sudo TTY; `OPENVOX_GUI_PUPPET_CA_HOST` is the CA VIP
+- **Lean PDB + last-good fleet** — one PuppetDB VIP, lean report extract, VIP probe cannot wipe a known fleet
+- **Monitoring paints** — measured chart width, duration axes, Fleet Population dual axis
+- **Package mirror** — EL9/EL10 + OpenVox 8/9 only; unselected apt/yum trees are pruned (will not fill a 70G disk)
+- **Run OpenVox** — agent exit 2 is success; Human tab shows Puppet CLI
 
 ### Earlier 3.x (still in the product)
-- **3.10.6** performance / SWR · **3.7** Insights / maintenance · **3.6** agent installer, SSL wizard, RBAC
+- **3.12.0** clustered consoles / one fleet status · **3.10.6** performance / SWR · **3.7** Insights / maintenance · **3.6** agent installer, SSL wizard, RBAC
 
 ### How we version
-- **Stable:** `MAJOR.MINOR.PATCH` (e.g. **3.12.0**)
-- **Pre-release:** `3.12.1-dev.N` / `3.13.0-rc.N` (PEP 440 only — not `gamma`) · ovox lockstep with GUI
+- **Stable:** `MAJOR.MINOR.PATCH` (e.g. **3.14.0**)
+- **Pre-release:** `3.14.1-dev.N` / `3.15.0-rc.N` (PEP 440 only — not `gamma`) · ovox lockstep with GUI
 - **Branch:** `main` only · GitHub Releases only for intentional stables
 
 > **Metrics:** [docs/METRICS.md](docs/METRICS.md) · Host Health: [docs/HOST_HEALTH.md](docs/HOST_HEALTH.md)

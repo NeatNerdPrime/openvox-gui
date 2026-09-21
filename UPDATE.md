@@ -1,6 +1,6 @@
 # Update Guide
 
-**OpenVox GUI Version 3.13.0-rc.32**
+**OpenVox GUI Version 3.14.0**
 
 This guide explains how to update your existing OpenVox GUI installation to the latest version. Updates bring new features, bug fixes, and security improvements.
 
@@ -69,6 +69,18 @@ Think of updating like changing the oil in your car - you want to prepare first:
      ```
    - See `maintenance/README.md` for the complete program (static pages, `ovox maintenance` CLI commands + sub-group under `infra`, backend 503 middleware, Apache config example, flag locations, workflows, and troubleshooting). The scripts also ensure proper permissions for the web server user.
 
+### Special note for upgrades to 3.14.0
+
+3.14.0 is the next stable after 3.12.0 (the 3.13.0-rc train; there is
+no 3.13.0 GitHub Release). After `update_local.sh` / `update_remote.sh`:
+
+1. **Hard-refresh browsers** so Monitoring charts pick up the measured-width fix.
+2. **Clustered consoles:** set `OPENVOX_GUI_PUPPET_CA_HOST` to the CA VIP
+   (not the compiler VIP). New agents will fail CSR if this is missing.
+3. **Package mirror:** if `/opt/openvox-pkgs` already filled the disk,
+   prune unselected trees (see TROUBLESHOOTING) then Sync now. EL9/EL10
+   + OpenVox 8/9 only needs ~9 GB, not 50+.
+
 ### Special note for upgrades to 3.6.0 or later
 
 3.6.0 introduces the **OpenVox Agent Installer** -- a local
@@ -96,11 +108,12 @@ will:
    leave it empty until either the GUI's "Sync now" button or the
    02:30 timer.
 
-> ⚠️ **The first sync downloads roughly 1-2 GB and can take 15-45
-> minutes** on a typical broadband connection. Subsequent syncs are
-> incremental. If you skip the initial sync prompt, the agent install
-> one-liners will return install.bash correctly but agents will fail
-> at the package-install step until the mirror is populated.
+> ⚠️ **The first sync is several GB** (EL9+EL10 yum-only is ~9 GB; a
+> full apt pool is ~20 GB) and can take well over an hour. Subsequent
+> syncs are incremental. If you skip the initial sync prompt, the agent
+> install one-liners will return install.bash correctly but agents will
+> fail at the package-install step until the mirror is populated.
+> Select only the distros you run — unselected trees are pruned.
 
 After the upgrade, visit **Infrastructure -> Agent Install** in the GUI.
 The page now consists of:
@@ -191,7 +204,7 @@ The script automatically:
 curl -k https://localhost:4567/health
 
 # Should show something like:
-# {"status":"ok","version":"3.13.0-rc.32"}
+# {"status":"ok","version":"3.14.0"}
 ```
 
 Open your browser and refresh the page. You might need to clear your browser cache:
@@ -621,8 +634,8 @@ If you're stuck:
 
 OpenVox GUI uses **Semantic Versioning (SemVer 2.0.0)** plus optional **pre-releases**:
 
-- **Stable:** `MAJOR.MINOR.PATCH` (example: **3.12.0** — current GitHub Release)
-- **Pre-release trains on `main`:** e.g. `3.12.1-dev.N`, `3.13.0-rc.N`
+- **Stable:** `MAJOR.MINOR.PATCH` (example: **3.14.0** — current)
+- **Pre-release trains on `main`:** e.g. `3.14.1-dev.N`, `3.15.0-rc.N`
 - **ovox CLI** version always matches the GUI (root `VERSION` file)
 - **Feature inventory:** [docs/FEATURES.md](docs/FEATURES.md)
 
@@ -634,6 +647,7 @@ Rules of thumb:
 - Prefer the latest **stable** GitHub Release for production; use `rc` / beta only on lab or agreed pilots
 
 Examples:
+- `3.12.0` → `3.14.0`: clustered ops without compiler TTY, lean PDB, agent-installer prune, Monitoring charts
 - `3.10.6` → `3.12.0`: clustered consoles, one fleet status, VIP sessions
 - `3.10.4` → `3.10.6`: GUI performance (Dashboard lean PDB extract, multi-worker uvicorn, graph-page SWR)
 - `3.10.2` → `3.10.4`: Live fleet consistency + Log Viewer / ENC / Inventory polish
@@ -641,7 +655,16 @@ Examples:
 
 ### Recent Versions
 
-**Version 3.12.0 (Current stable GitHub Release — August 2026)**
+**Version 3.14.0 (Current stable — September 2026)**
+- Promotes **3.13.0-rc.1–rc.32** (and **3.12.1-dev.1–dev.34**) on **`main`**. There is no 3.13.0 GitHub Release.
+- Clustered Code Deploy / Hiera / Agent Install without compiler sudo TTY; `OPENVOX_GUI_PUPPET_CA_HOST` is the CA VIP
+- Lean PDB extract + last-good fleet so a VIP probe cannot show a one-node estate
+- Monitoring charts paint (measured width, duration axes, Fleet Population dual axis)
+- Package mirror honors EL9/EL10 + OpenVox 8/9 and prunes unselected apt/yum trees
+- Run OpenVox: agent exit 2 is success; Human tab shows Puppet CLI
+- After upgrade: hard-refresh browsers; set `OPENVOX_GUI_PUPPET_CA_HOST` on clustered consoles; if `/opt/openvox-pkgs` filled the disk see TROUBLESHOOTING
+
+**Version 3.12.0 (prior stable — August 2026)**
 - Promotes **3.12.0-rc.1–rc.48** on **`main`** ([GitHub Release](https://github.com/cvquesty/openvox-gui/releases/tag/v3.12.0))
 - One fleet census (newest OpenVoxDB report) on Overview / Nodes / detail / Monitoring
 - Dual-console peer report merge so Needs attention matches

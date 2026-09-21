@@ -4,7 +4,7 @@ This is the operator and contributor map for automated tests. The suite is
 **moderate and CI-first**: it proves code contracts without a live Puppet
 estate.
 
-**Current train:** see root `VERSION` (3.12.1-dev after stable 3.12.0).
+**Current train:** see root `VERSION` (**3.14.0** stable).
 
 ## What CI runs
 

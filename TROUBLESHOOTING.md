@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.13.0-rc.32**
+**OpenVox GUI Version 3.14.0**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.13.0-rc.32"}
+   # Should return: {"status":"ok","version":"3.14.0"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -211,7 +211,7 @@ To use a real certificate, see the Configuration documentation (SSL wizard under
 
 **Fix:**
 
-1. Upgrade **both** consoles to **3.12.0** (same version).
+1. Upgrade **both** consoles to **3.14.0** (same version).
 2. Identical `OPENVOX_GUI_SECRET_KEY` and shared Postgres `openvox_gui` DSN.
 3. Set console VIP hostnames: Settings → Cluster → **Console VIP / public LB hostnames**, or `OPENVOX_GUI_VIP_HOSTS=…` on both hosts.
 4. Prefer LB sticky sessions **and** keep app RR-safe.
@@ -525,9 +525,9 @@ must receive the measured chart width/height. Without that, Recharts paints a
 
 **Fix:**
 
-1. Upgrade to **3.13.0-rc.30** or later. A hard refresh of rc.29 is
+1. Upgrade to **3.14.0** or later. A hard refresh of 3.13.0-rc.29 is
    not enough — those cards never received a chart width.
-2. Confirm the footer / health version is **3.13.0-rc.30**.
+2. Confirm the footer / health version is **3.14.0**.
 3. On Run Performance, click **Clear History** so old all-zero
    localStorage points are dropped. The cards should show current
    Jolokia bars immediately, then a time series as samples arrive.
@@ -1386,7 +1386,7 @@ then the script fails with 404 on the three apt directory URLs (pool,
 **Cause:** those are directory GETs. FastAPI `StaticFiles` does not list
 directories, so the folder 404s even when the `.deb` files exist.
 
-**Fix:** upgrade the console to **3.13.0-rc.31** or later (GUI autoindex
+**Fix:** upgrade the console to **3.14.0** or later (GUI autoindex
 + `install.bash` uses `Packages.gz` / `index.txt`). Re-run the same
 one-liner against `:4567`. Confirm with:
 
@@ -1410,7 +1410,7 @@ a full apt pool is ~20 GB) and can take well over an hour.
 
 Older syncs walked **every** subdirectory under `yum/openvox{N}/el/{R}/`
 (`src/`, `ppc64le/`, `SRPMS/`) and left **apt/pool** behind after you
-unchecked Debian/Ubuntu. 3.13.0-rc.32+ prunes unselected trees on
+unchecked Debian/Ubuntu. **3.14.0** prunes unselected trees on
 Apply Changes and on every sync, and only fetches `x86_64`/`aarch64`.
 
 If the disk is already full:
