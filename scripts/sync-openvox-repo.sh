@@ -459,8 +459,13 @@ curl_mirror() {
     local entry
     for entry in $entries; do
         if [[ "$entry" == */ ]]; then
-            # Subdirectory: always recurse (regardless of accept filter)
             local subdir="${entry%/}"
+            case "$subdir" in
+                src|SRPMS|debug|debuginfo|lost+found)
+                    info "  (skip ${subdir}/)"
+                    continue
+                    ;;
+            esac
             info "  -> ${subdir}/"
             curl_mirror "${url}${entry}" "${dest}/${subdir}" "$accept" || \
                 failures=$((failures + 1))
@@ -573,6 +578,7 @@ versions = [v for v in cfg.get('openvox_versions', ['8','9']) if str(v) != '7']
 if not versions:
     versions = ['8', '9']
 dists = cfg.get('distributions', [])
+print('CFG_LOADED=1')
 print('CFG_VERSIONS=' + ','.join(versions))
 # Group distributions by family
 families = {}
@@ -619,17 +625,22 @@ print('CFG_TRANSPORT=' + t)
         return
     }
     eval "$parsed"
-    [ -n "${CFG_VERSIONS:-}" ]       && VERSIONS="$CFG_VERSIONS"
-    [ -n "${CFG_PLATFORMS:-}" ]      && PLATFORMS="$CFG_PLATFORMS"
-    [ -n "${CFG_YUM_FAMILIES:-}" ]   && YUM_FAMILIES="$CFG_YUM_FAMILIES"
-    [ -n "${CFG_EL:-}" ]             && EL_RELEASES="$CFG_EL"
-    [ -n "${CFG_AMAZON:-}" ]         && AMAZON_RELEASES="$CFG_AMAZON"
-    [ -n "${CFG_FEDORA:-}" ]         && FEDORA_RELEASES="$CFG_FEDORA"
-    [ -n "${CFG_SLES:-}" ]           && SLES_RELEASES="$CFG_SLES"
-    [ -n "${CFG_FIPS:-}" ]           && FIPS_RELEASES="$CFG_FIPS"
-    [ -n "${CFG_DEB:-}" ]            && DEB_RELEASES="$CFG_DEB"
-    [ -n "${CFG_UBU:-}" ]            && UBU_RELEASES="$CFG_UBU"
-    [ -n "${CFG_TRANSPORT:-}" ]      && MIRROR_TRANSPORT="$CFG_TRANSPORT"
+    # Empty CFG_* values are intentional: EL9/EL10-only must not keep
+    # default debian/ubuntu/windows/mac lists (those used to pull the
+    # whole upstream tree and fill the disk).
+    if [ "${CFG_LOADED:-}" = "1" ]; then
+        [ -n "${CFG_VERSIONS:-}" ] && VERSIONS="$CFG_VERSIONS"
+        PLATFORMS="${CFG_PLATFORMS:-}"
+        YUM_FAMILIES="${CFG_YUM_FAMILIES:-}"
+        EL_RELEASES="${CFG_EL:-}"
+        AMAZON_RELEASES="${CFG_AMAZON:-}"
+        FEDORA_RELEASES="${CFG_FEDORA:-}"
+        SLES_RELEASES="${CFG_SLES:-}"
+        FIPS_RELEASES="${CFG_FIPS:-}"
+        DEB_RELEASES="${CFG_DEB:-}"
+        UBU_RELEASES="${CFG_UBU:-}"
+        [ -n "${CFG_TRANSPORT:-}" ] && MIRROR_TRANSPORT="$CFG_TRANSPORT"
+    fi
 }
 
 if [ "$FROM_CONFIG" = "true" ]; then
@@ -733,8 +744,103 @@ _yum_family_releases() {
     esac
 }
 
+_csv_has() {
+    local haystack="$1"
+    local needle="$2"
+    echo ",${haystack}," | grep -q ",${needle},"
+}
+
+# Always skip source/debug trees. Unselected arches (ppc64le, i686, …)
+# are not in ARCHES and must not be mirrored.
+_yum_keep_subdir() {
+    local name="$1"
+    case "$name" in
+        src|SRPMS|debug|debuginfo|lost+found) return 1 ;;
+        repodata) return 0 ;;
+    esac
+    _csv_has "$ARCHES" "$name"
+}
+
+# Drop leftover trees that are not in the current selection. Apply
+# Changes used to leave apt/pool (~20G+) behind because the pool is
+# shared; nightly sync with platforms=yum never touched it.
+prune_unselected_mirror() {
+    local yum_root="${PKG_REPO_DIR}/yum"
+    local fam rel arch path name releases ver_dir fam_dir rel_dir arch_dir
+
+    if [ "$DRY_RUN" = "true" ]; then
+        info "DRY-RUN: would prune unselected mirror trees under ${PKG_REPO_DIR}"
+        return 0
+    fi
+
+    if ! _csv_has "$PLATFORMS" apt; then
+        if [ -d "${PKG_REPO_DIR}/apt" ]; then
+            info "Pruning unselected apt tree"
+            rm -rf "${PKG_REPO_DIR}/apt/pool" "${PKG_REPO_DIR}/apt/dists"
+            rm -rf "${PKG_REPO_DIR}"/apt/openvox*
+        fi
+    fi
+    if ! _csv_has "$PLATFORMS" windows; then
+        if [ -d "${PKG_REPO_DIR}/windows" ]; then
+            info "Pruning unselected windows tree"
+            rm -rf "${PKG_REPO_DIR}/windows"
+        fi
+    fi
+    if ! _csv_has "$PLATFORMS" mac; then
+        if [ -d "${PKG_REPO_DIR}/mac" ]; then
+            info "Pruning unselected mac tree"
+            rm -rf "${PKG_REPO_DIR}/mac"
+        fi
+    fi
+
+    [ -d "$yum_root" ] || return 0
+    if ! _csv_has "$PLATFORMS" yum; then
+        info "Pruning unselected yum tree"
+        rm -rf "${yum_root}/openvox"*
+        return 0
+    fi
+
+    for ver_dir in "${yum_root}"/openvox*; do
+        [ -d "$ver_dir" ] || continue
+        name=$(basename "$ver_dir")
+        name="${name#openvox}"
+        if ! _csv_has "$VERSIONS" "$name"; then
+            info "Pruning unselected ${ver_dir}"
+            rm -rf "$ver_dir"
+            continue
+        fi
+        for fam_dir in "$ver_dir"/*; do
+            [ -d "$fam_dir" ] || continue
+            fam=$(basename "$fam_dir")
+            if ! _csv_has "$YUM_FAMILIES" "$fam"; then
+                info "Pruning unselected ${fam_dir}"
+                rm -rf "$fam_dir"
+                continue
+            fi
+            releases=$(_yum_family_releases "$fam")
+            for rel_dir in "$fam_dir"/*; do
+                [ -d "$rel_dir" ] || continue
+                rel=$(basename "$rel_dir")
+                if ! _csv_has "$releases" "$rel"; then
+                    info "Pruning unselected ${rel_dir}"
+                    rm -rf "$rel_dir"
+                    continue
+                fi
+                for arch_dir in "$rel_dir"/*; do
+                    [ -d "$arch_dir" ] || continue
+                    arch=$(basename "$arch_dir")
+                    if ! _yum_keep_subdir "$arch"; then
+                        info "Pruning unselected arch ${arch_dir}"
+                        rm -rf "$arch_dir"
+                    fi
+                done
+            done
+        done
+    done
+}
+
 rsync_sync_yum() {
-    local v rel arch fam releases
+    local v rel arch fam releases arch_src
     local yum_root="${PKG_REPO_DIR}/yum"
 
     if [ "$DRY_RUN" != "true" ]; then
@@ -753,12 +859,21 @@ rsync_sync_yum() {
         [ -z "$releases" ] && continue
         for v in $(echo "$VERSIONS" | tr ',' ' '); do
             for rel in $(echo "$releases" | tr ',' ' '); do
-                # Mirror the entire release tree (all arches inside)
                 info "  -> yum/openvox${v}/${fam}/${rel}"
-                if ! rsync_tree "${RSYNC_YUM}/openvox${v}/${fam}/${rel}/" \
-                        "${yum_root}/openvox${v}/${fam}/${rel}/"; then
-                    SYNC_FAILURES=$((SYNC_FAILURES + 1))
-                fi
+                for arch in $(echo "$ARCHES" | tr ',' ' '); do
+                    arch_src="${RSYNC_YUM}/openvox${v}/${fam}/${rel}/${arch}/"
+                    if [ "$DRY_RUN" != "true" ] && \
+                       ! rsync -4 --timeout=10 --contimeout=5 --list-only \
+                            "$arch_src" >/dev/null 2>&1; then
+                        info "  (no ${arch} for openvox${v}/${fam}/${rel} -- skipping)"
+                        continue
+                    fi
+                    info "  -> ${arch}/"
+                    if ! rsync_tree "$arch_src" \
+                            "${yum_root}/openvox${v}/${fam}/${rel}/${arch}/"; then
+                        SYNC_FAILURES=$((SYNC_FAILURES + 1))
+                    fi
+                done
                 # Release RPM at root
                 rsync_tree "${RSYNC_YUM}/openvox${v}-release-${fam}-${rel}.noarch.rpm" \
                     "${yum_root}/" \
@@ -769,7 +884,7 @@ rsync_sync_yum() {
 }
 
 curl_sync_yum() {
-    local v rel fam releases
+    local v rel fam releases url dest arch
     local yum_root="${PKG_REPO_DIR}/yum"
 
     curl_fetch "${YUM_BASE}/GPG-KEY-openvox.pub" "${yum_root}" \
@@ -780,11 +895,19 @@ curl_sync_yum() {
         [ -z "$releases" ] && continue
         for v in $(echo "$VERSIONS" | tr ',' ' '); do
             for rel in $(echo "$releases" | tr ',' ' '); do
-                local url="${YUM_BASE}/openvox${v}/${fam}/${rel}/"
+                url="${YUM_BASE}/openvox${v}/${fam}/${rel}/"
+                dest="${yum_root}/openvox${v}/${fam}/${rel}"
                 info "  -> openvox${v}/${fam}/${rel}"
-                if ! curl_mirror "$url" "${yum_root}/openvox${v}/${fam}/${rel}"; then
-                    SYNC_FAILURES=$((SYNC_FAILURES + 1))
-                fi
+                mkdir -p "$dest"
+                # Files at the release root only — do not recurse into
+                # src/, ppc64le/, SRPMS/. Those filled a 70G lab disk.
+                _curl_fetch_listed_files "$url" "$dest" || true
+                for arch in $(echo "$ARCHES" | tr ',' ' '); do
+                    info "  -> ${arch}/"
+                    if ! curl_mirror "${url}${arch}/" "${dest}/${arch}"; then
+                        SYNC_FAILURES=$((SYNC_FAILURES + 1))
+                    fi
+                done
                 curl_fetch \
                     "${YUM_BASE}/openvox${v}-release-${fam}-${rel}.noarch.rpm" \
                     "${yum_root}" \
@@ -1147,6 +1270,14 @@ sync_mac() {
 }
 
 # ─── Drive each requested platform ───────────────────────────────────────────
+prune_unselected_mirror
+
+if [ -z "$PLATFORMS" ]; then
+    info "No platforms selected in ${SELECTIONS_FILE}; nothing to sync"
+    write_status "success (nothing selected)"
+    exit 0
+fi
+
 for platform in $(echo "$PLATFORMS" | tr ',' ' '); do
     case "$platform" in
         yum)     sync_yum ;;

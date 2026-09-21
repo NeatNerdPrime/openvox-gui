@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**OpenVox GUI Version 3.13.0-rc.31**
+**OpenVox GUI Version 3.13.0-rc.32**
 
 This guide helps you solve common problems with OpenVox GUI. Think of it as your "fix-it" manual - we'll start with the most common issues and work our way to more complex ones.
 
@@ -132,7 +132,7 @@ If these don't fix your problem, continue to the specific sections below.
 5. **Try accessing locally first:**
    ```bash
    curl -k https://localhost:4567/health
-   # Should return: {"status":"ok","version":"3.13.0-rc.31"}
+   # Should return: {"status":"ok","version":"3.13.0-rc.32"}
    ```
 
 ### Problem: Forgot Admin Password
@@ -1403,7 +1403,26 @@ The local mirror at `/opt/openvox-pkgs/` is empty. Either:
   `sudo systemctl start openvox-repo-sync.service`
 - Or just wait for the 02:30 nightly timer
 
-The first sync downloads ~1-2 GB and takes 15-45 minutes.
+The first sync downloads several GB (EL9+EL10 yum-only is ~9 GB;
+a full apt pool is ~20 GB) and can take well over an hour.
+
+### Problem: Selecting only EL9/EL10 still fills the disk
+
+Older syncs walked **every** subdirectory under `yum/openvox{N}/el/{R}/`
+(`src/`, `ppc64le/`, `SRPMS/`) and left **apt/pool** behind after you
+unchecked Debian/Ubuntu. 3.13.0-rc.32+ prunes unselected trees on
+Apply Changes and on every sync, and only fetches `x86_64`/`aarch64`.
+
+If the disk is already full:
+
+```bash
+# Keep GPG keys; drop leftover apt + yum source/ppc64le
+sudo rm -rf /opt/openvox-pkgs/apt/pool /opt/openvox-pkgs/apt/dists \
+            /opt/openvox-pkgs/apt/openvox*
+sudo find /opt/openvox-pkgs/yum -type d \
+    \( -name src -o -name SRPMS -o -name ppc64le \) -prune -exec rm -rf {} +
+sudo /opt/openvox-gui/scripts/sync-openvox-repo.sh --quiet
+```
 
 ### Problem: Install script dies with `Could not determine the puppetserver FQDN`
 

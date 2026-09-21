@@ -413,11 +413,18 @@ supported OS release (expand via flags if you need older releases):
 
 | Source | OpenVox versions | OS releases | Architectures |
 |--------|------------------|-------------|---------------|
-| `yum` (RHEL family: rocky/alma/centos/rhel/oracle) | 7, 8 | el-8, el-9 | x86_64, aarch64 |
-| `apt` Debian | 7, 8 | debian10 (buster), debian12 (bookworm), debian13 (trixie) | amd64, arm64 |
-| `apt` Ubuntu | 7, 8 | ubuntu22.04 (jammy), ubuntu24.04 (noble) | amd64, arm64 |
-| `windows` | 7, 8 | n/a | x64 |
-| `mac` | 7, 8 | n/a | x86_64, arm64 |
+| `yum` (RHEL family: rocky/alma/centos/rhel/oracle) | 8, 9 | el-8, el-9 (GUI can add el-10) | x86_64, aarch64 |
+| `apt` Debian | 8, 9 | debian10 (buster), debian12 (bookworm), debian13 (trixie) | amd64, arm64 |
+| `apt` Ubuntu | 8, 9 | ubuntu22.04 (jammy), ubuntu24.04 (noble) | amd64, arm64 |
+| `windows` | 8, 9 | n/a | x64 |
+| `mac` | 8, 9 | n/a | x86_64, arm64 |
+
+The Installer **Distribution Support** checkboxes write
+`.mirror-selections.json`. Sync (nightly and **Sync now**) follows that
+file: unselected platforms are **deleted** from disk (including the
+shared apt `pool/` and `apt/openvox{N}/` trees). Yum syncs only the
+selected EL releases and only `x86_64`/`aarch64` — not `src/`,
+`SRPMS/`, or `ppc64le/`.
 
 Override via flags or environment variables:
 
@@ -442,15 +449,18 @@ systemd unit reads both files via `EnvironmentFile=-`.
 
 ## Disk space considerations
 
-A full mirror of every supported platform is roughly:
+Sizes are **historical package history**, not "latest agent only".
+Lab-measured (2026-09, OpenVox 8+9):
 
 | Source | Approx size |
 |--------|-------------|
-| yum (el-8,9 x86_64+aarch64, openvox 7+8) | 600 MB |
-| apt (debian10,12,13 + ubuntu22.04,24.04, openvox 7+8) | 500 MB |
-| Windows MSIs | 100 MB |
-| macOS DMGs | 200 MB |
-| **Total** | **~1.4 GB** |
+| yum EL9+EL10, x86_64+aarch64 (no src/ppc64le) | ~9 GB |
+| yum same plus `src/` + `ppc64le/` | +~4 GB (not mirrored anymore) |
+| apt `pool/openvox8` (all Debian/Ubuntu debs) | ~20 GB |
+| **EL9/EL10 yum-only (typical lab)** | **~9 GB** |
+
+A 70 GB root filesystem cannot hold "everything upstream". Select only
+the distros you run; Apply Changes and the next sync prune the rest.
 
 The Installer page shows a "Disk space" widget that warns when the
 filesystem holding `/opt/openvox-pkgs/` is more than 90 % full.

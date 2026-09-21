@@ -791,6 +791,11 @@ UPSTREAM_CACHE   = PKG_REPO_DIR / ".upstream-cache.json"
 SELECTIONS_FILE  = PKG_REPO_DIR / ".mirror-selections.json"
 CACHE_TTL_HOURS  = 24
 
+# yum.voxpupuli.org also publishes src/, SRPMS/, ppc64le/, i686/.
+# Recursing those (and leaving deselected apt/pool) filled a 70G lab disk.
+YUM_SKIP_SUBDIRS = frozenset({"src", "SRPMS", "debug", "debuginfo", "lost+found"})
+DEFAULT_MIRROR_ARCHES = ("x86_64", "aarch64")
+
 # Display metadata for yum families.
 _YUM_FAMILY_LABELS = {
     "el":          "RHEL / Rocky / Alma",
@@ -1217,6 +1222,115 @@ def _write_selections(sel: MirrorSelections) -> None:
     SELECTIONS_FILE.write_text(json.dumps(sel.model_dump(), indent=2) + "\n")
 
 
+def _mirror_arches() -> tuple[str, ...]:
+    raw = os.environ.get("OPENVOX_GUI_MIRROR_ARCHES", "")
+    if raw.strip():
+        return tuple(a.strip() for a in raw.split(",") if a.strip())
+    return DEFAULT_MIRROR_ARCHES
+
+
+def _selected_platform_kinds(distributions: list[str]) -> set[str]:
+    kinds: set[str] = set()
+    for dist in distributions:
+        fam = dist.split("/", 1)[0]
+        if fam in _YUM_FAMILY_LABELS:
+            kinds.add("yum")
+        elif fam in ("debian", "ubuntu"):
+            kinds.add("apt")
+        elif fam == "windows":
+            kinds.add("windows")
+        elif fam == "mac":
+            kinds.add("mac")
+    return kinds
+
+
+def _wanted_yum_keys(distributions: list[str]) -> set[tuple[str, str]]:
+    wanted: set[tuple[str, str]] = set()
+    for dist in distributions:
+        parts = dist.split("/", 1)
+        if parts[0] in _YUM_FAMILY_LABELS and len(parts) == 2 and parts[1]:
+            wanted.add((parts[0], parts[1]))
+    return wanted
+
+
+def prune_unselected_mirror(
+    sel: MirrorSelections,
+    root: Optional[Path] = None,
+) -> list[str]:
+    """Remove trees that are not in the current checkbox selection.
+
+    Apply Changes previously only deleted paths for dist keys that were
+    *in the old JSON*. Leftover ``apt/pool`` and ``apt/openvox{N}`` from
+    an earlier full sync were never removed, and yum ``src/`` / ``ppc64le/``
+    were never in the selection model at all.
+    """
+    root = root or PKG_REPO_DIR
+    removed: list[str] = []
+    kinds = _selected_platform_kinds(sel.distributions)
+    versions = {v for v in sel.openvox_versions if v in SUPPORTED_OPENVOX_MAJORS}
+    arches = set(_mirror_arches())
+    wanted_yum = _wanted_yum_keys(sel.distributions)
+
+    def _rm(path: Path) -> None:
+        if not path.exists():
+            return
+        try:
+            shutil.rmtree(path)
+            removed.append(str(path))
+            logger.info("Pruned unselected mirror path: %s", path)
+        except OSError as exc:
+            logger.warning("Could not prune %s: %s", path, exc)
+
+    apt = root / "apt"
+    if "apt" not in kinds and apt.exists():
+        _rm(apt / "pool")
+        _rm(apt / "dists")
+        for child in list(apt.iterdir()):
+            if child.is_dir() and child.name.startswith("openvox"):
+                _rm(child)
+
+    if "windows" not in kinds:
+        _rm(root / "windows")
+    if "mac" not in kinds:
+        _rm(root / "mac")
+
+    yum_root = root / "yum"
+    if yum_root.exists():
+        if "yum" not in kinds:
+            for child in list(yum_root.iterdir()):
+                if child.is_dir() and child.name.startswith("openvox"):
+                    _rm(child)
+        else:
+            for ver_dir in list(yum_root.iterdir()):
+                if not ver_dir.is_dir() or not ver_dir.name.startswith("openvox"):
+                    continue
+                ver = ver_dir.name.replace("openvox", "")
+                if ver not in versions:
+                    _rm(ver_dir)
+                    continue
+                for fam_dir in list(ver_dir.iterdir()):
+                    if not fam_dir.is_dir():
+                        continue
+                    for rel_dir in list(fam_dir.iterdir()):
+                        if not rel_dir.is_dir():
+                            continue
+                        if (fam_dir.name, rel_dir.name) not in wanted_yum:
+                            _rm(rel_dir)
+                            continue
+                        for arch_dir in list(rel_dir.iterdir()):
+                            if not arch_dir.is_dir():
+                                continue
+                            name = arch_dir.name
+                            if name in YUM_SKIP_SUBDIRS or name not in arches:
+                                _rm(arch_dir)
+                    try:
+                        if fam_dir.exists() and not any(fam_dir.iterdir()):
+                            _rm(fam_dir)
+                    except OSError:
+                        pass
+    return removed
+
+
 def _removable_paths(dist_key: str, versions: list[str]) -> list[Path]:
     """Paths safe to remove when deselecting a distribution.
 
@@ -1260,17 +1374,18 @@ async def _sync_distribution(dist_key: str, versions: list[str]) -> bool:
             logger.info("Skipping OpenVox %s (not published; mirror 8 and 9 only)", ver)
             continue
         if family in _YUM_FAMILY_LABELS:
-            dest = PKG_REPO_DIR / "yum" / f"openvox{ver}" / family / release
-            dest.mkdir(parents=True, exist_ok=True)
-            ok = await _rsync_or_curl(
-                f"{RSYNC_YUM}/openvox{ver}/{family}/{release}/",
-                str(dest),
-                f"{YUM_BASE}/openvox{ver}/{family}/{release}/",
-                use_rsync=use_rsync,
-                https_fallback=https_fallback,
-            )
-            if not ok:
-                success = False
+            for arch in _mirror_arches():
+                dest = PKG_REPO_DIR / "yum" / f"openvox{ver}" / family / release / arch
+                dest.mkdir(parents=True, exist_ok=True)
+                ok = await _rsync_or_curl(
+                    f"{RSYNC_YUM}/openvox{ver}/{family}/{release}/{arch}/",
+                    str(dest),
+                    f"{YUM_BASE}/openvox{ver}/{family}/{release}/{arch}/",
+                    use_rsync=use_rsync,
+                    https_fallback=https_fallback,
+                )
+                if not ok:
+                    success = False
             # GPG key
             gpg_dest = PKG_REPO_DIR / "yum"
             gpg_dest.mkdir(parents=True, exist_ok=True)
@@ -1373,8 +1488,14 @@ async def _rsync_or_curl(
     ok = True
     for link in links:
         if link.endswith("/"):
-            # Subdirectory: recurse
+            # Subdirectory: recurse, but never into yum src/SRPMS/ppc64le.
             subdir = link.strip("/")
+            if subdir in YUM_SKIP_SUBDIRS:
+                continue
+            if subdir not in ("repodata",) and subdir not in _mirror_arches():
+                # Unknown arch (ppc64le, i686, …) at a yum release root.
+                if any(part in _YUM_FAMILY_LABELS for part in Path(local_dest).parts):
+                    continue
             sub_dest = os.path.join(local_dest, subdir)
             os.makedirs(sub_dest, exist_ok=True)
             if not await _rsync_or_curl(
@@ -1503,6 +1624,9 @@ async def update_mirror_selections(
     if removed_vers:
         for dist in (new_set & old_set):
             _remove_distribution(dist, removed_vers)
+
+    # Sweep leftovers the dist-key diff cannot see (apt/pool, yum src/).
+    removed_paths.extend(prune_unselected_mirror(new))
 
     # Sync newly selected distributions in the background
     dists_to_sync = list(added)

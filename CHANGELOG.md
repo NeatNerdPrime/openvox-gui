@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > As the OpenVox project evolves, these are being rebranded to OpenVox Server, OpenVoxDB, and
 > OpenBolt respectively. Historical entries are preserved as-is for accuracy.
 
+## [3.13.0-rc.32] - 2026-09-21 (fix — EL-only mirror no longer pulls the world)
+
+### Fixed
+- **Package mirror:** checking only EL9/EL10 and OpenVox 8/9 still
+  filled a 70G lab disk. Two bugs: (1) HTTPS yum `curl_mirror` recursed
+  into **every** subdirectory (`src/`, `ppc64le/`, `SRPMS/`), not just
+  `x86_64`/`aarch64`; (2) unchecking Debian/Ubuntu did **not** delete
+  `apt/pool` or `apt/openvox{N}/` (~42G leftover — the pool is shared,
+  so Apply Changes only removed `dists/` metadata). Sync now follows
+  `.mirror-selections.json` strictly (empty apt/windows/mac lists are
+  not replaced by defaults), prunes unselected trees on every run and
+  on Apply Changes, and fetches yum per selected arch only.
+
 ## [3.13.0-rc.31] - 2026-09-15 (fix — apt /packages directory 404s)
 
 ### Fixed
