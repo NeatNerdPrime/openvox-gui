@@ -59,8 +59,13 @@ bolt-plugin/bin/run-tests
 
 # End-to-end installer (Docker or Podman; needs frontend/dist)
 scripts/ci-install-test.sh almalinux:10 false
+scripts/ci-install-test.sh almalinux:10 true
 scripts/ci-install-test.sh ubuntu:24.04 true
 ```
+
+AlmaLinux pulls try Docker Hub first (four attempts), then
+`quay.io/almalinuxorg/almalinux` so a Hub reset does not fail the
+release.
 
 ## What we do **not** run in CI
 

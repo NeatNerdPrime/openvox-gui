@@ -38,6 +38,10 @@ Per-commit detail stays in the rc/dev entries below.
   Human tab shows Puppet CLI, not the Bolt JSON wrapper.
 - **Security.** Dependabot PRs #80–#89 (compatible pins only;
   Mantine stays 7), postcss CVE-2026-9358, `npm audit` 0.
+- **CI (retag):** `install.sh almalinux:10 ssl=true` failed on a
+  Docker Hub `connection reset by peer` (the non-SSL Alma 10 job
+  passed). Image pull now retries and falls back to
+  `quay.io/almalinuxorg/almalinux`.
 
 ### Upgrade
 ```bash

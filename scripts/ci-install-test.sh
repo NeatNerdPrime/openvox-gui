@@ -31,9 +31,41 @@ fi
 
 # Short names such as almalinux:10 resolve on Docker Hub. Podman hosts with
 # several unqualified-search-registries would otherwise prompt for one.
-case "$IMAGE" in */*) PULL_IMAGE="$IMAGE" ;; *) PULL_IMAGE="docker.io/library/$IMAGE" ;; esac
-echo "==> pulling ${PULL_IMAGE}"
-"$ENGINE" pull -q "$PULL_IMAGE" >/dev/null
+# Docker Hub resets (GHA "connection reset by peer" on almalinux:10) are
+# retried, then AlmaLinux images fall back to quay.io/almalinuxorg.
+_image_candidates() {
+    local img="$1"
+    case "$img" in
+        */*) printf '%s\n' "$img" ;;
+        almalinux:*)
+            printf '%s\n' "docker.io/library/${img}"
+            printf '%s\n' "quay.io/almalinuxorg/${img}"
+            ;;
+        *) printf '%s\n' "docker.io/library/${img}" ;;
+    esac
+}
+
+pull_with_retry() {
+    local candidate tries
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        tries=0
+        while [ "$tries" -lt 3 ]; do
+            tries=$((tries + 1))
+            echo "==> pulling ${candidate} (attempt ${tries}/3)"
+            if "$ENGINE" pull "$candidate"; then
+                PULL_IMAGE="$candidate"
+                return 0
+            fi
+            echo "==> pull failed for ${candidate}; retrying" >&2
+            sleep $((tries * 2))
+        done
+    done < <(_image_candidates "$IMAGE")
+    echo "FAIL: could not pull ${IMAGE} (tried Docker Hub and fallbacks)" >&2
+    return 1
+}
+
+pull_with_retry
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 [ -f "$REPO/frontend/dist/index.html" ] || {

@@ -66,6 +66,19 @@ else
 fi
 
 echo
+echo "── ci-install-test image candidates (AlmaLinux 10) ──"
+candidates=$(bash -c '
+  eval "$(sed -n "/^_image_candidates()/,/^}/p" scripts/ci-install-test.sh)"
+  _image_candidates almalinux:10
+')
+if echo "$candidates" | grep -qx 'docker.io/library/almalinux:10' \
+  && echo "$candidates" | grep -qx 'quay.io/almalinuxorg/almalinux:10'; then
+  pass "almalinux:10 Hub + quay fallback"
+else
+  fail "almalinux:10 candidates: $candidates"
+fi
+
+echo
 echo "── VERSION is present and PEP 440-ish ──"
 ver="$(tr -d '[:space:]' < VERSION)"
 # PEP 440: N.N.N[pre][+local]. Local segments are how we mark
